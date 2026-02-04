@@ -1,53 +1,51 @@
 import { useEffect } from 'react';
 import { db } from '../db';
-import { getDateMetadata } from '../utils/date';
 
 export const useMidnightReset = () => {
   useEffect(() => {
-    const runReset = async () => {
-      const todayStr = getDateMetadata().date_str;
-      const lastResetState = await db.app_state.get('last_midnight_reset');
+    const checkAndReset = async () => {
+      const now = new Date();
+      const todayStr = now.toISOString().split('T')[0];
       
-      // Nếu chưa có log hoặc log là ngày hôm qua -> Chạy Reset
-      if (!lastResetState || lastResetState.value !== todayStr) {
-        console.log("Mind OS: System Awakening - Running Midnight Reset...");
-        
-        await db.transaction('rw', db.entries, db.activity_logs, db.app_state, async () => {
-          // 1. Reset Daily Tasks: Tìm task 'daily' đang active/completed
-          const dailyTasks = await db.entries
-            .filter(e => e.is_task && e.frequency === 'daily')
-            .toArray();
+      // Kiểm tra lần chạy cuối cùng
+      const lastRun = await db.app_state.get('last_midnight_reset');
+      
+      if (lastRun?.value !== todayStr) {
+        console.log('Mind OS: Running Midnight Cleanup...');
 
-          for (const task of dailyTasks) {
-            // Reset trạng thái về Active và tắt Focus
-            await db.entries.update(task.id, {
-              status: 'active',
-              is_focus: false, 
-            });
-            
-            // Log lại sự kiện hệ thống
-            await db.activity_logs.add({
-              id: crypto.randomUUID(),
-              created_at: Date.now(),
-              action_type: 'SYSTEM_RESET',
-              entry_id: task.id,
-              value_snapshot: { prev_status: task.status } // Lưu lại để biết hôm qua có làm xong không
-            });
+        await db.transaction('rw', db.entries, db.app_state, async () => {
+          const allTasks = await db.entries.toArray();
+
+          for (const task of allTasks) {
+            // 1. DỌN DẸP TIÊU ĐIỂM (Focus Cleanup)
+            // Nếu còn treo ở Focus -> Đá về Inbox
+            if (task.status === 'active' && task.is_focus) {
+              await db.entries.update(task.id, { is_focus: false });
+            }
+
+            // 2. LƯU TRỮ VIỆC CŨ (Archive Old Completed)
+            // Nếu đã xong và KHÔNG PHẢI xong hôm nay -> Archive
+            if (task.status === 'completed') {
+              const taskDate = new Date(task.completed_at || task.created_at).toISOString().split('T')[0];
+              if (taskDate !== todayStr) {
+                await db.entries.update(task.id, { status: 'archived' });
+              }
+            }
           }
 
-          // 2. Dọn dẹp: Archive các One-time tasks đã xong
-          await db.entries
-            .filter(e => e.is_task && e.status === 'completed' && (!e.frequency || e.frequency === 'custom'))
-            .modify({ status: 'archived' });
-
-          // 3. Đóng dấu thời gian
+          // Cập nhật ngày chạy
           await db.app_state.put({ key: 'last_midnight_reset', value: todayStr });
         });
         
-        console.log("Mind OS: Midnight Reset Completed.");
+        console.log('Mind OS: Cleanup Complete.');
       }
     };
 
-    runReset();
+    // Chạy ngay khi mở App
+    checkAndReset();
+
+    // Chạy mỗi khi App được focus lại (phòng trường hợp để App qua đêm không tắt)
+    window.addEventListener('focus', checkAndReset);
+    return () => window.removeEventListener('focus', checkAndReset);
   }, []);
 };

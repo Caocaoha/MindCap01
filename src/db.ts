@@ -1,59 +1,81 @@
-import Dexie, { type Table } from 'dexie';
+import Dexie, { Table } from 'dexie';
 
-// Định nghĩa cấu trúc một bản ghi (Entry)
+// --- 1. ENTRY: Dữ liệu lõi ---
 export interface Entry {
-  id?: string;
+  id: string; // UUID
   content: string;
-  created_at: string;
-  
-  // Các chỉ số đo lường (Quantified Self)
-  feeling: number;
-  impact_vision: number;
-  impact_identity: number;
-  impact_year: number;
-  impact_month: number;
+  created_at: number; // Timestamp
 
-  // Cấu hình Task (Việc cần làm)
+  // Quantified Self Metrics
+  // Mặc định là 0 nếu không nhập. Logic xử lý default sẽ nằm ở tầng Application (Service) hoặc Class constructor.
+  feeling: number; 
+  vision: number;
+  identity: number;
+  
+  // Thời gian logic (để query theo lịch, tách biệt với thời gian tạo)
+  year: number;
+  month: number;
+  date_str: string; // Format "YYYY-MM-DD" để query index cực nhanh cho Daily View
+
+  // Task Configuration
   is_task: boolean;
-  status: 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
-  is_focus: boolean;       // Có đang là Tiêu điểm không
-  urgent: boolean;
-  important: boolean;
-  target_value: number;    // Ví dụ: Đọc 5 trang
-  target_unit: string;     // Đơn vị: Trang, Phút...
-  frequency: 'ONCE' | 'DAILY' | 'CUSTOM';
-  repeat_days: number[];   // 0=CN, 1=T2, 2=T3...
+  status: 'active' | 'completed' | 'archived';
+  is_focus: boolean;
   
-  completed_at?: string;   // Thời gian hoàn thành
-  focus_date?: string;     // Ngày đưa vào tiêu điểm
-  
-  // Logic Streak Gamification (Điểm phong độ)
-  streak_current?: number;       // Số chuỗi hiện tại
-  streak_last_date?: string;     // Ngày hoàn thành gần nhất (YYYY-MM-DD)
-  streak_recovery_count?: number;// Đếm số ngày đang cày lại để hồi phục chuỗi
-  streak_frozen_val?: number;    // Lưu số streak cũ trước khi bị gãy
+  // Task Details
+  eisenhower_matrix?: 'urgent_important' | 'urgent_not_important' | 'not_urgent_important' | 'not_urgent_not_important';
+  target_value?: number;
+  unit?: string;
+  frequency?: 'daily' | 'weekly' | 'monthly' | 'custom';
+  repeat_days?: number[]; // 0 = Sunday
 }
 
-// Định nghĩa cấu trúc Log hoạt động
+// --- 2. PROMPT CONFIG: Kho chứa các bộ câu hỏi ---
+// Không còn là Singleton. Mỗi record là một chế độ (Mode).
+export interface PromptConfig {
+  id: string; // VD: 'default', 'audit', 'morning_routine'
+  name: string; // Tên hiển thị, VD: "Ghi chép tự do", "Tự vấn khắc nghiệt"
+  content_list: string[]; // Danh sách câu hỏi của chế độ này
+}
+
+// --- 3. ACTIVITY LOGS: Lưu vết chuẩn xác hơn ---
 export interface ActivityLog {
-  id?: string;
-  entry_id: string;
-  action_type: 'TASK_DONE' | 'MOVE_TO_FOCUS';
-  created_at: string;
-  val_vision?: number;
+  id: string;
+  created_at: number;
+  action_type: 'TASK_DONE' | 'MOVE_TO_FOCUS' | 'ENTRY_CREATED' | 'SYSTEM_RESET';
+  entry_id?: string;
+  
+  // FIX: Thêm snapshot để biết giá trị tại thời điểm log
+  value_snapshot?: any; // VD: Lưu trạng thái task trước khi reset, hoặc điểm mood lúc đó
+  metadata?: any; 
 }
 
-// Khởi tạo Database
-class MindOSDatabase extends Dexie {
-  entries!: Table<Entry>;
-  activity_logs!: Table<ActivityLog>;
+// --- 4. APP STATE: Bảng quản lý trạng thái hệ thống ---
+// Đây là nơi lưu "Last Reset Date" và "Current Mode"
+export interface AppState {
+  key: string; // VD: 'last_midnight_reset', 'current_prompt_mode'
+  value: any;  // VD: 1706543000000, 'audit'
+}
+
+// --- DATABASE CLASS ---
+export class MindOSDatabase extends Dexie {
+  entries!: Table<Entry, string>;
+  prompt_configs!: Table<PromptConfig, string>; // Đổi tên cho đúng bản chất
+  activity_logs!: Table<ActivityLog, string>;
+  app_state!: Table<AppState, string>; // Bảng mới
 
   constructor() {
-    // Đặt tên DB là V4 để đảm bảo tạo mới sạch sẽ, tránh xung đột dữ liệu cũ
-    super('MindOS_DB_V4'); 
-    this.version(1).stores({
-      entries: 'id, created_at, status, is_focus, frequency, [status+is_task]',
-      activity_logs: 'id, entry_id, created_at, action_type'
+    super('MindOS_DB');
+
+    this.version(2).stores({
+      // Index date_str để load Todo List hôm nay nhanh nhất
+      entries: 'id, created_at, date_str, is_task, status, is_focus, frequency', 
+      
+      prompt_configs: 'id', // id là tên mode (default, audit...)
+      
+      activity_logs: 'id, created_at, action_type',
+      
+      app_state: 'key' // Key-Value store đơn giản
     });
   }
 }

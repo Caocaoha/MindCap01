@@ -2,7 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Các CSS tùy chỉnh khác nếu có */
+/* Font Inter & Custom Scrollbar (Optional) */
 body {
   font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
 }

@@ -1,159 +1,197 @@
-import React, { useState, useRef } from 'react';
-import { db } from '../db';
+import React, { useState, useRef, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Circle, ArrowRight, Zap, Check, Target, Eye, Fingerprint, Calendar } from 'lucide-react';
-import clsx from 'clsx';
+import { db } from '../db';
+import { usePrompts } from '../hooks/usePrompts';
+import { getDateMetadata } from '../utils/date'; // Import Helper
+import { v4 as uuidv4 } from 'uuid';
+import { 
+  Send, Target, Zap, Eye, Fingerprint, 
+  CheckCircle2, Circle 
+} from 'lucide-react';
 
-// Minimal Slider Component
-const LinearSlider = ({ label, icon: Icon, value, onChange }: { label: string, icon: any, value: number, onChange: (v: number) => void }) => {
-  return (
-    <div className="flex items-center gap-4 py-2 group select-none">
-      <div className="flex items-center gap-2 w-24 text-slate-400 group-hover:text-slate-600 transition-colors">
-        <Icon size={14} strokeWidth={1.5} />
-        <span className="text-[11px] font-semibold uppercase tracking-wide">{label}</span>
-      </div>
-      <div className="flex-1 relative h-4 flex items-center">
-        <input type="range" min="-5" max="5" step="1" value={value} onChange={(e) => onChange(Number(e.target.value))}
-          className="w-full h-1 bg-slate-100 rounded-full appearance-none cursor-pointer focus:outline-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-slate-300 hover:[&::-webkit-slider-thumb]:bg-blue-600 [&::-webkit-slider-thumb]:transition-colors" />
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-px h-2 bg-slate-200 pointer-events-none" />
-      </div>
-      <div className={clsx("w-6 text-right text-xs font-mono font-medium", value > 0 ? "text-blue-600" : value < 0 ? "text-red-500" : "text-slate-300")}>
-        {value > 0 ? `+${value}` : value}
-      </div>
+// --- Helper Component: Slider (Giữ nguyên) ---
+const MetricSlider = ({ icon: Icon, label, value, onChange }: any) => (
+  <div className="flex items-center justify-between py-3 group animate-in fade-in slide-in-from-bottom-2">
+    <div className="flex items-center gap-3 text-slate-500">
+      <Icon size={16} strokeWidth={1.5} />
+      <span className="text-sm font-medium text-slate-600">{label}</span>
     </div>
-  );
-};
+    <div className="flex items-center gap-3">
+      <span className="text-xs font-mono text-slate-400 w-4 text-right">{value}</span>
+      <input 
+        type="range" min="-5" max="5" step="1"
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-24 h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 focus:outline-none"
+      />
+    </div>
+  </div>
+);
 
 export const MindTab = () => {
-  const [promptText] = useState("Điều gì quan trọng nhất lúc này?");
-  const [isFocused, setIsFocused] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  const [content, setContent] = useState('');
-  const [feeling, setFeeling] = useState(0);
-  const [impacts, setImpacts] = useState({ vision: 0, identity: 0, year: 0, month: 0 });
+  const { activeQuestion } = usePrompts();
   
-  const [isTaskMode, setIsTaskMode] = useState(false);
-  const [taskConfig, setTaskConfig] = useState({
-    urgent: false, important: false,
-    frequency: 'ONCE' as any, target: 1, unit: 'Lần', repeat_days: [] as number[]
-  });
+  // Refs để xử lý Click Outside
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  const [activeFocusId, setActiveFocusId] = useState<string | null>(null);
-  const focusList = useLiveQuery(() => db.entries.where('is_focus').equals(1).toArray());
+  // States
+  const [content, setContent] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
+  const [metrics, setMetrics] = useState({ feeling: 0, vision: 0, identity: 0 });
+  const [isTask, setIsTask] = useState(false);
 
+  // Data Query
+  const focusList = useLiveQuery(() => 
+    db.entries.where('is_focus').equals(1).filter(e => e.status !== 'completed').toArray()
+  );
+
+  // --- LOGIC 1: CLICK OUTSIDE (Tự động đóng) ---
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      // Nếu click nằm NGOÀI containerRef thì tắt Focus
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        // Chỉ đóng nếu nội dung trống (để tránh mất bài đang viết dở) 
+        // Hoặc người dùng chấp nhận việc đóng này như hành động "Hủy focus"
+        if (!content.trim()) {
+             setIsFocused(false);
+        }
+        // Nếu có nội dung, ta vẫn giữ focus hoặc có thể chọn đóng Action Bar thôi. 
+        // Ở đây tôi chọn đóng Action Bar nhưng giữ text để trải nghiệm mượt.
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [content]);
+
+  // --- LOGIC 2: SAVE WITH HELPER ---
   const handleSave = async () => {
     if (!content.trim()) return;
-    await db.entries.add({
-      id: crypto.randomUUID(),
-      content,
-      created_at: new Date().toISOString(),
-      feeling,
-      impact_vision: impacts.vision, impact_identity: impacts.identity,
-      impact_year: impacts.year, impact_month: impacts.month,
-      is_task: isTaskMode,
-      status: 'ACTIVE',
-      is_focus: false,
-      urgent: taskConfig.urgent, important: taskConfig.important,
-      target_value: taskConfig.target, target_unit: taskConfig.unit,
-      frequency: taskConfig.frequency, repeat_days: taskConfig.repeat_days
-    });
-    setContent(''); setFeeling(0); setImpacts({vision:0, identity:0, year:0, month:0});
-    setIsTaskMode(false); setIsFocused(false);
-    textareaRef.current?.blur();
-  };
 
-  const handleCompleteFocus = async (item: any) => {
-    await db.entries.update(item.id, { status: 'COMPLETED', is_focus: false, completed_at: new Date().toISOString() });
-    await db.activity_logs.add({ entry_id: item.id, action_type: 'TASK_DONE', created_at: new Date().toISOString() });
-    setActiveFocusId(null);
-  };
+    try {
+      const now = new Date();
+      // Sử dụng Helper đã tách [Data Fix]
+      const timeData = getDateMetadata(now); 
 
-  const handleCancelFocus = async (item: any) => {
-    await db.entries.update(item.id, { is_focus: false });
-    setActiveFocusId(null);
+      await db.entries.add({
+        id: uuidv4(),
+        content: content.trim(),
+        created_at: timeData.timestamp,
+        
+        // Metrics từ state object
+        feeling: metrics.feeling,
+        vision: metrics.vision,
+        identity: metrics.identity,
+        
+        // Time logic từ Helper
+        year: timeData.year,
+        month: timeData.month,
+        date_str: timeData.date_str,
+
+        // Task Config
+        is_task: isTask,
+        status: 'active',
+        is_focus: false,
+      });
+
+      // Reset Sạch sẽ
+      setContent('');
+      setMetrics({ feeling: 0, vision: 0, identity: 0 });
+      setIsTask(false);
+      setIsFocused(false); // Đóng Action Bar ngay lập tức
+      
+    } catch (error) {
+      console.error("Lỗi lưu:", error);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-white text-slate-900 font-sans p-4 pb-32">
-      <div className="max-w-md mx-auto flex flex-col gap-6">
-        <div className={clsx("transition-all duration-500 ease-in-out px-1", isFocused ? "opacity-30 blur-[1px]" : "opacity-100")}>
-           <h1 className="text-lg font-medium text-slate-500 tracking-tight">{promptText}</h1>
+    <div ref={containerRef} className={`flex flex-col transition-all duration-500 ease-out ${isFocused ? 'gap-2' : 'gap-6'}`}>
+      
+      {/* INPUT AREA */}
+      <div className="relative group">
+        
+        {/* Save Button: Bay từ góc phải vào */}
+        <button 
+          onClick={handleSave}
+          disabled={!content.trim()}
+          className={`absolute right-0 top-0 z-10 p-2 text-blue-600 bg-blue-50 rounded-md transition-all duration-300
+            ${isFocused && content.trim() ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-2 scale-90 pointer-events-none'}`}
+        >
+          <Send size={18} strokeWidth={2.5} />
+        </button>
+
+        {/* Prompt: Mờ đi khi focus [cite: 15] */}
+        <div className={`transition-all duration-500 mb-2 ${isFocused ? 'opacity-0 h-0 overflow-hidden' : 'opacity-100 h-auto'}`}>
+          <h2 className="text-slate-400 font-medium text-sm select-none">
+            {activeQuestion || "Tâm trí bạn đang ở đâu?"}
+          </h2>
         </div>
 
-        <div className={clsx("relative bg-white rounded-lg border transition-all duration-300 ease-out overflow-hidden z-20", (isFocused || content) ? "border-slate-300 shadow-[0_4px_12px_-2px_rgba(0,0,0,0.05)] ring-1 ring-slate-100" : "border-slate-200 hover:border-slate-300")}>
-            <textarea ref={textareaRef} onFocus={() => setIsFocused(true)}
-                className="w-full min-h-[64px] p-5 text-[16px] text-slate-800 placeholder:text-slate-300 bg-transparent border-none outline-none resize-none leading-relaxed font-normal"
-                placeholder="Ghi nhanh suy nghĩ..." value={content} onChange={e => setContent(e.target.value)}
-                style={{ minHeight: (isFocused || content) ? '100px' : '64px' }}
-            />
-            <div className={clsx("bg-slate-50/40 border-t border-slate-100 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] overflow-hidden", (isFocused || content) ? "max-h-[600px] opacity-100" : "max-h-0 opacity-0")}>
-                <div className="px-5 py-4 space-y-1">
-                    <LinearSlider label="Cảm giác" icon={Eye} value={feeling} onChange={setFeeling} />
-                    <div className="h-px bg-slate-200/50 my-2 w-full" />
-                    <LinearSlider label="Vision" icon={Target} value={impacts.vision} onChange={v => setImpacts({...impacts, vision: v})} />
-                    <LinearSlider label="Identity" icon={Fingerprint} value={impacts.identity} onChange={v => setImpacts({...impacts, identity: v})} />
-                </div>
-                <div className="h-px bg-slate-100 w-full" />
-                <div className="px-3 py-2 bg-white flex items-center justify-between">
-                    <button onClick={() => setIsTaskMode(!isTaskMode)} className={clsx("flex items-center gap-2 px-3 py-1.5 rounded-md text-[11px] font-semibold uppercase tracking-wide transition-colors border", isTaskMode ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-transparent border-transparent text-slate-400 hover:bg-slate-50")}>
-                        <Zap size={14} fill={isTaskMode ? "currentColor" : "none"} /> Task
-                    </button>
-                    <div className="flex items-center gap-2">
-                         {content.trim() && <button onClick={() => { setIsFocused(false); textareaRef.current?.blur(); }} className="px-3 py-1.5 text-xs font-medium text-slate-400 hover:text-slate-600">Đóng</button>}
-                         <button onClick={handleSave} disabled={!content.trim()} className={clsx("h-8 px-4 rounded-md text-xs font-semibold flex items-center gap-2 transition-all shadow-sm", content.trim() ? "bg-[#2563EB] text-white hover:bg-blue-700 active:scale-95" : "bg-slate-100 text-slate-300 cursor-not-allowed")}>
-                            <span>Lưu</span><ArrowRight size={14} strokeWidth={2} />
-                        </button>
-                    </div>
-                </div>
-                {isTaskMode && (
-                    <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex gap-4 animate-in slide-in-from-top-2">
-                        <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer"><input type="checkbox" checked={taskConfig.urgent} onChange={e => setTaskConfig({...taskConfig, urgent: e.target.checked})} className="accent-blue-600 w-3.5 h-3.5" /> Gấp</label>
-                        <div className="h-4 w-px bg-slate-200" />
-                        <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer"><input type="checkbox" checked={taskConfig.important} onChange={e => setTaskConfig({...taskConfig, important: e.target.checked})} className="accent-blue-600 w-3.5 h-3.5" /> Quan trọng</label>
-                        <div className="h-4 w-px bg-slate-200" />
-                        <div className="flex items-center gap-1 text-xs text-slate-600">
-                             <Calendar size={12} className="text-slate-400" />
-                             <select value={taskConfig.frequency} onChange={e => setTaskConfig({...taskConfig, frequency: e.target.value as any})} className="bg-transparent outline-none font-medium cursor-pointer">
-                                <option value="ONCE">Một lần</option><option value="DAILY">Hàng ngày</option>
-                             </select>
-                        </div>
-                    </div>
-                )}
-            </div>
-        </div>
-
-        <div className={clsx("transition-all duration-500 ease-in-out", (isFocused || content) ? "opacity-20 blur-[2px] pointer-events-none" : "opacity-100")}>
-            <div className="flex items-center gap-2 mb-3 px-1">
-                <div className="w-1 h-1 rounded-full bg-slate-400" />
-                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tiêu điểm</h3>
-            </div>
-            <div className="space-y-0">
-               {(!focusList || focusList.length === 0) && <div className="p-6 border border-dashed border-slate-200 rounded-lg text-center"><p className="text-xs text-slate-400 italic">Chưa có tiêu điểm nào.</p></div>}
-               {focusList?.map(item => {
-                   const isActive = activeFocusId === item.id;
-                   return (
-                       <div key={item.id} className={clsx("group rounded-md border bg-white overflow-hidden transition-all mb-2", isActive ? "border-blue-300 ring-1 ring-blue-100 shadow-sm" : "border-slate-200 hover:border-slate-300")}>
-                           <div onClick={() => setActiveFocusId(isActive ? null : item.id)} className="flex items-center gap-3 p-3 cursor-pointer select-none">
-                               <div className={clsx("transition-colors", isActive ? "text-blue-600" : "text-slate-300 group-hover:text-slate-400")}><Circle size={18} strokeWidth={2} /></div>
-                               <span className={clsx("flex-1 text-[13px] font-medium leading-snug", isActive ? "text-slate-900" : "text-slate-600")}>{item.content}</span>
-                               {item.streak_current > 0 && <span className="text-[10px] font-bold text-orange-500 bg-orange-50 px-1.5 rounded">🔥 {item.streak_current}</span>}
-                           </div>
-                           {isActive && (
-                               <div className="flex items-center justify-between px-3 pb-3 pt-0 bg-white animate-in slide-in-from-top-1">
-                                    <span className="text-[10px] text-slate-400">Hành động:</span>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => handleCancelFocus(item)} className="px-3 py-1.5 rounded border border-slate-200 text-[11px] font-medium text-slate-600 hover:bg-slate-50 transition-colors">Hủy bỏ</button>
-                                        <button onClick={() => handleCompleteFocus(item)} className="px-3 py-1.5 rounded bg-[#2563EB] text-white text-[11px] font-medium hover:bg-blue-700 flex items-center gap-1.5 shadow-sm transition-colors"><Check size={12} strokeWidth={3} /> Hoàn thành</button>
-                                    </div>
-                               </div>
-                           )}
-                       </div>
-                   );
-               })}
-            </div>
+        {/* Textarea */}
+        <textarea
+          value={content}
+          onFocus={() => setIsFocused(true)}
+          onChange={(e) => setContent(e.target.value)}
+          placeholder={isFocused ? "Viết đi, đừng ngại..." : "Chạm để viết..."}
+          className={`w-full bg-transparent text-lg text-slate-800 placeholder:text-slate-300 resize-none outline-none transition-all duration-300
+            ${isFocused ? 'min-h-[120px]' : 'min-h-[60px]'}`}
+        />
+        
+        {/* Task Toggle */}
+        <div className={`transition-all duration-300 origin-top ${isFocused ? 'opacity-100 max-h-12 mt-2' : 'opacity-0 max-h-0 overflow-hidden'}`}>
+            <button 
+                onClick={() => setIsTask(!isTask)}
+                className={`flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-full border transition-all
+                    ${isTask ? 'bg-slate-900 text-white border-slate-900 shadow-md' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+            >
+                {isTask ? <CheckCircle2 size={14} /> : <Circle size={14} />}
+                {isTask ? "Biến thành Hành động" : "Chỉ là Suy nghĩ"}
+            </button>
         </div>
       </div>
+
+      {/* ACTION BAR: Trượt ra khi focus [cite: 16] */}
+      {/* Sửa logic: Không còn nút đóng thủ công */}
+      {isFocused && (
+        <div className="pt-4 border-t border-slate-100 space-y-1">
+            <MetricSlider 
+                icon={Zap} label="Năng lượng" value={metrics.feeling} 
+                onChange={(v: number) => setMetrics({...metrics, feeling: v})} 
+            />
+            <MetricSlider 
+                icon={Eye} label="Tầm nhìn" value={metrics.vision} 
+                onChange={(v: number) => setMetrics({...metrics, vision: v})} 
+            />
+            <MetricSlider 
+                icon={Fingerprint} label="Bản sắc" value={metrics.identity} 
+                onChange={(v: number) => setMetrics({...metrics, identity: v})} 
+            />
+        </div>
+      )}
+
+      {/* FOCUS LIST: Mờ đi khi focus [cite: 14] */}
+      <div className={`transition-all duration-500 delay-100 ${isFocused ? 'opacity-20 blur-[1px] grayscale' : 'opacity-100'}`}>
+        <div className="flex items-center gap-2 mb-3 mt-4">
+          <Target size={14} className="text-slate-400" />
+          <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Tiêu điểm</span>
+        </div>
+        
+        {focusList?.length === 0 ? (
+           <div className="p-4 text-center border border-dashed border-slate-200 rounded-lg">
+             <span className="text-slate-300 text-sm">Chưa có tiêu điểm hôm nay</span>
+           </div>
+        ) : (
+          <div className="space-y-2">
+            {focusList?.map(task => (
+              <div key={task.id} className="flex items-start gap-3 py-2 px-1 border-b border-slate-50 last:border-0">
+                <div className="mt-1 w-3 h-3 rounded-full border border-slate-300" />
+                <span className="text-slate-600 text-sm leading-snug">{task.content}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
     </div>
   );
 };

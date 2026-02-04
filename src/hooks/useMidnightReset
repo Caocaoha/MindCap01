@@ -7,7 +7,6 @@ export const useMidnightReset = () => {
       const now = new Date();
       const todayStr = now.toISOString().split('T')[0];
       
-      // Kiểm tra lần chạy cuối cùng
       const lastRun = await db.app_state.get('last_midnight_reset');
       
       if (lastRun?.value !== todayStr) {
@@ -17,23 +16,23 @@ export const useMidnightReset = () => {
           const allTasks = await db.entries.toArray();
 
           for (const task of allTasks) {
-            // 1. DỌN DẸP TIÊU ĐIỂM (Focus Cleanup)
-            // Nếu còn treo ở Focus -> Đá về Inbox
+            // 1. VIỆC ĐANG TREO Ở TÂM TRÍ (FOCUS) -> QUÊN ĐI, TRẢ VỀ KHO
             if (task.status === 'active' && task.is_focus) {
-              await db.entries.update(task.id, { is_focus: false });
+              await db.entries.update(task.id, { 
+                is_focus: false,
+                created_at: Date.now() // Reset thời gian để nhảy lên đầu Kho Todo
+              });
             }
 
-            // 2. LƯU TRỮ VIỆC CŨ (Archive Old Completed)
-            // Nếu đã xong và KHÔNG PHẢI xong hôm nay -> Archive
+            // 2. VIỆC ĐÃ XONG HÔM QUA -> CẤT VÀO LỊCH SỬ (ARCHIVE)
             if (task.status === 'completed') {
-              const taskDate = new Date(task.completed_at || task.created_at).toISOString().split('T')[0];
-              if (taskDate !== todayStr) {
+              const completedDate = new Date(task.completed_at || task.created_at).toISOString().split('T')[0];
+              if (completedDate !== todayStr) {
                 await db.entries.update(task.id, { status: 'archived' });
               }
             }
           }
 
-          // Cập nhật ngày chạy
           await db.app_state.put({ key: 'last_midnight_reset', value: todayStr });
         });
         
@@ -41,10 +40,7 @@ export const useMidnightReset = () => {
       }
     };
 
-    // Chạy ngay khi mở App
     checkAndReset();
-
-    // Chạy mỗi khi App được focus lại (phòng trường hợp để App qua đêm không tắt)
     window.addEventListener('focus', checkAndReset);
     return () => window.removeEventListener('focus', checkAndReset);
   }, []);

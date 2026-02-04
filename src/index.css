@@ -2,8 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Font Inter & Custom Scrollbar (Optional) */
-body {
-  font-family: 'Inter', sans-serif;
-  -webkit-font-smoothing: antialiased;
+/* Thêm font Inter như đặc tả  */
+:root {
+  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  background-color: #ffffff; /* Nền trắng tuyệt đối  */
 }

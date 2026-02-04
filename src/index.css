@@ -2,11 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Ẩn thanh cuộn nhưng vẫn cuộn được */
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+/* Các CSS tùy chỉnh khác nếu có */
+body {
+  font-family: 'Inter', sans-serif;
 }

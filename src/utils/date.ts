@@ -5,8 +5,8 @@ export const getDateMetadata = () => {
   return {
     timestamp: now.getTime(),
     date_str: now.toISOString().split('T')[0],
-    dayOfWeek: days[now.getDay()], // <-- Cái MindTab đang thiếu
-    fullDate: `Ngày ${now.getDate()} tháng ${now.getMonth() + 1}, ${now.getFullYear()}`, // <-- Cái MindTab đang thiếu
+    dayOfWeek: days[now.getDay()],
+    fullDate: `Ngày ${now.getDate()} tháng ${now.getMonth() + 1}, ${now.getFullYear()}`,
     hour: now.getHours()
   };
 };

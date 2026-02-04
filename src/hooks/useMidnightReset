@@ -6,37 +6,30 @@ export const useMidnightReset = () => {
     const checkAndReset = async () => {
       const now = new Date();
       const todayStr = now.toISOString().split('T')[0];
-      
       const lastRun = await db.app_state.get('last_midnight_reset');
       
       if (lastRun?.value !== todayStr) {
-        console.log('Mind OS: Running Midnight Cleanup...');
-
+        console.log('Mind OS: Resetting for a new day...');
         await db.transaction('rw', db.entries, db.app_state, async () => {
           const allTasks = await db.entries.toArray();
-
           for (const task of allTasks) {
-            // 1. VIỆC ĐANG TREO Ở TÂM TRÍ (FOCUS) -> QUÊN ĐI, TRẢ VỀ KHO
+            // 1. VIỆC DỞ DANG TRONG TÂM TRÍ -> TRẢ VỀ KHO
             if (task.status === 'active' && task.is_focus) {
               await db.entries.update(task.id, { 
                 is_focus: false,
-                created_at: Date.now() // Reset thời gian để nhảy lên đầu Kho Todo
+                created_at: Date.now() // Nhảy lên đầu kho Todo sáng hôm sau
               });
             }
-
-            // 2. VIỆC ĐÃ XONG HÔM QUA -> CẤT VÀO LỊCH SỬ (ARCHIVE)
+            // 2. VIỆC ĐÃ XONG HÔM QUA -> LƯU TRỮ
             if (task.status === 'completed') {
-              const completedDate = new Date(task.completed_at || task.created_at).toISOString().split('T')[0];
-              if (completedDate !== todayStr) {
+              const compDate = new Date(task.completed_at || task.created_at).toISOString().split('T')[0];
+              if (compDate !== todayStr) {
                 await db.entries.update(task.id, { status: 'archived' });
               }
             }
           }
-
           await db.app_state.put({ key: 'last_midnight_reset', value: todayStr });
         });
-        
-        console.log('Mind OS: Cleanup Complete.');
       }
     };
 

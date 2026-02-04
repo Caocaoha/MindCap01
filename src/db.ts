@@ -1,20 +1,40 @@
 import Dexie, { Table } from 'dexie';
 
-// 1. Định nghĩa lại Interface cho Entry
+/**
+ * 1. ĐỊNH NGHĨA CẤU TRÚC DỮ LIỆU (INTERFACES)
+ */
+
 export interface Entry {
   id: string;
   content: string;
   created_at: number;
-  date_str: string;
+  date_str: string;        // Định dạng 'YYYY-MM-DD'
   type: 'text' | 'image' | 'voice';
   
-  is_task?: boolean;
-  is_focus?: boolean;
-  status?: 'active' | 'completed' | 'deleted' | 'archived';
+  // Logic công việc
+  is_task?: boolean;       
+  is_focus?: boolean;      // Xác định việc đang nằm trong Tâm trí
+  status?: 'active' | 'completed' | 'deleted' | 'archived'; 
   
-  completed_at?: number; // Trường mới thêm
+  // Thời điểm hoàn thành
+  completed_at?: number;   
   
-  frequency?: 'once' | 'daily' | 'weekly'; 
+  /**
+   * Phân loại từ Đường ray chữ L:
+   * - normal: Lưu thường
+   * - important: Quan trọng
+   * - urgent: Gấp
+   * - hỏa-tốc: Quan trọng + Khẩn cấp
+   */
+  priority?: 'normal' | 'important' | 'urgent' | 'hỏa-tốc'; 
+  
+  /**
+   * Phân loại Cảm xúc từ nút Lưu:
+   * - positive: Vui (Kéo lên)
+   * - negative: Buồn (Kéo xuống)
+   * - neutral: Bình thường (Thả tại chỗ)
+   */
+  mood?: 'positive' | 'negative' | 'neutral'; 
 }
 
 export interface ActivityLog {
@@ -36,7 +56,10 @@ export interface AppState {
   value: any;
 }
 
-// 2. Khởi tạo Database
+/**
+ * 2. KHỞI TẠO CƠ SỞ DỮ LIỆU
+ */
+
 class MindOSDatabase extends Dexie {
   entries!: Table<Entry>;
   activity_logs!: Table<ActivityLog>;
@@ -46,9 +69,12 @@ class MindOSDatabase extends Dexie {
   constructor() {
     super('MindOS_DB');
     
-    // [FIX]: Tăng version lên 30 để ghi đè phiên bản cũ đang kẹt trong máy
-    this.version(30).stores({
-      entries: 'id, date_str, type, is_task, is_focus, status, created_at, completed_at',
+    /**
+     * Cấu hình Schema
+     * Version 33: Cập nhật thêm trường priority và mood.
+     */
+    this.version(33).stores({
+      entries: 'id, date_str, type, is_task, is_focus, status, created_at, completed_at, priority, mood',
       activity_logs: 'id, created_at, action_type',
       prompt_configs: 'id',
       app_state: 'key'

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
-import { motion, AnimatePresence } from 'framer-motion';
-import { TrendingUp, BarChart2, Smile, Frown, Meh, Award, Share2, History, CheckCircle2, FileText, Calendar, Zap } from 'lucide-react';
-import { db, type Entry } from '../utils/db'; 
+import { motion } from 'framer-motion';
+import { TrendingUp, BarChart2, Smile, Frown, Meh, Award, History, CheckCircle2, FileText, Calendar, Zap } from 'lucide-react';
+import { db, type Entry } from '../utils/db'; // Tự động kết nối vào MindOS_V5_Clean
 
 const Journey: React.FC = () => {
   const [taskData, setTaskData] = useState<any[]>([]);
@@ -14,35 +14,34 @@ const Journey: React.FC = () => {
   useEffect(() => {
     const processData = async () => {
       try {
-        const last10Days = Array.from({ length: 10 }, (_, i) => {
-          const d = new Date();
-          d.setDate(d.getDate() - (9 - i));
-          const month = String(d.getMonth() + 1).padStart(2, '0');
-          const day = String(d.getDate()).padStart(2, '0');
-          return {
-            fullDate: d.toISOString().split('T')[0],
-            displayDate: `${day}/${month}`,
-          };
-        });
-
-        // Lấy tất cả và lọc bằng tay cho chắc chắn
+        // Lấy toàn bộ dữ liệu từ kho V5
         const allEntries = await db.entries.toArray();
+        
+        if (allEntries.length === 0) {
+          setIsEmpty(true);
+          return;
+        } else {
+          setIsEmpty(false);
+        }
+
         const tenDaysAgo = Date.now() - 10 * 24 * 60 * 60 * 1000;
 
-        // Lọc Task đã xong (Chấp nhận true/1)
+        // LỌC CHUẨN BOOLEAN (STRICT MODE)
         const recentCompletedTasks = allEntries.filter(e => 
-          !!e.is_task && e.status === 'completed' && e.completed_at && e.completed_at > tenDaysAgo
+          e.is_task === true && // Bắt buộc là True
+          e.status === 'completed' && 
+          e.completed_at && e.completed_at > tenDaysAgo
         );
         
-        // Lọc Mood (Chấp nhận false/0/undefined)
         const recentMoods = allEntries.filter(e => 
-          !e.is_task && e.created_at > tenDaysAgo
+          e.is_task === false && // Bắt buộc là False (Mood)
+          e.created_at > tenDaysAgo
         );
 
-        // Lọc Lịch sử tổng hợp (Task xong HOẶC Mood)
+        // Lịch sử: Lấy Mood HOẶC Task đã xong
         const historyItems = allEntries.filter(e => 
-          (!e.is_task) || // Mood
-          (!!e.is_task && e.status === 'completed') // Task xong
+          (e.is_task === false) || 
+          (e.is_task === true && e.status === 'completed')
         ).sort((a, b) => {
           const timeA = a.completed_at || a.created_at;
           const timeB = b.completed_at || b.created_at;
@@ -51,10 +50,14 @@ const Journey: React.FC = () => {
         
         setHistoryList(historyItems);
 
-        if (allEntries.length === 0) {
-          setIsEmpty(true);
-          return;
-        }
+        // --- XỬ LÝ BIỂU ĐỒ (Giữ nguyên logic tính toán) ---
+        const last10Days = Array.from({ length: 10 }, (_, i) => {
+          const d = new Date();
+          d.setDate(d.getDate() - (9 - i));
+          const month = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return { full: d.toISOString().split('T')[0], show: `${day}/${month}` };
+        });
 
         let runningTotal = 0;
         const tasksChart = last10Days.map(day => {
@@ -64,37 +67,45 @@ const Journey: React.FC = () => {
               const y = d.getFullYear();
               const m = String(d.getMonth() + 1).padStart(2, '0');
               const da = String(d.getDate()).padStart(2, '0');
-              return `${y}-${m}-${da}` === day.fullDate;
+              return `${y}-${m}-${da}` === day.full;
           }).length;
           runningTotal += count;
-          return { name: day.displayDate, daily: count, cumulative: runningTotal };
+          return { name: day.show, daily: count, cumulative: runningTotal };
         });
 
-        let moodCounts = { positive: 0, neutral: 0, negative: 0 };
         const moodsChart = last10Days.map(day => {
-          const dayMoods = recentMoods.filter(m => m.date_str === day.fullDate);
+          const dayMoods = recentMoods.filter(m => m.date_str === day.full);
           const pos = dayMoods.filter(m => m.mood === 'positive').length;
           const neu = dayMoods.filter(m => m.mood === 'neutral').length;
           const neg = dayMoods.filter(m => m.mood === 'negative').length;
-          moodCounts.positive += pos; moodCounts.neutral += neu; moodCounts.negative += neg;
-          return { name: day.displayDate, Vui: pos, Bình_thường: neu, Buồn: neg };
+          return { name: day.show, Vui: pos, Bình_thường: neu, Buồn: neg };
         });
 
-        const maxMoodCount = Math.max(moodCounts.positive, moodCounts.neutral, moodCounts.negative);
-        let dominant = 'neutral';
-        if (maxMoodCount > 0) {
-          if (moodCounts.positive === maxMoodCount) dominant = 'positive';
-          else if (moodCounts.negative === maxMoodCount) dominant = 'negative';
+        // Tính tâm trạng chủ đạo
+        let moodCounts = { positive: 0, neutral: 0, negative: 0 };
+        recentMoods.forEach(m => {
+          if(m.mood === 'positive') moodCounts.positive++;
+          else if(m.mood === 'negative') moodCounts.negative++;
+          else moodCounts.neutral++;
+        });
+        
+        const maxMood = Math.max(moodCounts.positive, moodCounts.neutral, moodCounts.negative);
+        let dom = 'neutral';
+        if (maxMood > 0) {
+            if (moodCounts.positive === maxMood) dom = 'positive';
+            else if (moodCounts.negative === maxMood) dom = 'negative';
         }
 
         setTaskData(tasksChart);
         setMoodData(moodsChart);
-        setSummary({ totalTasks: runningTotal, domMood: dominant });
+        setSummary({ totalTasks: runningTotal, domMood: dom });
+
       } catch (err) { console.error("Journey Error:", err); }
     };
     processData();
   }, []);
 
+  // --- RENDER HELPERS ---
   const getDomMoodIcon = () => {
     switch (summary.domMood) {
       case 'positive': return <Smile size={32} className="text-green-500" />;
@@ -102,7 +113,6 @@ const Journey: React.FC = () => {
       default: return <Meh size={32} className="text-blue-400" />;
     }
   };
-
   const getMoodEmoji = (mood: string) => {
     if (mood === 'positive') return '😃';
     if (mood === 'negative') return '😔';
@@ -124,6 +134,7 @@ const Journey: React.FC = () => {
           </div>
         ) : (
           <>
+            {/* THỐNG KÊ TỔNG */}
             <div className="grid grid-cols-2 gap-4">
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white p-5 rounded-[2rem] shadow-sm flex flex-col items-center justify-center gap-2">
                 <div className="bg-blue-50 p-3 rounded-full text-blue-600 mb-1"><Award size={24} /></div>
@@ -137,6 +148,7 @@ const Journey: React.FC = () => {
               </motion.div>
             </div>
 
+            {/* BIỂU ĐỒ TASK */}
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }} className="bg-white p-6 rounded-[2rem] shadow-sm">
               <div className="flex items-center justify-between mb-6">
                 <div><h3 className="font-bold text-slate-700">Hiệu suất</h3><p className="text-xs text-slate-400">Tích lũy theo thời gian</p></div>
@@ -155,25 +167,7 @@ const Journey: React.FC = () => {
               </div>
             </motion.div>
 
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }} className="bg-white p-6 rounded-[2rem] shadow-sm">
-              <div className="flex items-center justify-between mb-6">
-                <div><h3 className="font-bold text-slate-700">Cảm xúc</h3><p className="text-xs text-slate-400">10 ngày gần nhất</p></div>
-                <BarChart2 size={20} className="text-purple-500 opacity-50"/>
-              </div>
-              <div className="h-40 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={moodData} barSize={12}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} dy={10}/>
-                    <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}/>
-                    <Bar dataKey="Buồn" stackId="a" fill="#f87171" radius={[0, 0, 4, 4]} />
-                    <Bar dataKey="Bình_thường" stackId="a" fill="#94a3b8" />
-                    <Bar dataKey="Vui" stackId="a" fill="#4ade80" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </motion.div>
-
+            {/* DANH SÁCH LỊCH SỬ */}
             <div className="pt-6 border-t border-slate-200 w-full">
               <h3 className="font-bold text-slate-500 uppercase tracking-widest text-sm flex items-center gap-2 mb-6"><History size={16} /> Dòng thời gian</h3>
               <div className="relative border-l-2 border-slate-200 ml-4 space-y-8 pb-10">

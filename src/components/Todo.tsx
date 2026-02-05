@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Target, Trash2, AlertCircle, Clock, Flame, Star, Check, Archive, Zap } from 'lucide-react';
+import { Target, Trash2, AlertCircle, Clock, Flame, Star, Check, Archive, Zap, Database } from 'lucide-react';
 import { db, type Entry, type Priority, addLog } from '../utils/db'; 
 import { getDateString } from '../utils/date';
 
@@ -8,6 +8,7 @@ const Todo: React.FC = () => {
   const [activeTasks, setActiveTasks] = useState<Entry[]>([]);
   const [completedToday, setCompletedToday] = useState<Entry[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [debugCount, setDebugCount] = useState(0); // Biến đếm để soi lỗi
 
   const triggerHaptic = (type: 'success' | 'error' | 'click') => {
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
@@ -19,25 +20,22 @@ const Todo: React.FC = () => {
 
   const fetchTasks = async () => {
     try {
-      console.log("TODO: Bắt đầu tải dữ liệu...");
       const todayStr = getDateString();
-      
-      // 1. Lấy toàn bộ DB để debug (Phòng trường hợp lọc sai)
       const allEntries = await db.entries.toArray();
-      console.log("TODO DEBUG: Tổng số bản ghi trong DB:", allEntries.length);
+      
+      // Cập nhật biến đếm debug
+      setDebugCount(allEntries.length);
+      console.log("DEBUG: Toàn bộ data:", allEntries);
 
-      // 2. Lọc danh sách Active
+      // Lọc lỏng tay hơn một chút để bắt lỗi
       const active = allEntries
         .filter(task => 
-          task.is_task === true &&     // Chỉ lấy Task (Boolean)
+          task.is_task === true && 
           task.status === 'active' && 
-          task.is_focus !== true       // Không phải là Tiêu điểm (chấp nhận false hoặc undefined cho an toàn)
+          task.is_focus !== true
         )
         .sort((a, b) => b.created_at - a.created_at);
 
-      console.log("TODO: Số task active tìm thấy:", active.length);
-
-      // 3. Lọc danh sách Đã xong
       const completed = allEntries
         .filter(task => 
           task.is_task === true &&
@@ -48,38 +46,28 @@ const Todo: React.FC = () => {
       setActiveTasks(active);
       setCompletedToday(completed);
       setError(null);
-    } catch (err) {
+    } catch (err: any) {
       console.error("TODO Error:", err);
-      setError("Không thể tải danh sách");
+      // Hiện lỗi chi tiết ra màn hình
+      setError("Lỗi DB: " + (err.message || JSON.stringify(err)));
     }
   };
 
-  useEffect(() => {
-    fetchTasks();
-  }, []);
+  useEffect(() => { fetchTasks(); }, []);
 
-  // --- ACTIONS ---
+  // Actions
   const promoteToFocus = async (task: Entry) => {
     triggerHaptic('click');
     try {
-      const currentFocusCount = await db.entries
-        .filter(e => e.is_focus === true && e.status === 'active')
-        .count();
-
+      const currentFocusCount = await db.entries.filter(e => e.is_focus === true && e.status === 'active').count();
       if (currentFocusCount >= 4) {
         triggerHaptic('error'); 
-        if (task.id) await db.entries.update(task.id, { created_at: Date.now() });
         setError("Tâm trí đã đầy (4/4)!");
         setTimeout(() => setError(null), 3000);
-        fetchTasks();
         return;
       }
-
       if (task.id) {
-        await db.entries.update(task.id, { 
-          is_focus: true, 
-          lifecycle_logs: addLog(task.lifecycle_logs, 'focus_enter') 
-        });
+        await db.entries.update(task.id, { is_focus: true, lifecycle_logs: addLog(task.lifecycle_logs, 'focus_enter') });
         triggerHaptic('success'); 
         fetchTasks();
       }
@@ -88,10 +76,7 @@ const Todo: React.FC = () => {
 
   const archiveTask = async (task: Entry) => {
     if (task.id) {
-      await db.entries.update(task.id, { 
-        status: 'archived',
-        lifecycle_logs: addLog(task.lifecycle_logs, 'archived') 
-      });
+      await db.entries.update(task.id, { status: 'archived', lifecycle_logs: addLog(task.lifecycle_logs, 'archived') });
       triggerHaptic('click');
       fetchTasks();
     }
@@ -129,7 +114,7 @@ const Todo: React.FC = () => {
 
         <div className="flex flex-col gap-4">
           <AnimatePresence>
-            {activeTasks.length > 0 ? activeTasks.map((task) => (
+            {activeTasks.map((task) => (
               <motion.div key={task.id} layout initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, x: -100 }} className={`relative group bg-white p-5 rounded-[2rem] shadow-sm hover:shadow-md transition-all border-l-[6px] ${task.priority === 'hỏa-tốc' ? 'border-red-500' : task.priority === 'urgent' ? 'border-orange-500' : task.priority === 'important' ? 'border-yellow-400' : 'border-blue-400'}`}>
                 <div className="flex justify-between items-start gap-4">
                   <div className="flex-1">
@@ -145,25 +130,32 @@ const Todo: React.FC = () => {
                   </div>
                 </div>
               </motion.div>
-            )) : (
-              !error && <div className="py-24 text-center"><Archive size={48} className="mx-auto text-slate-200 mb-4" /><p className="text-slate-300 italic text-lg">"Kho trí nhớ sạch sẽ."</p></div>
-            )}
+            ))}
           </AnimatePresence>
         </div>
 
-        {completedToday.length > 0 && (
-          <div className="mt-10 pt-6 border-t border-slate-200/50">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-4 ml-2">Hoàn thành hôm nay ({completedToday.length})</h3>
-            <div className="flex flex-col gap-3">
-              {completedToday.map((task) => (
-                <div key={task.id} className="bg-slate-50/50 p-4 rounded-[1.5rem] flex items-center gap-4 border border-slate-100 opacity-70">
-                  <div className="bg-green-100 p-1.5 rounded-full text-green-600"><Check size={14} strokeWidth={3} /></div>
-                  <p className="text-slate-500 line-through text-sm font-medium flex-1">{task.content}</p>
-                </div>
-              ))}
-            </div>
+        {/* Empty State */}
+        {activeTasks.length === 0 && completedToday.length === 0 && !error && (
+          <div className="py-24 text-center">
+            <Archive size={48} className="mx-auto text-slate-200 mb-4" />
+            <p className="text-slate-300 italic text-lg">"Kho trí nhớ sạch sẽ."</p>
           </div>
         )}
+
+        {/* === CÔNG CỤ DEBUG (CHỈ HIỆN KHI CẦN SOI LỖI) === */}
+        <div className="mt-8 p-4 bg-slate-100 rounded-xl border border-slate-300 text-xs text-slate-500 font-mono">
+          <div className="flex items-center gap-2 mb-2 font-bold text-slate-700">
+            <Database size={14} /> TRẠNG THÁI DATABASE
+          </div>
+          <p>DB Name: MindOS_V5_Clean</p>
+          <p>Tổng số bản ghi: <strong>{debugCount}</strong></p>
+          <button 
+            onClick={() => fetchTasks()} 
+            className="mt-2 w-full py-2 bg-blue-100 text-blue-700 rounded-lg font-bold hover:bg-blue-200"
+          >
+            Làm mới dữ liệu (Reload)
+          </button>
+        </div>
       </div>
     </div>
   );

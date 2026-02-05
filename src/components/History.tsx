@@ -1,175 +1,214 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { History as HistoryIcon, RefreshCcw, Edit2, Save, X, Calendar, Smile, Frown, Meh, ArrowUpRight } from 'lucide-react';
-import { db, type Entry, addLog, type Mood } from '../utils/db';
-import { formatDisplayDate, getDateString } from '../utils/date';
+import { History as HistoryIcon, Search, Filter, Trash2, Calendar, CheckCircle2, Circle, FileText, Frown, Meh, Smile, X } from 'lucide-react';
+import { db, type Entry } from '../utils/db'; // Kết nối MindOS_V5_Clean
+
+type FilterType = 'all' | 'task' | 'mood';
 
 const History: React.FC = () => {
-  const [historyItems, setHistoryItems] = useState<Entry[]>([]);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editContent, setEditContent] = useState('');
+  const [entries, setEntries] = useState<Entry[]>([]);
+  const [filterType, setFilterType] = useState<FilterType>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
-  // 1. Logic Fetching: Lấy tất cả những gì KHÔNG ở Todo
+  // --- LẤY DỮ LIỆU ---
   const fetchHistory = async () => {
-    const todayStr = getDateString();
+    setIsLoading(true);
+    try {
+      // 1. Lấy toàn bộ dữ liệu thô
+      let allData = await db.entries.toArray();
 
-    // A. Lấy tất cả Suy nghĩ (Non-tasks)
-    const thoughts = await db.entries.where('is_task').equals(0).toArray();
+      // 2. Sắp xếp: Mới nhất lên đầu
+      allData = allData.sort((a, b) => b.created_at - a.created_at);
 
-    // B. Lấy tất cả Task đã Archived (bao gồm cả Task đã xong của ngày cũ bị system archive)
-    const archivedTasks = await db.entries.where('status').equals('archived').toArray();
-
-    // C. Lấy tất cả Task đã Xong nhưng không phải hôm nay (trường hợp chưa chạy Midnight Reset kịp)
-    const oldCompletedTasks = await db.entries
-      .where('status').equals('completed')
-      .filter(entry => entry.date_str !== todayStr)
-      .toArray();
-
-    // Gộp và sắp xếp: Mới nhất lên đầu
-    const allItems = [...thoughts, ...archivedTasks, ...oldCompletedTasks].sort(
-      (a, b) => b.created_at - a.created_at
-    );
-
-    setHistoryItems(allItems);
+      setEntries(allData);
+    } catch (error) {
+      console.error("Lỗi tải lịch sử:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
     fetchHistory();
   }, []);
 
-  // 2. Logic Hồi sinh (Revive)
-  const handleRevive = async (item: Entry) => {
-    await db.entries.update(item.id!, {
-      status: 'active',       // Trở về trạng thái Active
-      completed_at: undefined, // Xóa mốc hoàn thành cũ
-      is_focus: false,        // Về kho Todo, chưa vào Tiêu điểm ngay
-      lifecycle_logs: addLog(item.lifecycle_logs, 'revived') // Ghi log Hồi sinh
-    });
-    fetchHistory(); // Refresh list (item sẽ biến mất khỏi History)
-  };
-
-  // 3. Logic Chỉnh sửa (Edit)
-  const startEdit = (item: Entry) => {
-    setEditingId(item.id!);
-    setEditContent(item.content);
-  };
-
-  const saveEdit = async (item: Entry) => {
-    if (!editContent.trim()) return;
-    await db.entries.update(item.id!, {
-      content: editContent,
-      lifecycle_logs: addLog(item.lifecycle_logs, 'edited')
-    });
-    setEditingId(null);
-    fetchHistory();
-  };
-
-  // Helper render Icon cảm xúc
-  const getMoodIcon = (mood: Mood) => {
-    switch (mood) {
-      case 'positive': return <Smile className="text-green-500" size={20} />;
-      case 'negative': return <Frown className="text-red-400" size={20} />;
-      default: return <Meh className="text-slate-400" size={20} />;
+  // --- XỬ LÝ XÓA ---
+  const handleDelete = async (id?: number) => {
+    if (!id) return;
+    if (window.confirm("Bạn có chắc muốn xóa vĩnh viễn ghi chú này không?")) {
+      await db.entries.delete(id);
+      fetchHistory(); // Tải lại danh sách sau khi xóa
     }
   };
 
+  // --- LỌC DỮ LIỆU HIỂN THỊ ---
+  const filteredEntries = entries.filter(item => {
+    // 1. Lọc theo Tab (Task/Mood/All) - Dùng chuẩn Boolean V5
+    const typeMatch = 
+      filterType === 'all' ? true :
+      filterType === 'task' ? item.is_task === true :
+      filterType === 'mood' ? item.is_task === false : true;
+
+    // 2. Lọc theo từ khóa tìm kiếm
+    const searchMatch = item.content.toLowerCase().includes(searchTerm.toLowerCase());
+
+    return typeMatch && searchMatch;
+  });
+
+  // --- HELPER RENDER ---
+  const getIcon = (item: Entry) => {
+    if (item.is_task) {
+      return item.status === 'completed' 
+        ? <CheckCircle2 size={20} className="text-green-500" /> 
+        : <Circle size={20} className="text-slate-300" />;
+    } else {
+      // Mood icons
+      if (item.mood === 'positive') return <Smile size={20} className="text-green-500" />;
+      if (item.mood === 'negative') return <Frown size={20} className="text-red-500" />;
+      return <Meh size={20} className="text-blue-400" />;
+    }
+  };
+
+  const formatDate = (timestamp: number) => {
+    return new Date(timestamp).toLocaleString('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      day: '2-digit',
+      month: '2-digit',
+    });
+  };
+
   return (
-    <div className="flex flex-col items-center min-h-screen p-4 bg-slate-100/50 pb-20">
-      <div className="w-full max-w-md flex flex-col gap-6">
+    <div className="flex flex-col items-center min-h-screen p-4 bg-slate-50 overflow-y-auto pb-24">
+      <div className="w-full max-w-md flex flex-col gap-4">
         
-        <header className="flex items-center gap-2 py-4 text-slate-400">
-          <HistoryIcon size={20} />
-          <h2 className="text-lg font-bold uppercase tracking-widest">Dòng thời gian</h2>
+        {/* HEADER */}
+        <header className="flex flex-col gap-4 pt-4 pb-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
+              <HistoryIcon className="text-purple-600" /> DÒNG THỜI GIAN
+            </h2>
+            <span className="bg-slate-200 text-slate-600 text-xs font-bold px-2 py-1 rounded-lg">
+              {filteredEntries.length}
+            </span>
+          </div>
+
+          {/* THANH TÌM KIẾM */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input 
+              type="text" 
+              placeholder="Tìm kiếm ký ức..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 bg-white rounded-xl text-sm font-medium text-slate-700 shadow-sm outline-none focus:ring-2 focus:ring-purple-100 transition-all"
+            />
+            {searchTerm && (
+              <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* BỘ LỌC (CHIPS) */}
+          <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+            <button 
+              onClick={() => setFilterType('all')}
+              className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all ${filterType === 'all' ? 'bg-slate-800 text-white shadow-lg' : 'bg-white text-slate-500 shadow-sm'}`}
+            >
+              Tất cả
+            </button>
+            <button 
+              onClick={() => setFilterType('task')}
+              className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1 ${filterType === 'task' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-slate-500 shadow-sm'}`}
+            >
+              <CheckCircle2 size={12}/> Công việc
+            </button>
+            <button 
+              onClick={() => setFilterType('mood')}
+              className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1 ${filterType === 'mood' ? 'bg-purple-600 text-white shadow-lg' : 'bg-white text-slate-500 shadow-sm'}`}
+            >
+              <Smile size={12}/> Cảm xúc
+            </button>
+          </div>
         </header>
 
-        {historyItems.length === 0 ? (
-          <div className="text-center py-20 text-slate-300 italic">
-            "Quá khứ chưa được viết nên..."
-          </div>
-        ) : (
-          <div className="flex flex-col gap-4">
-            {historyItems.map((item) => (
-              <motion.div
-                key={item.id}
-                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-2 group"
-              >
-                {/* Header: Date & Type */}
-                <div className="flex justify-between items-center text-xs text-slate-400">
-                  <div className="flex items-center gap-1">
-                    <Calendar size={12} />
-                    <span>{formatDisplayDate(new Date(item.created_at))}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {item.is_task ? (
-                      <span className={`px-2 py-0.5 rounded-full font-bold uppercase ${item.status === 'completed' ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-500'}`}>
-                        {item.status === 'completed' ? 'Đã xong' : 'Đã hủy'}
-                      </span>
-                    ) : (
-                      getMoodIcon(item.mood)
-                    )}
-                  </div>
-                </div>
-
-                {/* Content Area */}
-                <div className="py-1">
-                  {editingId === item.id ? (
-                    <div className="flex gap-2">
-                      <input 
-                        value={editContent}
-                        onChange={(e) => setEditContent(e.target.value)}
-                        className="flex-1 bg-slate-50 p-2 rounded-lg outline-none border border-blue-200 text-slate-700"
-                        autoFocus
-                      />
-                      <button onClick={() => saveEdit(item)} className="p-2 bg-blue-500 text-white rounded-lg"><Save size={16}/></button>
-                      <button onClick={() => setEditingId(null)} className="p-2 bg-slate-200 text-slate-500 rounded-lg"><X size={16}/></button>
+        {/* DANH SÁCH LỊCH SỬ */}
+        <div className="flex flex-col gap-3">
+          <AnimatePresence mode='popLayout'>
+            {isLoading ? (
+              <div className="text-center py-10 text-slate-400 text-sm">Đang tải ký ức...</div>
+            ) : filteredEntries.length > 0 ? (
+              filteredEntries.map((item) => (
+                <motion.div
+                  key={item.id}
+                  layout
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 group relative"
+                >
+                  <div className="flex items-start gap-3">
+                    {/* Icon cột trái */}
+                    <div className={`mt-0.5 p-2 rounded-full shrink-0 ${item.is_task ? 'bg-blue-50' : 'bg-purple-50'}`}>
+                      {getIcon(item)}
                     </div>
-                  ) : (
-                    <p className={`text-slate-700 font-medium ${!item.is_task && 'italic font-serif text-slate-600'}`}>
-                      {item.content}
-                    </p>
-                  )}
-                </div>
 
-                {/* Action Footer */}
-                <div className="flex justify-end gap-3 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button 
-                    onClick={() => startEdit(item)} 
-                    className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-blue-500 transition-colors"
-                  >
-                    <Edit2 size={14} /> Sửa
-                  </button>
-                  
-                  {item.is_task && (
-                    <button 
-                      onClick={() => handleRevive(item)}
-                      className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-green-600 transition-colors"
-                      title="Đưa lại về Kho việc"
-                    >
-                      <RefreshCcw size={14} /> Hồi sinh
-                    </button>
-                  )}
-                  
-                  {/* Debug: Xem Log Cycle (Chỉ hiện khi dev) */}
-                  {/* <div className="text-[10px] text-slate-300 ml-auto">
-                    Events: {item.lifecycle_logs?.length || 0}
-                  </div> */}
-                </div>
+                    {/* Nội dung chính */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-start">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                          <Calendar size={10} /> {formatDate(item.created_at)}
+                        </span>
+                        {item.is_task && (
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded text-white ${
+                            item.priority === 'hỏa-tốc' ? 'bg-red-500' :
+                            item.priority === 'urgent' ? 'bg-orange-500' :
+                            item.priority === 'important' ? 'bg-yellow-400' : 'bg-blue-400'
+                          }`}>
+                            {item.priority === 'normal' ? 'THƯỜNG' : item.priority}
+                          </span>
+                        )}
+                      </div>
+                      
+                      <p className={`mt-1 text-slate-700 font-medium leading-relaxed break-words ${item.is_task && item.status === 'completed' ? 'line-through opacity-60' : ''}`}>
+                        {item.content}
+                      </p>
 
-                {/* Log Visualization (Tùy chọn hiển thị nhỏ) */}
-                {item.lifecycle_logs && item.lifecycle_logs.length > 1 && (
-                  <div className="pt-2 border-t border-slate-50 flex gap-1 overflow-x-auto pb-1">
-                    {item.lifecycle_logs.map((log, idx) => (
-                      <span key={idx} className="text-[9px] px-1.5 py-0.5 bg-slate-50 rounded text-slate-400 whitespace-nowrap">
-                        {log.action}
-                      </span>
-                    ))}
+                      {/* Hiển thị chi tiết Mood nếu có */}
+                      {!item.is_task && (
+                        <div className="mt-2 flex gap-2">
+                          <span className={`text-[10px] px-2 py-1 rounded-md font-bold uppercase ${
+                            item.mood === 'positive' ? 'bg-green-100 text-green-700' :
+                            item.mood === 'negative' ? 'bg-red-100 text-red-700' :
+                            'bg-slate-100 text-slate-600'
+                          }`}>
+                            {item.mood === 'positive' ? 'Tích cực' : item.mood === 'negative' ? 'Tiêu cực' : 'Bình thường'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
-              </motion.div>
-            ))}
-          </div>
-        )}
+
+                  {/* Nút xóa (chỉ hiện khi bấm vào hoặc hover trên PC) */}
+                  <button 
+                    onClick={() => handleDelete(item.id)}
+                    className="absolute top-3 right-3 p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors opacity-100 sm:opacity-0 group-hover:opacity-100"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </motion.div>
+              ))
+            ) : (
+              <div className="py-20 text-center opacity-50">
+                <Filter size={48} className="mx-auto text-slate-300 mb-4" />
+                <p className="text-slate-500 font-medium">Không tìm thấy ghi chú nào</p>
+              </div>
+            )}
+          </AnimatePresence>
+        </div>
+
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 import { Check, Star, Clock, Flame, Send, X, CheckCircle2, Zap, AlertCircle, PartyPopper } from 'lucide-react';
-import { db, type Entry } from '../utils/db'; // Import từ file db mới
+import { db, type Entry } from '../utils/db';
 import { getDateString } from '../utils/date';
 
 const THRESHOLD = 60;
@@ -40,7 +40,7 @@ const Mind: React.FC = () => {
 
   const fetchFocusTasks = async () => {
     try {
-      // Tìm đúng is_focus === true (Boolean chuẩn)
+      // Lấy danh sách tiêu điểm (Boolean chuẩn)
       const tasks = await db.entries
         .filter(e => e.is_focus === true && e.status === 'active')
         .toArray();
@@ -60,7 +60,7 @@ const Mind: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isInputMode]);
 
-  // --- HÀM LƯU DỮ LIỆU (STRICT MODE) ---
+  // --- HÀM LƯU DỮ LIỆU (CÓ ALERT DEBUG) ---
   const handleSave = async (type: 'task' | 'mood', direction: string) => {
     if (!content.trim() || isSaving) return;
 
@@ -68,7 +68,7 @@ const Mind: React.FC = () => {
     setActiveRail('none');
 
     try {
-      // 1. Tạo Object dữ liệu chuẩn, KHÔNG để trường nào undefined
+      // 1. Tạo Object dữ liệu chuẩn
       const newEntry: Entry = {
         content: content,
         created_at: Date.now(),
@@ -76,9 +76,9 @@ const Mind: React.FC = () => {
         status: 'active',
         lifecycle_logs: [{ action: 'created', timestamp: Date.now() }],
         
-        // QUAN TRỌNG: Gán cứng True/False
+        // Gán cứng True/False (Tránh undefined)
         is_task: type === 'task', 
-        is_focus: false, // Mới tạo thì chưa focus ngay
+        is_focus: false, 
         
         // Giá trị mặc định
         priority: 'normal',
@@ -111,11 +111,15 @@ const Mind: React.FC = () => {
 
         setContent('');
         setIsInputMode(false);
-        // Không cần fetch lại focus vì nó vào kho chờ/nhật ký
       }
     } catch (error: any) {
       console.error("MIND Error:", error);
       triggerHaptic('error');
+      
+      // === DEBUG: BẬT CỬA SỔ LỖI TRÊN ĐIỆN THOẠI ===
+      alert("LỖI LƯU DB: " + (error.message || JSON.stringify(error))); 
+      // ===========================================
+
       setToast({ message: "Lỗi lưu trữ!", type: 'error' });
     } finally {
       setIsSaving(false);
@@ -141,7 +145,7 @@ const Mind: React.FC = () => {
     <div className="flex flex-col items-center min-h-screen p-4 bg-slate-50 overflow-hidden font-sans">
       <div className="w-full max-w-md flex flex-col gap-4 h-full relative">
         
-        {/* TOAST */}
+        {/* TOAST NOTIFICATION */}
         <AnimatePresence>
           {toast && (
             <motion.div initial={{ opacity: 0, y: -50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.5 }} className={`fixed top-10 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 font-bold text-white whitespace-nowrap ${toast.type === 'success' ? 'bg-green-600' : 'bg-rose-600'}`}>
@@ -151,7 +155,7 @@ const Mind: React.FC = () => {
           )}
         </AnimatePresence>
 
-        {/* INPUT UI */}
+        {/* INPUT SECTION */}
         <section className={`relative transition-all duration-500 z-50 ${isInputMode ? 'scale-105' : 'scale-100'}`}>
           <h2 className="text-xl font-bold text-slate-800 mb-4 opacity-100">
             {activeRail === 'task' ? "Ghi vào Kho trí nhớ?" : activeRail === 'mood' ? "Ghi vào Nhật ký?" : "Điều gì đang diễn ra?"}
@@ -178,7 +182,7 @@ const Mind: React.FC = () => {
           </AnimatePresence>
         </section>
 
-        {/* FOCUS LIST UI */}
+        {/* FOCUS LIST SECTION */}
         <section className={`flex-1 transition-all duration-500 ${isInputMode ? 'blur-sm opacity-30 pointer-events-none' : 'opacity-100'}`}>
           <div className="flex justify-between items-end mb-4 border-b border-slate-200 pb-2">
             <h3 className="font-bold text-slate-500 uppercase tracking-widest text-xs flex items-center gap-2"><Zap size={14} className="text-yellow-500"/> Tiêu điểm ({focusTasks.length}/4)</h3>

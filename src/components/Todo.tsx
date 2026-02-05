@@ -145,7 +145,7 @@ const Todo: React.FC = () => {
         {/* === CÔNG CỤ DEBUG (CHỈ HIỆN KHI CẦN SOI LỖI) === */}
         <div className="mt-8 p-4 bg-slate-100 rounded-xl border border-slate-300 text-xs text-slate-500 font-mono">
           <div className="flex items-center gap-2 mb-2 font-bold text-slate-700">
-            <Database size={14} /> TRẠNG THÁI DATABASE
+            <Database size={14} /> TRẠNG THÁI DATABASE2 
           </div>
           <p>DB Name: MindOS_V5_Clean</p>
           <p>Tổng số bản ghi: <strong>{debugCount}</strong></p>

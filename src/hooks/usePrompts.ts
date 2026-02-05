@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '..utils/db';
+import { db } from '../utils/db';
 import { useState } from 'react';
 
 export const usePrompts = () => {

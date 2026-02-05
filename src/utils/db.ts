@@ -1,6 +1,7 @@
 import Dexie, { type Table } from 'dexie';
 
-// Helper lấy ngày hiện tại (YYYY-MM-DD)
+// --- HELPERS ---
+// Hàm lấy ngày hiện tại (YYYY-MM-DD)
 export const getDateString = () => {
   const d = new Date();
   const year = d.getFullYear();
@@ -9,7 +10,7 @@ export const getDateString = () => {
   return `${year}-${month}-${day}`;
 };
 
-// Định nghĩa các kiểu dữ liệu (Types)
+// --- TYPES & INTERFACES ---
 export type Priority = 'normal' | 'important' | 'urgent' | 'hỏa-tốc';
 export type Mood = 'positive' | 'neutral' | 'negative';
 export type EntryStatus = 'active' | 'completed' | 'deleted' | 'archived';
@@ -26,7 +27,7 @@ export interface Entry {
   created_at: number;
   date_str: string;
   
-  // BẮT BUỘC LÀ BOOLEAN (True/False)
+  // QUAN TRỌNG: Bắt buộc là Boolean (True/False)
   is_task: boolean;    
   is_focus: boolean;   
   
@@ -38,7 +39,7 @@ export interface Entry {
   lifecycle_logs: LifecycleLog[];
 }
 
-// Class Database
+// --- DATABASE CLASS ---
 export class MindOSDatabase extends Dexie {
   entries!: Table<Entry>;
 
@@ -52,19 +53,20 @@ export class MindOSDatabase extends Dexie {
   }
 }
 
-// Khởi tạo DB
+// Khởi tạo DB singleton
 export const db = new MindOSDatabase();
 
-// Helper ghi log
+// --- LOGIC HELPERS ---
+
 export const addLog = (currentLogs: LifecycleLog[], action: string): LifecycleLog[] => {
   return [...(currentLogs || []), { action, timestamp: Date.now() }];
 };
 
-// Hàm Reset lúc nửa đêm (Optional - để dùng sau này)
+// Hàm Reset lúc nửa đêm
 export const performMidnightReset = async () => {
   const todayStr = getDateString();
   
-  // Reset tiêu điểm
+  // 1. Reset tiêu điểm (Về false)
   await db.entries
     .filter(e => e.is_focus === true)
     .modify(entry => {
@@ -72,7 +74,7 @@ export const performMidnightReset = async () => {
       entry.lifecycle_logs.push({ action: 'midnight_reset', timestamp: Date.now() });
     });
 
-  // Archive việc đã xong từ hôm qua
+  // 2. Archive việc đã xong từ hôm qua
   await db.entries
     .filter(e => e.status === 'completed' && e.date_str !== todayStr)
     .modify(entry => {
@@ -81,3 +83,20 @@ export const performMidnightReset = async () => {
 
   console.log("Mind OS: Midnight Reset completed.");
 };
+
+// --- MOBILE CONNECTION FIX (QUAN TRỌNG CHO ĐIỆN THOẠI) ---
+// Tự động reload trang nếu phát hiện iPhone/Android ngắt kết nối Database
+if (typeof window !== 'undefined') {
+  window.addEventListener('unhandledrejection', (event) => {
+    // Các mã lỗi thường gặp khi Safari/Chrome mobile ngắt kết nối IDB
+    if (event.reason && (
+        event.reason.name === 'DatabaseClosedError' ||
+        event.reason.message?.includes('closed') ||
+        event.reason.name === 'InvalidStateError'
+    )) {
+      console.error("MindOS: Mất kết nối DB. Đang tự động tải lại...", event.reason);
+      // Tải lại trang để tái kết nối
+      window.location.reload();
+    }
+  });
+}

@@ -1,13 +1,29 @@
 <!doctype html>
-<html lang="en">
+<html lang="vi">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React + TS</title>
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Mind OS</title>
   </head>
   <body>
     <div id="root"></div>
+    
     <script type="module" src="/src/main.tsx"></script>
-  </body>
+
+    <script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
+    <script>
+      // Chỉ kích hoạt khi chạy trên Localhost (máy tính) 
+      // HOẶC khi bạn thêm chữ ?debug=true vào cuối đường link
+      // Ví dụ: https://du-an-cua-ban.pages.dev/?debug=true
+      if (
+        window.location.hostname === 'localhost' || 
+        window.location.search.includes('debug=true')
+      ) {
+        var vConsole = new VConsole();
+        console.log('Mobile Debugger: Đã kích hoạt vConsole!');
+        console.log('Sẵn sàng bắt lỗi...');
+      }
+    </script>
+    </body>
 </html>

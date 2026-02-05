@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 import { Check, Star, Clock, Flame, Send, X, CheckCircle2, Zap, AlertCircle, PartyPopper } from 'lucide-react';
-import { db, type Entry, addLog } from '../utils/db';
+import { db, type Entry } from '../utils/db'; // Import từ file db mới
 import { getDateString } from '../utils/date';
 
 const THRESHOLD = 60;
@@ -15,13 +15,12 @@ const Mind: React.FC = () => {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // --- MOTION VALUES ---
+  // --- MOTION SETUP ---
   const taskDragX = useMotionValue(0);
   const taskDragY = useMotionValue(0);
   const moodDragX = useMotionValue(0);
   const moodDragY = useMotionValue(0);
 
-  // --- TRANSFORMS ---
   const scaleTL = useTransform(taskDragX, [-THRESHOLD, 0], [1.5, 1]);
   const scaleTR = useTransform(taskDragX, [0, THRESHOLD], [1, 1.5]);
   const scaleBL = useTransform(taskDragX, [-THRESHOLD, 0], [1.5, 1]);
@@ -30,6 +29,7 @@ const Mind: React.FC = () => {
   const scaleUp = useTransform(moodDragY, [-THRESHOLD, 0], [1.5, 1]);
   const scaleDown = useTransform(moodDragY, [0, THRESHOLD], [1, 1.5]);
 
+  // Haptic Feedback
   const triggerHaptic = (type: 'success' | 'error' | 'click') => {
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
       if (type === 'success') navigator.vibrate(15);
@@ -40,7 +40,7 @@ const Mind: React.FC = () => {
 
   const fetchFocusTasks = async () => {
     try {
-      // Query chuẩn Boolean
+      // Tìm đúng is_focus === true (Boolean chuẩn)
       const tasks = await db.entries
         .filter(e => e.is_focus === true && e.status === 'active')
         .toArray();
@@ -64,42 +64,43 @@ const Mind: React.FC = () => {
   const handleSave = async (type: 'task' | 'mood', direction: string) => {
     if (!content.trim() || isSaving) return;
 
-    console.log("MIND: Bắt đầu lưu...", type); // Debug log
     setIsSaving(true);
     setActiveRail('none');
 
     try {
-      const initialLogs = [{ action: 'created', timestamp: Date.now() }];
-      
-      // Tạo object chuẩn theo Interface Entry mới
-      const entryData: any = {
-        content,
+      // 1. Tạo Object dữ liệu chuẩn, KHÔNG để trường nào undefined
+      const newEntry: Entry = {
+        content: content,
         created_at: Date.now(),
         date_str: getDateString(),
         status: 'active',
-        is_focus: false, // Bắt buộc là FALSE (Boolean)
-        lifecycle_logs: initialLogs,
+        lifecycle_logs: [{ action: 'created', timestamp: Date.now() }],
+        
+        // QUAN TRỌNG: Gán cứng True/False
+        is_task: type === 'task', 
+        is_focus: false, // Mới tạo thì chưa focus ngay
+        
+        // Giá trị mặc định
+        priority: 'normal',
+        mood: 'neutral'
       };
 
+      // 2. Gán chi tiết theo hướng kéo
       if (type === 'task') {
-        entryData.is_task = true; // Bắt buộc là TRUE (Boolean)
-        entryData.mood = 'neutral';
-        if (direction === 'TL') entryData.priority = 'normal';
-        if (direction === 'TR') entryData.priority = 'important';
-        if (direction === 'BL') entryData.priority = 'urgent';
-        if (direction === 'BR') entryData.priority = 'hỏa-tốc';
+        if (direction === 'TL') newEntry.priority = 'normal';
+        if (direction === 'TR') newEntry.priority = 'important';
+        if (direction === 'BL') newEntry.priority = 'urgent';
+        if (direction === 'BR') newEntry.priority = 'hỏa-tốc';
       } else {
-        entryData.is_task = false; // Bắt buộc là FALSE (Boolean)
-        entryData.priority = 'normal';
-        if (direction === 'L') entryData.mood = 'neutral';
-        if (direction === 'U') entryData.mood = 'positive';
-        if (direction === 'D') entryData.mood = 'negative';
+        if (direction === 'L') newEntry.mood = 'neutral';
+        if (direction === 'U') newEntry.mood = 'positive';
+        if (direction === 'D') newEntry.mood = 'negative';
       }
 
-      console.log("MIND: Dữ liệu chuẩn bị ghi:", entryData);
-      
-      const savedId = await db.entries.add(entryData);
-      console.log("MIND: Đã ghi thành công ID:", savedId);
+      console.log("MIND: Đang lưu...", newEntry);
+
+      // 3. Ghi vào DB
+      const savedId = await db.entries.add(newEntry);
 
       if (savedId) {
         triggerHaptic('success');
@@ -110,12 +111,12 @@ const Mind: React.FC = () => {
 
         setContent('');
         setIsInputMode(false);
-        // Không cần fetchFocusTasks vì đồ mới lưu luôn vào Kho/Nhật ký (is_focus=false)
+        // Không cần fetch lại focus vì nó vào kho chờ/nhật ký
       }
     } catch (error: any) {
+      console.error("MIND Error:", error);
       triggerHaptic('error');
-      console.error("MIND: LỖI LƯU DB:", error);
-      setToast({ message: `Lỗi: ${error.message || "Không thể lưu"}`, type: 'error' });
+      setToast({ message: "Lỗi lưu trữ!", type: 'error' });
     } finally {
       setIsSaving(false);
       taskDragX.set(0); taskDragY.set(0);
@@ -150,9 +151,11 @@ const Mind: React.FC = () => {
           )}
         </AnimatePresence>
 
-        {/* INPUT SECTION */}
+        {/* INPUT UI */}
         <section className={`relative transition-all duration-500 z-50 ${isInputMode ? 'scale-105' : 'scale-100'}`}>
-          <h2 className="text-xl font-bold text-slate-800 mb-4 opacity-100">{activeRail === 'task' ? "Ghi vào Kho trí nhớ?" : activeRail === 'mood' ? "Ghi vào Nhật ký?" : "Điều gì đang diễn ra?"}</h2>
+          <h2 className="text-xl font-bold text-slate-800 mb-4 opacity-100">
+            {activeRail === 'task' ? "Ghi vào Kho trí nhớ?" : activeRail === 'mood' ? "Ghi vào Nhật ký?" : "Điều gì đang diễn ra?"}
+          </h2>
           <div className="relative w-full"> 
             <textarea ref={textareaRef} value={content} onChange={(e) => setContent(e.target.value)} placeholder="Gõ phím bất kỳ..." disabled={isSaving} className={`w-full min-h-[160px] p-6 rounded-[2rem] bg-white text-lg resize-none outline-none transition-all duration-300 shadow-xl ${isInputMode ? 'shadow-2xl ring-4 ring-blue-50' : ''} ${activeRail !== 'none' || isSaving ? 'opacity-40 blur-[1px]' : 'opacity-100'} `} onFocus={() => setIsInputMode(true)} onBlur={() => content.length === 0 && !isSaving && setIsInputMode(false)}/>
           </div>
@@ -175,9 +178,11 @@ const Mind: React.FC = () => {
           </AnimatePresence>
         </section>
 
-        {/* FOCUS LIST */}
+        {/* FOCUS LIST UI */}
         <section className={`flex-1 transition-all duration-500 ${isInputMode ? 'blur-sm opacity-30 pointer-events-none' : 'opacity-100'}`}>
-          <div className="flex justify-between items-end mb-4 border-b border-slate-200 pb-2"><h3 className="font-bold text-slate-500 uppercase tracking-widest text-xs flex items-center gap-2"><Zap size={14} className="text-yellow-500"/> Tiêu điểm ({focusTasks.length}/4)</h3></div>
+          <div className="flex justify-between items-end mb-4 border-b border-slate-200 pb-2">
+            <h3 className="font-bold text-slate-500 uppercase tracking-widest text-xs flex items-center gap-2"><Zap size={14} className="text-yellow-500"/> Tiêu điểm ({focusTasks.length}/4)</h3>
+          </div>
           <div className="flex flex-col gap-4">
             <AnimatePresence>
               {focusTasks.map(task => (

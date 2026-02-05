@@ -1,92 +1,83 @@
 import Dexie, { type Table } from 'dexie';
-import { getDateString } from './date'; 
-// LƯU Ý: Nếu ở file src/db.ts mà báo lỗi dòng import trên, hãy sửa thành: import { getDateString } from './utils/date';
-// Nếu ở file src/utils/db.ts, hãy sửa thành: import { getDateString } from './date';
-// ĐỂ AN TOÀN NHẤT: Bạn hãy dùng đoạn code dưới đây, tôi đã sửa đường dẫn import để tương thích tương đối hoặc bạn tự chỉnh lại đường dẫn import date cho đúng vị trí file.
 
-// --- DƯỚI ĐÂY LÀ PHIÊN BẢN AN TOÀN NHẤT, HÃY DÙNG NỘI DUNG NÀY ---
+// Helper lấy ngày hiện tại (YYYY-MM-DD)
+export const getDateString = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
+// Định nghĩa các kiểu dữ liệu (Types)
 export type Priority = 'normal' | 'important' | 'urgent' | 'hỏa-tốc';
 export type Mood = 'positive' | 'neutral' | 'negative';
 export type EntryStatus = 'active' | 'completed' | 'deleted' | 'archived';
 
-// 1. Định nghĩa cấu trúc Log
 export interface LifecycleLog {
-  action: 'created' | 'focus_enter' | 'focus_exit_manual' | 'midnight_reset' | 'completed' | 'archived' | 'revived' | 'edited';
+  action: string;
   timestamp: number;
 }
 
+// Interface chính cho bản ghi (Entry)
 export interface Entry {
   id?: number;
   content: string;
   created_at: number;
   date_str: string;
-  is_task: boolean;
+  
+  // BẮT BUỘC LÀ BOOLEAN (True/False)
+  is_task: boolean;    
+  is_focus: boolean;   
+  
   priority: Priority;
   mood: Mood;
   status: EntryStatus;
-  is_focus: boolean;
+  
   completed_at?: number;
   lifecycle_logs: LifecycleLog[];
 }
 
-// 2. Interface cho 2 bảng mới (SỬA LỖI BUILD)
-export interface PromptConfig {
-  id?: number;
-  [key: string]: any; 
-}
-
-export interface AppState {
-  id?: number;
-  key: string;
-  value: any;
-}
-
+// Class Database
 export class MindOSDatabase extends Dexie {
   entries!: Table<Entry>;
-  // KHAI BÁO BẢNG MỚI ĐỂ HẾT LỖI TS2339
-  prompt_configs!: Table<PromptConfig>; 
-  app_state!: Table<AppState>;
 
   constructor() {
     super('MindOS_DB');
-    this.version(3).stores({ 
-      entries: '++id, date_str, is_task, priority, mood, status, is_focus, created_at',
-      prompt_configs: '++id', 
-      app_state: '++id, key'
+    
+    // Version 4: Giữ nguyên cấu trúc Index
+    this.version(4).stores({ 
+      entries: '++id, date_str, is_task, priority, mood, status, is_focus, created_at'
     });
   }
 }
 
+// Khởi tạo DB
 export const db = new MindOSDatabase();
 
-export const addLog = (currentLogs: LifecycleLog[], action: LifecycleLog['action']): LifecycleLog[] => {
+// Helper ghi log
+export const addLog = (currentLogs: LifecycleLog[], action: string): LifecycleLog[] => {
   return [...(currentLogs || []), { action, timestamp: Date.now() }];
 };
 
-// Hàm Reset lúc nửa đêm
+// Hàm Reset lúc nửa đêm (Optional - để dùng sau này)
 export const performMidnightReset = async () => {
-  // Logic lấy ngày hiện tại. 
-  // Để tránh lỗi import đường dẫn, ta viết logic trực tiếp ở đây
-  const d = new Date();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const todayStr = `${year}-${month}-${day}`;
-
+  const todayStr = getDateString();
+  
+  // Reset tiêu điểm
   await db.entries
-    .where('is_focus').equals(1)
+    .filter(e => e.is_focus === true)
     .modify(entry => {
       entry.is_focus = false;
       entry.lifecycle_logs.push({ action: 'midnight_reset', timestamp: Date.now() });
     });
 
+  // Archive việc đã xong từ hôm qua
   await db.entries
-    .where('status').equals('completed')
-    .filter(entry => entry.date_str !== todayStr)
+    .filter(e => e.status === 'completed' && e.date_str !== todayStr)
     .modify(entry => {
       entry.status = 'archived';
     });
 
-  console.log("Mind OS: Midnight Reset & Logging completed.");
+  console.log("Mind OS: Midnight Reset completed.");
 };

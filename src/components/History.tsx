@@ -26,7 +26,7 @@ const History: React.FC = () => {
 
   return (
     <div className="p-4">
-      <header className="py-6 mb-6">
+      <header className="py-0 mb-0">
         <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2 uppercase">
           <HistoryIcon className="text-purple-600"/> NHẬT KÝ
         </h2>

@@ -19,7 +19,7 @@ const Journey: React.FC = () => {
 
   return (
     <div className="p-6">
-      <header className="mb-8">
+      <header className="mb-0">
         <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2 uppercase tracking-tight">
           <Activity className="text-blue-600" /> HÀNH TRÌNH
         </h2>

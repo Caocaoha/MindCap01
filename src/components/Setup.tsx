@@ -4,7 +4,7 @@ import { Settings, Cpu, ShieldAlert, Palette, Download } from 'lucide-react';
 const Setup: React.FC = () => {
   return (
     <div className="p-6">
-      <header className="mb-8">
+      <header className="pt-2 mb-5">
         <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2 uppercase tracking-tight">
           <Settings className="text-slate-500" /> SETUP
         </h2>

@@ -117,7 +117,7 @@ const Mind: React.FC = () => {
       <SmartChip x={activeRail === 'task' ? taskDragX : moodDragX} y={useMotionValue(0)} mode={activeRail === 'mood' ? 'mood' : 'task'} taskData={parsedData} moodLevel={moodLevel} isDragging={isDragging} />
 
       <div className="w-full max-w-md flex flex-col gap-6">
-        <header className="pt-6 mb-2">
+        <header className="pt-0 mb-2">
            {/* Style Label HIỆN TẠI to mạnh mẽ */}
            <h2 className="text-2xl font-black text-blue-600 uppercase tracking-[0.2em]">HIỆN TẠI</h2>
         </header>

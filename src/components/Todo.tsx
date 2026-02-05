@@ -46,7 +46,7 @@ const Todo: React.FC = () => {
 
   return (
     <div className="p-4">
-      <header className="py-6 mb-4">
+      <header className="py-0 mb-0">
         {/* Nhãn SA BÀN to, đậm, mạnh mẽ */}
         <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2 uppercase">
           <Target className="text-blue-600" /> SA BÀN

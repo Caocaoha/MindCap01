@@ -58,7 +58,7 @@ export interface Entry {
   lifecycle_logs: LifecycleLog[];
 }
 
-// Các bảng phụ (Giữ nguyên để tránh lỗi Build)
+// Các bảng phụ
 export interface PromptConfig { id?: number; [key: string]: any; }
 export interface AppState { id?: number; key: string; value: any; }
 
@@ -84,6 +84,28 @@ export const db = new MindOSDatabase();
 // --- LOGIC HELPERS ---
 export const addLog = (currentLogs: LifecycleLog[], action: string): LifecycleLog[] => {
   return [...(currentLogs || []), { action, timestamp: Date.now() }];
+};
+
+// [QUAN TRỌNG] THÊM LẠI HÀM NÀY ĐỂ FIX LỖI BUILD
+export const performMidnightReset = async () => {
+  const todayStr = getDateString();
+  
+  // Reset tiêu điểm
+  await db.entries
+    .filter(e => e.is_focus === true)
+    .modify(entry => {
+      entry.is_focus = false;
+      entry.lifecycle_logs.push({ action: 'midnight_reset', timestamp: Date.now() });
+    });
+
+  // Lưu trữ việc đã xong ngày cũ
+  await db.entries
+    .filter(e => e.status === 'completed' && e.date_str !== todayStr)
+    .modify(entry => {
+      entry.status = 'archived';
+    });
+
+  console.log("Mind OS: Midnight Reset completed.");
 };
 
 // Fix mất kết nối Mobile

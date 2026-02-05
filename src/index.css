@@ -2,8 +2,49 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Thêm font Inter như đặc tả  */
+/* === CẤU HÌNH CHUNG CHO TOÀN APP === */
 :root {
-  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
-  background-color: #ffffff; /* Nền trắng tuyệt đối  */
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  /* Màu nền mặc định trùng với bg-slate-50 */
+  background-color: #f8fafc; 
+  
+  /* Làm mượt font chữ trên MacOS/iOS */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  
+  /* QUAN TRỌNG: Chặn hiệu ứng "kéo giãn" (rubber-banding) khi cuộn hết trang trên iOS */
+  overscroll-behavior-y: none;
+  
+  /* Chặn chọn văn bản mặc định để App cảm giác "cứng" hơn */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* === CÁC LỚP TIỆN ÍCH (UTILITIES) === */
+
+/* Class này dùng cho các nút Kéo thả (Task/Mood) */
+/* Tác dụng: Báo cho trình duyệt biết "Đừng xử lý ngón tay ở đây, để App lo" */
+.touch-none {
+  touch-action: none !important; /* Cấm cuộn/zoom */
+  -webkit-user-select: none;     /* Cấm bôi đen text */
+  user-select: none;
+  -webkit-touch-callout: none;   /* Cấm hiện menu copy/paste khi nhấn giữ lâu trên iOS */
+}
+
+/* Ẩn thanh cuộn nhưng vẫn cho phép cuộn (tùy chọn thẩm mỹ) */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
 }

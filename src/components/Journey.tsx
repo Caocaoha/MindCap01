@@ -1,59 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { AreaChart, Area, XAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { AreaChart, Area, XAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { motion } from 'framer-motion';
-import { TrendingUp, BarChart2, Smile, Frown, Meh, Award, History, CheckCircle2, FileText, Calendar, Zap } from 'lucide-react';
-import { db, type Entry } from '../utils/db'; // Tự động kết nối vào MindOS_V5_Clean
+import { TrendingUp, Smile, Frown, Meh, Award, Zap } from 'lucide-react';
+import { db } from '../utils/db';
 
 const Journey: React.FC = () => {
   const [taskData, setTaskData] = useState<any[]>([]);
   const [moodData, setMoodData] = useState<any[]>([]);
-  const [historyList, setHistoryList] = useState<Entry[]>([]); 
   const [summary, setSummary] = useState({ totalTasks: 0, domMood: 'neutral' });
   const [isEmpty, setIsEmpty] = useState(false);
 
   useEffect(() => {
     const processData = async () => {
       try {
-        // Lấy toàn bộ dữ liệu từ kho V5
         const allEntries = await db.entries.toArray();
-        
-        if (allEntries.length === 0) {
-          setIsEmpty(true);
-          return;
-        } else {
-          setIsEmpty(false);
-        }
+        if (allEntries.length === 0) { setIsEmpty(true); return; } else { setIsEmpty(false); }
 
         const tenDaysAgo = Date.now() - 10 * 24 * 60 * 60 * 1000;
 
-        // LỌC CHUẨN BOOLEAN (STRICT MODE)
-        const recentCompletedTasks = allEntries.filter(e => 
-          e.is_task === true && // Bắt buộc là True
-          e.status === 'completed' && 
-          e.completed_at && e.completed_at > tenDaysAgo
-        );
-        
-        const recentMoods = allEntries.filter(e => 
-          e.is_task === false && // Bắt buộc là False (Mood)
-          e.created_at > tenDaysAgo
-        );
+        const recentCompletedTasks = allEntries.filter(e => e.is_task && e.status === 'completed' && e.completed_at && e.completed_at > tenDaysAgo);
+        const recentMoods = allEntries.filter(e => !e.is_task && e.created_at > tenDaysAgo);
 
-        // Lịch sử: Lấy Mood HOẶC Task đã xong
-        const historyItems = allEntries.filter(e => 
-          (e.is_task === false) || 
-          (e.is_task === true && e.status === 'completed')
-        ).sort((a, b) => {
-          const timeA = a.completed_at || a.created_at;
-          const timeB = b.completed_at || b.created_at;
-          return timeB - timeA;
-        });
-        
-        setHistoryList(historyItems);
-
-        // --- XỬ LÝ BIỂU ĐỒ (Giữ nguyên logic tính toán) ---
+        // --- XỬ LÝ BIỂU ĐỒ ---
         const last10Days = Array.from({ length: 10 }, (_, i) => {
-          const d = new Date();
-          d.setDate(d.getDate() - (9 - i));
+          const d = new Date(); d.setDate(d.getDate() - (9 - i));
           const month = String(d.getMonth() + 1).padStart(2, '0');
           const day = String(d.getDate()).padStart(2, '0');
           return { full: d.toISOString().split('T')[0], show: `${day}/${month}` };
@@ -73,19 +43,11 @@ const Journey: React.FC = () => {
           return { name: day.show, daily: count, cumulative: runningTotal };
         });
 
-        const moodsChart = last10Days.map(day => {
-          const dayMoods = recentMoods.filter(m => m.date_str === day.full);
-          const pos = dayMoods.filter(m => m.mood === 'positive').length;
-          const neu = dayMoods.filter(m => m.mood === 'neutral').length;
-          const neg = dayMoods.filter(m => m.mood === 'negative').length;
-          return { name: day.show, Vui: pos, Bình_thường: neu, Buồn: neg };
-        });
-
         // Tính tâm trạng chủ đạo
         let moodCounts = { positive: 0, neutral: 0, negative: 0 };
         recentMoods.forEach(m => {
-          if(m.mood === 'positive') moodCounts.positive++;
-          else if(m.mood === 'negative') moodCounts.negative++;
+          if(m.mood.includes('positive')) moodCounts.positive++;
+          else if(m.mood.includes('negative')) moodCounts.negative++;
           else moodCounts.neutral++;
         });
         
@@ -97,15 +59,13 @@ const Journey: React.FC = () => {
         }
 
         setTaskData(tasksChart);
-        setMoodData(moodsChart);
         setSummary({ totalTasks: runningTotal, domMood: dom });
 
-      } catch (err) { console.error("Journey Error:", err); }
+      } catch (err) { console.error(err); }
     };
     processData();
   }, []);
 
-  // --- RENDER HELPERS ---
   const getDomMoodIcon = () => {
     switch (summary.domMood) {
       case 'positive': return <Smile size={32} className="text-green-500" />;
@@ -113,24 +73,19 @@ const Journey: React.FC = () => {
       default: return <Meh size={32} className="text-blue-400" />;
     }
   };
-  const getMoodEmoji = (mood: string) => {
-    if (mood === 'positive') return '😃';
-    if (mood === 'negative') return '😔';
-    return '😐';
-  };
 
   return (
-    <div className="flex flex-col items-center min-h-screen p-4 bg-slate-50 overflow-y-auto pb-24">
+    <div className="flex flex-col items-center min-h-[80vh] p-4 pb-24">
       <div className="w-full max-w-md flex flex-col gap-6">
         <header className="flex items-center gap-2 py-4 text-slate-400">
           <TrendingUp size={20} />
-          <h2 className="text-lg font-bold uppercase tracking-widest">Tổng quan & Lịch sử</h2>
+          <h2 className="text-lg font-bold uppercase tracking-widest">Hành trình</h2>
         </header>
 
         {isEmpty ? (
           <div className="flex flex-col items-center justify-center py-20 text-center opacity-60">
             <Zap size={48} className="text-slate-300 mb-4" />
-            <p className="text-slate-500 font-medium">"Chưa có dữ liệu lịch sử"</p>
+            <p className="text-slate-500 font-medium">"Chưa có dữ liệu thống kê"</p>
           </div>
         ) : (
           <>
@@ -166,28 +121,6 @@ const Journey: React.FC = () => {
                 </ResponsiveContainer>
               </div>
             </motion.div>
-
-            {/* DANH SÁCH LỊCH SỬ */}
-            <div className="pt-6 border-t border-slate-200 w-full">
-              <h3 className="font-bold text-slate-500 uppercase tracking-widest text-sm flex items-center gap-2 mb-6"><History size={16} /> Dòng thời gian</h3>
-              <div className="relative border-l-2 border-slate-200 ml-4 space-y-8 pb-10">
-                {historyList.map((item, index) => (
-                  <motion.div key={item.id || index} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 * Math.min(index, 5) }} className="relative pl-6">
-                    <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 bg-white ${item.is_task ? 'border-blue-500' : item.mood === 'positive' ? 'border-green-400' : item.mood === 'negative' ? 'border-red-400' : 'border-slate-400'}`} />
-                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="flex items-center gap-2">
-                           {item.is_task ? (<span className="bg-blue-100 text-blue-600 p-1 rounded-md"><CheckCircle2 size={12}/></span>) : (<span className="bg-slate-100 text-slate-600 p-1 rounded-md"><FileText size={12}/></span>)}
-                           <span className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1"><Calendar size={10} />{new Date(item.completed_at || item.created_at).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })} • {new Date(item.completed_at || item.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
-                        </div>
-                        {!item.is_task && <span className="text-lg">{getMoodEmoji(item.mood)}</span>}
-                      </div>
-                      <p className={`text-slate-700 leading-relaxed ${item.is_task ? 'line-through text-slate-400 italic' : ''}`}>{item.content}</p>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
           </>
         )}
       </div>

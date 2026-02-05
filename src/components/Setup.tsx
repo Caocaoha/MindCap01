@@ -1,243 +1,164 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Settings, Download, Upload, Shield, Trash2, Database, AlertTriangle, FileJson, CheckCircle2, WifiOff } from 'lucide-react';
-import { db, type Entry } from '../utils/db';
+import React, { useState, useRef } from 'react';
+import { motion } from 'framer-motion';
+import { Settings, Download, Upload, Trash2, RefreshCw, AlertTriangle, CheckCircle2, FileJson, Info } from 'lucide-react';
+import { db } from '../utils/db';
 
 const Setup: React.FC = () => {
-  const [stats, setStats] = useState({ totalEntries: 0, dbSize: '0 KB' });
-  const [isImporting, setIsImporting] = useState(false);
-  const [showWipeConfirm, setShowWipeConfirm] = useState(false);
-  const [wipeStep, setWipeStep] = useState(0); // 0: Idle, 1: Confirm, 2: Final Warning
+  const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- 1. DATA AUDIT ---
-  useEffect(() => {
-    const calcStats = async () => {
-      const count = await db.entries.count();
-      // Ước lượng sơ bộ dung lượng (chỉ mang tính tham khảo)
-      const allData = await db.entries.toArray();
-      const jsonString = JSON.stringify(allData);
-      const bytes = new TextEncoder().encode(jsonString).length;
-      const kb = (bytes / 1024).toFixed(2);
-      
-      setStats({ totalEntries: count, dbSize: `${kb} KB` });
-    };
-    calcStats();
-  }, [isImporting]); // Recalc sau khi import
-
-  // --- 2. EXPORT LOGIC (SAO LƯU) ---
+  // --- CHỨC NĂNG SAO LƯU (EXPORT) ---
   const handleExport = async () => {
+    setIsLoading(true);
     try {
       const allEntries = await db.entries.toArray();
-      const dataStr = JSON.stringify(allEntries, null, 2); // Pretty print cho người dùng đọc được
+      const dataStr = JSON.stringify(allEntries, null, 2);
       const blob = new Blob([dataStr], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       
+      // Tạo link tải ảo
       const a = document.createElement('a');
       a.href = url;
-      const date = new Date().toISOString().split('T')[0];
-      a.download = `mind-os-backup-${date}.json`;
+      a.download = `MindOS_Backup_${new Date().toISOString().slice(0, 10)}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch (error) {
-      alert("Lỗi khi xuất dữ liệu: " + error);
+
+      setMessage({ text: `Đã sao lưu ${allEntries.length} dòng ký ức!`, type: 'success' });
+    } catch (err) {
+      console.error(err);
+      setMessage({ text: 'Lỗi khi sao lưu dữ liệu', type: 'error' });
+    } finally {
+      setIsLoading(false);
+      setTimeout(() => setMessage(null), 3000);
     }
   };
 
-  // --- 3. IMPORT LOGIC (KHÔI PHỤC) ---
-  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  // --- CHỨC NĂNG KHÔI PHỤC (IMPORT) ---
+  const handleImportClick = () => fileInputRef.current?.click();
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    setIsImporting(true);
-    const reader = new FileReader();
+    if (!window.confirm("CẢNH BÁO: Hành động này sẽ GHI ĐÈ dữ liệu hiện tại bằng dữ liệu trong file backup. Bạn có chắc chắn không?")) {
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+    }
 
+    setIsLoading(true);
+    const reader = new FileReader();
     reader.onload = async (e) => {
       try {
-        const jsonContent = e.target?.result as string;
-        const importedData = JSON.parse(jsonContent) as Entry[];
-
-        if (!Array.isArray(importedData)) throw new Error("File không đúng định dạng Mind OS.");
-
-        // Chiến thuật Merge: Dùng bulkPut để ghi đè nếu trùng ID, thêm mới nếu chưa có
-        // Lưu ý: Để an toàn, ta có thể lọc bỏ ID để luôn tạo mới, nhưng giữ ID giúp khôi phục chính xác
-        await db.entries.bulkPut(importedData);
+        const json = e.target?.result as string;
+        const data = JSON.parse(json);
         
-        alert(`Đã khôi phục thành công ${importedData.length} bản ghi ký ức.`);
-        setIsImporting(false);
-      } catch (error) {
-        alert("File bị lỗi hoặc hỏng. Không thể khôi phục.");
-        setIsImporting(false);
+        if (!Array.isArray(data)) throw new Error("File không hợp lệ");
+
+        // Xóa cũ & Nạp mới
+        await db.entries.clear();
+        await db.entries.bulkAdd(data);
+
+        setMessage({ text: 'Khôi phục dữ liệu thành công!', type: 'success' });
+        setTimeout(() => window.location.reload(), 1500); // Reload để app nhận data mới
+      } catch (err) {
+        console.error(err);
+        setMessage({ text: 'File lỗi hoặc không đúng định dạng', type: 'error' });
+      } finally {
+        setIsLoading(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
       }
     };
     reader.readAsText(file);
   };
 
-  // --- 4. WIPE LOGIC (XÓA DẤU VẾT) ---
-  const handleWipe = async () => {
-    await db.entries.clear();
-    setStats({ totalEntries: 0, dbSize: '0 KB' });
-    setShowWipeConfirm(false);
-    setWipeStep(0);
-    alert("Hệ thống đã được tẩy rửa sạch sẽ.");
+  // --- CHỨC NĂNG RESET ---
+  const handleReset = async () => {
+    if (window.confirm("NGUY HIỂM: Bạn có chắc muốn XÓA TOÀN BỘ dữ liệu không? Hành động này không thể hoàn tác!")) {
+      await db.entries.clear();
+      window.location.reload();
+    }
   };
 
   return (
-    <div className="flex flex-col items-center min-h-screen p-4 bg-slate-50 overflow-y-auto pb-24">
-      <div className="w-full max-w-md flex flex-col gap-8">
+    <div className="flex flex-col items-center min-h-[80vh] p-4 pb-24 font-sans">
+      <div className="w-full max-w-md flex flex-col gap-6">
         
-        {/* Header */}
+        {/* HEADER */}
         <header className="flex items-center gap-2 py-4 text-slate-400">
           <Settings size={20} />
-          <h2 className="text-lg font-bold uppercase tracking-widest">Cài đặt & Dữ liệu</h2>
+          <h2 className="text-lg font-bold uppercase tracking-widest">Cài đặt</h2>
         </header>
 
-        {/* --- SECTION 1: VISUAL MANIFESTO (TUYÊN NGÔN) --- */}
-        <section className="bg-white p-6 rounded-[2rem] shadow-sm relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-            <Shield size={120} className="text-green-500" />
-          </div>
-          
-          <h3 className="font-bold text-slate-700 flex items-center gap-2">
-            <Shield size={20} className="text-green-500" />
-            Chủ quyền Dữ liệu
+        {/* THÔNG BÁO TRẠNG THÁI */}
+        {message && (
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className={`p-4 rounded-xl flex items-center gap-3 font-bold text-sm ${message.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+            {message.type === 'success' ? <CheckCircle2 size={18}/> : <AlertTriangle size={18}/>}
+            {message.text}
+          </motion.div>
+        )}
+
+        {/* SECTION 1: DỮ LIỆU */}
+        <section className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100">
+          <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+            <FileJson size={16}/> Quản lý Dữ liệu
           </h3>
           
-          <div className="mt-6 flex flex-col gap-4">
-            {/* Thanh tiến trình 100% Local */}
-            <div>
-              <div className="flex justify-between text-xs font-bold text-slate-500 mb-1">
-                <span>LƯU TRỮ TRÊN THIẾT BỊ</span>
-                <span className="text-green-600">100%</span>
-              </div>
-              <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-green-500 w-full shadow-[0_0_10px_rgba(34,197,94,0.5)]" />
-              </div>
-              <div className="flex justify-between text-[10px] text-slate-400 mt-1">
-                <span>Used: {stats.dbSize}</span>
-                <span>Cloud: 0 bytes</span>
-              </div>
-            </div>
-
-            {/* Zero-Network Audit */}
-            <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
-              <div className="bg-slate-200 p-2 rounded-full text-slate-500">
-                <WifiOff size={16} />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-600">Zero-Network Audit</p>
-                <p className="text-[10px] text-slate-400">Không có kết nối mạng nào được thực hiện.</p>
-              </div>
-              <CheckCircle2 size={16} className="text-green-500 ml-auto" />
-            </div>
-          </div>
-        </section>
-
-        {/* --- SECTION 2: BACKUP & RESTORE --- */}
-        <section className="flex flex-col gap-4">
-          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-2">Sao lưu & Khôi phục</h3>
-          
-          <div className="grid grid-cols-2 gap-4">
-            {/* Export Button */}
-            <motion.button 
-              whileTap={{ scale: 0.95 }}
-              onClick={handleExport}
-              className="bg-white p-5 rounded-[2rem] shadow-sm flex flex-col items-center gap-3 border border-slate-100 hover:border-blue-200 transition-colors"
+          <div className="flex flex-col gap-3">
+            <button 
+              onClick={handleExport} 
+              disabled={isLoading}
+              className="flex items-center justify-between p-4 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl transition-colors font-medium"
             >
-              <div className="bg-blue-50 p-3 rounded-full text-blue-600">
-                <Download size={24} />
-              </div>
-              <div className="text-center">
-                <span className="block font-bold text-slate-700 text-sm">Đóng gói</span>
-                <span className="text-[10px] text-slate-400">Xuất file .json</span>
-              </div>
-            </motion.button>
+              <div className="flex items-center gap-3"><Download size={20}/> Sao lưu (Backup)</div>
+              <span className="text-xs bg-white/50 px-2 py-1 rounded">.JSON</span>
+            </button>
 
-            {/* Import Button */}
-            <motion.label 
-              whileTap={{ scale: 0.95 }}
-              className="bg-white p-5 rounded-[2rem] shadow-sm flex flex-col items-center gap-3 border border-slate-100 hover:border-blue-200 transition-colors cursor-pointer relative"
+            <button 
+              onClick={handleImportClick} 
+              disabled={isLoading}
+              className="flex items-center justify-between p-4 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl transition-colors font-medium"
             >
-              <div className="bg-purple-50 p-3 rounded-full text-purple-600">
-                {isImporting ? <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }}><Upload size={24}/></motion.div> : <Upload size={24} />}
-              </div>
-              <div className="text-center">
-                <span className="block font-bold text-slate-700 text-sm">Nạp ký ức</span>
-                <span className="text-[10px] text-slate-400">Nhập file .json</span>
-              </div>
-              <input type="file" accept=".json" onChange={handleImport} className="hidden" disabled={isImporting} />
-            </motion.label>
+              <div className="flex items-center gap-3"><Upload size={20}/> Khôi phục (Restore)</div>
+              <span className="text-xs bg-white/50 px-2 py-1 rounded">Upload</span>
+            </button>
+            <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".json" className="hidden" />
           </div>
+        </section>
+
+        {/* SECTION 2: HỆ THỐNG */}
+        <section className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100">
+          <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+            <AlertTriangle size={16}/> Vùng nguy hiểm
+          </h3>
           
-          <p className="text-[10px] text-slate-400 text-center px-8 italic">
-            "Dữ liệu này thuộc về bạn. Bạn có thể mở file JSON bằng bất kỳ trình soạn thảo văn bản nào để kiểm tra tính trung thực."
-          </p>
-        </section>
+          <div className="flex flex-col gap-3">
+            <button 
+              onClick={() => window.location.reload()} 
+              className="flex items-center gap-3 p-4 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl transition-colors font-medium"
+            >
+              <RefreshCw size={20}/> Làm mới ứng dụng (Reload)
+            </button>
 
-        {/* --- SECTION 3: DANGER ZONE (VÙNG NGUY HIỂM) --- */}
-        <section className="mt-4">
-          <div className="border border-red-100 bg-red-50/50 rounded-[2rem] p-6">
-            {!showWipeConfirm ? (
-              <div className="flex items-center justify-between" onClick={() => { setShowWipeConfirm(true); setWipeStep(1); }}>
-                <div className="flex items-center gap-3">
-                  <div className="bg-white p-2 rounded-full text-red-500 shadow-sm">
-                    <Trash2 size={20} />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-red-600 text-sm">Vùng nguy hiểm</h4>
-                    <p className="text-[10px] text-red-400">Xóa vĩnh viễn mọi dữ liệu</p>
-                  </div>
-                </div>
-                <button className="text-xs font-bold bg-white text-red-500 px-4 py-2 rounded-full shadow-sm hover:bg-red-500 hover:text-white transition-colors">
-                  Mở
-                </button>
-              </div>
-            ) : (
-              <div className="text-center">
-                <AlertTriangle size={32} className="text-red-500 mx-auto mb-2" />
-                <h4 className="font-bold text-red-600 mb-1">
-                  {wipeStep === 1 ? "Xác nhận xóa?" : "CẢNH BÁO CUỐI CÙNG!"}
-                </h4>
-                <p className="text-xs text-red-400 mb-4">
-                  {wipeStep === 1 
-                    ? "Hành động này không thể hoàn tác. Mọi ký ức sẽ biến mất." 
-                    : "Bạn thực sự muốn xóa sạch dấu vết ngay lập tức?"}
-                </p>
-                
-                <div className="flex justify-center gap-3">
-                  <button 
-                    onClick={() => { setShowWipeConfirm(false); setWipeStep(0); }}
-                    className="px-4 py-2 bg-white text-slate-500 text-xs font-bold rounded-full shadow-sm"
-                  >
-                    Hủy bỏ
-                  </button>
-                  <button 
-                    onClick={() => {
-                      if (wipeStep === 1) setWipeStep(2);
-                      else handleWipe();
-                    }}
-                    className="px-4 py-2 bg-red-500 text-white text-xs font-bold rounded-full shadow-md hover:bg-red-600"
-                  >
-                    {wipeStep === 1 ? "Tiếp tục xóa" : "XÓA NGAY LẬP TỨC"}
-                  </button>
-                </div>
-              </div>
-            )}
+            <button 
+              onClick={handleReset} 
+              className="flex items-center gap-3 p-4 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-colors font-medium"
+            >
+              <Trash2 size={20}/> Xóa toàn bộ dữ liệu (Reset)
+            </button>
           </div>
         </section>
 
-        {/* Footer Info */}
-        <div className="text-center pb-8 pt-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-slate-100 rounded-full">
-            <Database size={12} className="text-slate-400" />
-            <span className="text-[10px] font-bold text-slate-400">MIND OS v3.1 (Offline-Core)</span>
-          </div>
+        {/* FOOTER INFO */}
+        <div className="text-center text-slate-300 text-xs mt-4">
+          <p className="font-bold flex items-center justify-center gap-1"><Info size={12}/> MIND OS v5.4</p>
+          <p className="mt-1">Dữ liệu được lưu cục bộ trên thiết bị của bạn.</p>
         </div>
 
       </div>
     </div>
   );
 };
-
 export default Setup;

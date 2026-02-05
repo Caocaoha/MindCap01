@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Target, Trash2, AlertCircle, Clock, Flame, Star, Check, Archive, Zap, Database } from 'lucide-react';
+import { Target, Trash2, AlertCircle, Clock, Flame, Star, Check, Archive, Zap } from 'lucide-react';
 import { db, type Entry, type Priority, addLog } from '../utils/db'; 
 import { getDateString } from '../utils/date';
 
@@ -8,7 +8,6 @@ const Todo: React.FC = () => {
   const [activeTasks, setActiveTasks] = useState<Entry[]>([]);
   const [completedToday, setCompletedToday] = useState<Entry[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [debugCount, setDebugCount] = useState(0); // Biến đếm để soi lỗi
 
   const triggerHaptic = (type: 'success' | 'error' | 'click') => {
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
@@ -22,12 +21,8 @@ const Todo: React.FC = () => {
     try {
       const todayStr = getDateString();
       const allEntries = await db.entries.toArray();
-      
-      // Cập nhật biến đếm debug
-      setDebugCount(allEntries.length);
-      console.log("DEBUG: Toàn bộ data:", allEntries);
 
-      // Lọc lỏng tay hơn một chút để bắt lỗi
+      // Lọc Active
       const active = allEntries
         .filter(task => 
           task.is_task === true && 
@@ -36,6 +31,7 @@ const Todo: React.FC = () => {
         )
         .sort((a, b) => b.created_at - a.created_at);
 
+      // Lọc Completed
       const completed = allEntries
         .filter(task => 
           task.is_task === true &&
@@ -48,8 +44,7 @@ const Todo: React.FC = () => {
       setError(null);
     } catch (err: any) {
       console.error("TODO Error:", err);
-      // Hiện lỗi chi tiết ra màn hình
-      setError("Lỗi DB: " + (err.message || JSON.stringify(err)));
+      setError("Không thể tải danh sách");
     }
   };
 
@@ -142,20 +137,19 @@ const Todo: React.FC = () => {
           </div>
         )}
 
-        {/* === CÔNG CỤ DEBUG (CHỈ HIỆN KHI CẦN SOI LỖI) === */}
-        <div className="mt-8 p-4 bg-slate-100 rounded-xl border border-slate-300 text-xs text-slate-500 font-mono">
-          <div className="flex items-center gap-2 mb-2 font-bold text-slate-700">
-            <Database size={14} /> TRẠNG THÁI DATABASE2 
+        {completedToday.length > 0 && (
+          <div className="mt-10 pt-6 border-t border-slate-200/50">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-4 ml-2">Hoàn thành hôm nay ({completedToday.length})</h3>
+            <div className="flex flex-col gap-3">
+              {completedToday.map((task) => (
+                <div key={task.id} className="bg-slate-50/50 p-4 rounded-[1.5rem] flex items-center gap-4 border border-slate-100 opacity-70">
+                  <div className="bg-green-100 p-1.5 rounded-full text-green-600"><Check size={14} strokeWidth={3} /></div>
+                  <p className="text-slate-500 line-through text-sm font-medium flex-1">{task.content}</p>
+                </div>
+              ))}
+            </div>
           </div>
-          <p>DB Name: MindOS_V5_Clean</p>
-          <p>Tổng số bản ghi: <strong>{debugCount}</strong></p>
-          <button 
-            onClick={() => fetchTasks()} 
-            className="mt-2 w-full py-2 bg-blue-100 text-blue-700 rounded-lg font-bold hover:bg-blue-200"
-          >
-            Làm mới dữ liệu (Reload)
-          </button>
-        </div>
+        )}
       </div>
     </div>
   );

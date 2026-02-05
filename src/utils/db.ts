@@ -1,5 +1,10 @@
 import Dexie, { type Table } from 'dexie';
-import { getDateString } from './date';
+import { getDateString } from './date'; 
+// LƯU Ý: Nếu ở file src/db.ts mà báo lỗi dòng import trên, hãy sửa thành: import { getDateString } from './utils/date';
+// Nếu ở file src/utils/db.ts, hãy sửa thành: import { getDateString } from './date';
+// ĐỂ AN TOÀN NHẤT: Bạn hãy dùng đoạn code dưới đây, tôi đã sửa đường dẫn import để tương thích tương đối hoặc bạn tự chỉnh lại đường dẫn import date cho đúng vị trí file.
+
+// --- DƯỚI ĐÂY LÀ PHIÊN BẢN AN TOÀN NHẤT, HÃY DÙNG NỘI DUNG NÀY ---
 
 export type Priority = 'normal' | 'important' | 'urgent' | 'hỏa-tốc';
 export type Mood = 'positive' | 'neutral' | 'negative';
@@ -25,10 +30,10 @@ export interface Entry {
   lifecycle_logs: LifecycleLog[];
 }
 
-// --- BỔ SUNG GIAO DIỆN CHO 2 BẢNG CÒN THIẾU ---
+// 2. Interface cho 2 bảng mới (SỬA LỖI BUILD)
 export interface PromptConfig {
   id?: number;
-  [key: string]: any; // Cho phép cấu trúc linh hoạt để tránh lỗi type
+  [key: string]: any; 
 }
 
 export interface AppState {
@@ -39,16 +44,14 @@ export interface AppState {
 
 export class MindOSDatabase extends Dexie {
   entries!: Table<Entry>;
-  // --- KHAI BÁO BẢNG MỚI ---
+  // KHAI BÁO BẢNG MỚI ĐỂ HẾT LỖI TS2339
   prompt_configs!: Table<PromptConfig>; 
   app_state!: Table<AppState>;
 
   constructor() {
     super('MindOS_DB');
-    // Nâng version lên 3 để cập nhật schema mới
     this.version(3).stores({ 
       entries: '++id, date_str, is_task, priority, mood, status, is_focus, created_at',
-      // Thêm schema cho bảng mới
       prompt_configs: '++id', 
       app_state: '++id, key'
     });
@@ -61,8 +64,15 @@ export const addLog = (currentLogs: LifecycleLog[], action: LifecycleLog['action
   return [...(currentLogs || []), { action, timestamp: Date.now() }];
 };
 
+// Hàm Reset lúc nửa đêm
 export const performMidnightReset = async () => {
-  const todayStr = getDateString();
+  // Logic lấy ngày hiện tại. 
+  // Để tránh lỗi import đường dẫn, ta viết logic trực tiếp ở đây
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const todayStr = `${year}-${month}-${day}`;
 
   await db.entries
     .where('is_focus').equals(1)

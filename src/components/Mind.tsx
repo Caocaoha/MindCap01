@@ -14,7 +14,7 @@ const THRESHOLD = 60;
 const V_THRESHOLD = 120;
 
 const Mind: React.FC = () => {
-  // --- 1. KHAI BÁO HOOKS (Tuyệt đối giữ nguyên vị trí đầu file) ---
+  // --- 1. KHAI BÁO HOOKS (Giữ cố định, không thay đổi thứ tự) ---
   const [content, setContent] = useState('');
   const [isInputMode, setIsInputMode] = useState(false);
   const [activeRail, setActiveRail] = useState<'none' | 'task' | 'mood'>('none');
@@ -31,14 +31,16 @@ const Mind: React.FC = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // MOTION VALUES: Lưu tọa độ vật lý của núm kéo
+  // MOTION VALUES
   const taskDragX = useMotionValue(0); 
   const taskDragY = useMotionValue(0);
   const moodDragY = useMotionValue(0);
+  
+  // [FIX CRITICAL]: Khai báo biến tĩnh để dùng làm fallback, TRÁNH gọi hook trong JSX
+  const staticMotionValue = useMotionValue(0); 
 
   // --- 2. LOGIC BỔ TRỢ ---
   
-  // [FIX 1] Hàm cưỡng ép reset vị trí núm về tâm (0,0)
   const resetMotionValues = () => {
     taskDragX.set(0);
     taskDragY.set(0);
@@ -84,9 +86,7 @@ const Mind: React.FC = () => {
   const handleSave = async (type: 'task' | 'mood', direction: string) => {
     if (!content.trim() || isSaving) return;
     setIsSaving(true);
-    
-    // Tắt Toast cũ ngay khi bắt đầu lưu mới
-    setToastData(null); 
+    setToastData(null); // Tắt thông báo cũ ngay
 
     try {
       const entry: Entry = {
@@ -111,7 +111,6 @@ const Mind: React.FC = () => {
       setToastData({ message: `Đã lưu thành công`, id: id as number });
       triggerHaptic('success');
       
-      // Reset form
       setContent(''); 
       setIsInputMode(false); 
       fetchFocusTasks();
@@ -121,9 +120,7 @@ const Mind: React.FC = () => {
       setIsDragging(false); 
       setActiveRail('none'); 
       setMoodLevel(0);
-      
-      // [FIX 1] Reset vị trí núm ngay lập tức sau khi lưu xong
-      resetMotionValues();
+      resetMotionValues(); // Reset vị trí núm về 0
     }
   };
 
@@ -132,8 +129,9 @@ const Mind: React.FC = () => {
     <div className="p-4 flex flex-col items-center">
       <AnimatePresence>{showDeepDive && <DeepDive onClose={() => setShowDeepDive(false)} />}</AnimatePresence>
       
+      {/* SỬA LỖI: Dùng staticMotionValue thay vì useMotionValue(0) */}
       <SmartChip 
-        x={activeRail === 'task' ? taskDragX : useMotionValue(0)} 
+        x={activeRail === 'task' ? taskDragX : staticMotionValue} 
         y={activeRail === 'task' ? taskDragY : moodDragY} 
         mode={activeRail === 'mood' ? 'mood' : 'task'} 
         taskData={parsedData} moodLevel={moodLevel} isDragging={isDragging} 
@@ -170,7 +168,6 @@ const Mind: React.FC = () => {
           <textarea 
             ref={textareaRef} 
             value={content} 
-            // [FIX 2] Tắt Toast ngay khi có tương tác nhập liệu
             onChange={(e) => { 
                 setContent(e.target.value); 
                 if (toastData) setToastData(null); 
@@ -188,9 +185,9 @@ const Mind: React.FC = () => {
             {isInputMode && content.length > 0 && (
               <motion.div 
                 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                className="relative w-full h-32 mt-4 overflow-visible" // overflow-visible để núm không bị cắt nếu nảy
+                className="relative w-full h-32 mt-4 overflow-visible"
               >
-                {/* 1. X-RAIL (TASK): CHÍNH GIỮA */}
+                {/* 1. X-RAIL (TASK) */}
                 <div className="absolute left-1/2 -translate-x-1/2 top-4 w-24 h-24 flex items-center justify-center">
                     <div className="absolute inset-0 border-2 border-dashed border-blue-100 rounded-full scale-125 opacity-50" />
                     <div className="absolute top-0 text-[8px] font-bold text-slate-300 pointer-events-none">QUAN TRỌNG</div>
@@ -199,7 +196,7 @@ const Mind: React.FC = () => {
                     <motion.div 
                       drag 
                       dragConstraints={{ top: -THRESHOLD-20, left: -THRESHOLD-20, right: THRESHOLD+20, bottom: THRESHOLD+20 }} 
-                      dragElastic={0.1} // Giảm độ nảy để dễ kiểm soát
+                      dragElastic={0.1}
                       style={{ x: taskDragX, y: taskDragY }}
                       onDragStart={() => { setActiveRail('task'); setIsDragging(true); }}
                       onDragEnd={(_, info) => {
@@ -211,7 +208,6 @@ const Mind: React.FC = () => {
                         else { 
                             setActiveRail('none'); 
                             setIsDragging(false); 
-                            // Nếu thả tay mà không lưu, cũng cần reset về tâm
                             resetMotionValues();
                         }
                       }}
@@ -221,7 +217,7 @@ const Mind: React.FC = () => {
                     </motion.div>
                 </div>
 
-                {/* 2. T-RAIL (MOOD): BÊN PHẢI */}
+                {/* 2. T-RAIL (MOOD) */}
                 <div className="absolute right-4 top-4 w-16 h-32 flex flex-col items-center justify-center">
                     <div className="absolute h-full w-1 bg-slate-100 rounded-full" />
                     <motion.div 

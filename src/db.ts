@@ -1,85 +1,64 @@
-import Dexie, { Table } from 'dexie';
+import Dexie, { type Table } from 'dexie';
 
-/**
- * 1. ĐỊNH NGHĨA CẤU TRÚC DỮ LIỆU (INTERFACES)
- */
+// Định nghĩa các kiểu dữ liệu dựa theo Spec v3.1 [cite: 9, 10]
+export type Priority = 'normal' | 'important' | 'urgent' | 'hỏa-tốc';
+export type Mood = 'positive' | 'neutral' | 'negative';
+export type EntryStatus = 'active' | 'completed' | 'deleted' | 'archived';
 
 export interface Entry {
-  id: string;
+  id?: number;
   content: string;
   created_at: number;
-  date_str: string;        // Định dạng 'YYYY-MM-DD'
-  type: 'text' | 'image' | 'voice';
-  
-  // Logic công việc
-  is_task?: boolean;       
-  is_focus?: boolean;      // Xác định việc đang nằm trong Tâm trí
-  status?: 'active' | 'completed' | 'deleted' | 'archived'; 
-  
-  // Thời điểm hoàn thành
-  completed_at?: number;   
-  
-  /**
-   * Phân loại từ Đường ray chữ L:
-   * - normal: Lưu thường
-   * - important: Quan trọng
-   * - urgent: Gấp
-   * - hỏa-tốc: Quan trọng + Khẩn cấp
-   */
-  priority?: 'normal' | 'important' | 'urgent' | 'hỏa-tốc'; 
-  
-  /**
-   * Phân loại Cảm xúc từ nút Lưu:
-   * - positive: Vui (Kéo lên)
-   * - negative: Buồn (Kéo xuống)
-   * - neutral: Bình thường (Thả tại chỗ)
-   */
-  mood?: 'positive' | 'negative' | 'neutral'; 
+  date_str: string; // Khóa chính để truy vấn theo ngày
+  is_task: boolean;
+  priority: Priority;
+  mood: Mood;
+  status: EntryStatus;
+  is_focus: boolean;
+  completed_at?: number;
 }
 
-export interface ActivityLog {
-  id: string;
-  created_at: number;
-  action_type: 'CREATE' | 'UPDATE' | 'DELETE' | 'TASK_DONE' | 'MOVE_TO_FOCUS';
-  entry_id?: string;
-  details?: any;
-}
-
-export interface PromptConfig {
-  id: string;
-  name: string;
-  content_list: string[];
-}
-
-export interface AppState {
-  key: string;
-  value: any;
-}
-
-/**
- * 2. KHỞI TẠO CƠ SỞ DỮ LIỆU
- */
-
-class MindOSDatabase extends Dexie {
+export class MindOSDatabase extends Dexie {
   entries!: Table<Entry>;
-  activity_logs!: Table<ActivityLog>;
-  prompt_configs!: Table<PromptConfig>;
-  app_state!: Table<AppState>;
 
   constructor() {
     super('MindOS_DB');
     
-    /**
-     * Cấu hình Schema
-     * Version 33: Cập nhật thêm trường priority và mood.
-     */
-    this.version(33).stores({
-      entries: 'id, date_str, type, is_task, is_focus, status, created_at, completed_at, priority, mood',
-      activity_logs: 'id, created_at, action_type',
-      prompt_configs: 'id',
-      app_state: 'key'
+    // Thiết lập Schema 
+    // Indexing các trường quan trọng để tìm kiếm nhanh
+    this.version(1).stores({
+      entries: '++id, date_str, is_task, priority, mood, status, is_focus, created_at'
     });
   }
 }
 
 export const db = new MindOSDatabase();
+
+/**
+ * CÁC HÀM TIỆN ÍCH DỮ LIỆU CỐT LÕI
+ */
+
+// Thăng cấp task lên Tiêu điểm (Focus) với ràng buộc Max 4 [cite: 18, 19]
+export const promoteToFocus = async (entryId: number) => {
+  const currentFocusCount = await db.entries
+    .where({ is_focus: 1, status: 'active' })
+    .count();
+
+  if (currentFocusCount >= 4) {
+    // Nếu đầy, cập nhật created_at để đẩy lên đầu Kho việc thay vì thêm vào Focus [cite: 19]
+    await db.entries.update(entryId, { created_at: Date.now() });
+    return { success: false, message: "Danh sách Tiêu điểm đã đầy (4/4)!" };
+  }
+
+  await db.entries.update(entryId, { is_focus: true });
+  return { success: true };
+};
+
+// Midnight Reset: Tự động dọn dẹp mỗi nửa đêm [cite: 24]
+export const performMidnightReset = async () => {
+  await db.entries
+    .where('is_focus')
+    .equals(1)
+    .modify({ is_focus: false });
+  console.log("System: Midnight Reset completed.");
+};

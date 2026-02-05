@@ -13,17 +13,10 @@
 
     <script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
     <script>
-      // Chỉ kích hoạt khi chạy trên Localhost (máy tính) 
-      // HOẶC khi bạn thêm chữ ?debug=true vào cuối đường link
-      // Ví dụ: https://du-an-cua-ban.pages.dev/?debug=true
-      if (
-        window.location.hostname === 'localhost' || 
-        window.location.search.includes('debug=true')
-      ) {
-        var vConsole = new VConsole();
-        console.log('Mobile Debugger: Đã kích hoạt vConsole!');
-        console.log('Sẵn sàng bắt lỗi...');
-      }
+      // Không cần kiểm tra ?debug=true nữa. BẬT LUÔN.
+      // Sau khi sửa xong lỗi, chúng ta sẽ xóa dòng này đi.
+      window.vConsole = new VConsole();
+      console.log('Mobile Debugger: Đã kích hoạt cưỡng chế!');
     </script>
-    </body>
+  </body>
 </html>

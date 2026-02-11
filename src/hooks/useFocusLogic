@@ -1,0 +1,105 @@
+// src/hooks/useFocusLogic.ts
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { db } from '../db/db'; // Đảm bảo đường dẫn đúng tới file db config của bạn
+import { Task } from '../types';
+
+export const useFocusLogic = (task: Task) => {
+  const [localProgress, setLocalProgress] = useState(task.progress);
+  const holdInterval = useRef<NodeJS.Timeout | null>(null);
+  const dbTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  // Helper: Rung phản hồi (Haptic Feedback)
+  const triggerHaptic = () => {
+    if (navigator.vibrate) navigator.vibrate(10); // Rung nhẹ 10ms
+  };
+
+  // Helper: Lưu vào DB (Debounce 500ms để tránh ghi quá nhiều)
+  const syncToDB = useCallback((newVal: number) => {
+    if (dbTimeout.current) clearTimeout(dbTimeout.current);
+    
+    dbTimeout.current = setTimeout(async () => {
+      const isCompleted = newVal >= task.quantity;
+      await db.tasks.update(task.id!, {
+        progress: newVal,
+        status: isCompleted ? 'completed' : 'active'
+      });
+      // Nếu hoàn thành, rung dài hơn
+      if (isCompleted && navigator.vibrate) navigator.vibrate([50, 50, 50]);
+    }, 500);
+  }, [task.id, task.quantity]);
+
+  // Cập nhật state nội bộ và gọi sync
+  const updateProgress = (newVal: number) => {
+    if (newVal < 0) newVal = 0;
+    if (newVal > task.quantity) newVal = task.quantity; // Clamp max
+    
+    if (newVal !== localProgress) {
+      setLocalProgress(newVal);
+      syncToDB(newVal);
+      triggerHaptic();
+    }
+  };
+
+  // 1. Logic: DIAL (Vuốt trục Y)
+  const handlePan = (_: any, info: { delta: { y: number } }) => {
+    // Độ nhạy: 15px di chuyển = 1 đơn vị
+    const Sensitivity = 15; 
+    const delta = Math.round(info.delta.y * -1 / Sensitivity); 
+    
+    if (delta !== 0) {
+      updateProgress(localProgress + delta);
+    }
+  };
+
+  // 2. Logic: HOLD-TO-FILL (Nhấn giữ)
+  const startHold = () => {
+    if (localProgress >= task.quantity) return;
+    
+    holdInterval.current = setInterval(() => {
+      setLocalProgress((prev) => {
+        const next = prev + 1;
+        if (next > task.quantity) {
+          stopHold();
+          return prev;
+        }
+        triggerHaptic();
+        return next;
+      });
+    }, 150); // Tốc độ tăng: 150ms/lần
+  };
+
+  const stopHold = () => {
+    if (holdInterval.current) {
+      clearInterval(holdInterval.current);
+      holdInterval.current = null;
+      syncToDB(localProgress); // Sync giá trị cuối cùng khi thả tay
+    }
+  };
+
+  // 3. Logic: TAP-TO-STEP (Chạm nhanh)
+  const handleTap = () => {
+    // Chỉ kích hoạt tap nếu target nhỏ (<=10) để tránh spam tap
+    if (task.quantity <= 10) {
+      updateProgress(localProgress + 1);
+    }
+  };
+
+  // Cleanup
+  useEffect(() => {
+    return () => {
+      if (holdInterval.current) clearInterval(holdInterval.current);
+      if (dbTimeout.current) clearTimeout(dbTimeout.current);
+    };
+  }, []);
+
+  return {
+    localProgress,
+    handlers: {
+      onPan: handlePan,
+      onPointerDown: startHold,
+      onPointerUp: stopHold,
+      onPointerLeave: stopHold, // Thả chuột ra ngoài cũng stop
+      onClick: handleTap
+    }
+  };
+};

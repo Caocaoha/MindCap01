@@ -1,286 +1,236 @@
-// src/components/Input/InputBar.tsx
-import React, { useState, useRef, useEffect } from 'react';
-import { useDrag } from '@use-gesture/react';
-import { motion, useSpring, useTransform } from 'framer-motion';
-import { Plus, Save, Smile, Frown, Minus, Zap, CheckCircle, AlertCircle, Clock } from 'lucide-react';
-import clsx from 'clsx';
-import { v4 as uuidv4 } from 'uuid';
-
-import { db } from '../../database/db';
-import { useUserStore } from '../../store/userStore';
-import { parseInputText, getPriorityFromAngle } from '../../utils/nlpEngine';
-import { ActionToast } from './ActionToast';
-import { QuickEditModal } from './QuickEditModal';
+import React, { useState, useRef } from 'react';
+import { motion, useAnimation, PanInfo, AnimatePresence } from 'framer-motion';
+import { Zap, AlignLeft, Smile, Frown, Minus } from 'lucide-react';
 import { useUIStore } from '../../store/uiStore';
+import { db } from '../../database/db';
+import { v4 as uuidv4 } from 'uuid';
+import { Task, Thought } from '../../database/types';
 
-export const InputBar: React.FC = () => {
-  // --- STATE ---
-  const [text, setText] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const [activeRail, setActiveRail] = useState<'task' | 'mood' | null>(null);
+// --- CONFIG ---
+const THRESHOLD_1 = 50;
+const THRESHOLD_2 = 100;
+
+export const InputBar = () => {
+  // State
+  const [content, setContent] = useState('');
+  const isTyping = useUIStore((state) => state.isTyping);
+  const setTyping = useUIStore((state) => state.setTyping);
   
-  // Feedback UI
-  const [toast, setToast] = useState<{ visible: boolean; msg: string; lastId?: string; type?: 'task'|'thought' }>({ visible: false, msg: '' });
-  const [modalOpen, setModalOpen] = useState(false);
-  
-  // Refs
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  
-  // --- GESTURE LOGIC ---
-  const [{ x, y }, api] = useSpring(() => ({ x: 0, y: 0 })); // Button position
+  // Drag State
+  const [activeAnchor, setActiveAnchor] = useState<'task' | 'mood' | null>(null);
+  const [dragDistance, setDragDistance] = useState(0);
+  const [dragCoords, setDragCoords] = useState({ x: 0, y: 0 });
 
-  // 1. Task Gesture Bind (X-Rail)
-  const bindTask = useDrag(({ down, movement: [mx, my], last }) => {
-    if (down) {
-      setActiveRail('task');
-      api.start({ x: mx, y: my, immediate: true });
-    } else {
-      setActiveRail(null);
-      api.start({ x: 0, y: 0 }); // Spring back
-      
-      // Calculate Drop Zone
-      const dist = Math.sqrt(mx * mx + my * my);
-      if (dist > 50) { // Threshold to activate
-        const angle = Math.atan2(my, mx) * (180 / Math.PI); // Radians to Degrees
-        const priority = getPriorityFromAngle(angle);
-        handleSaveTask(priority);
-      }
-    }
-  }, { filterTaps: true });
+  // Refs & Animations
+  const lastHaptic = useRef<number>(0);
+  const taskControls = useAnimation();
+  const moodControls = useAnimation();
 
-  // 2. Mood Gesture Bind (T-Rail)
-  // Progressive Feedback Logic
-  const [moodIconState, setMoodIconState] = useState<'neutral' | 'happy' | 'sad'>('neutral');
-  
-  const bindMood = useDrag(({ down, movement: [mx, my] }) => {
-    if (down) {
-      setActiveRail('mood');
-      api.start({ x: mx, y: my, immediate: true });
-      
-      // Logic Progressive Feedback
-      const dist = Math.sqrt(mx * mx + my * my);
-      
-      // Haptic & Morphing based on Direction & Distance
-      if (my < -50) { // UP -> Happy
-         if (dist > 100 && moodIconState !== 'happy') {
-           if (navigator.vibrate) navigator.vibrate(20); // Strong haptic
-           setMoodIconState('happy');
-         } 
-      } else if (my > 50) { // DOWN -> Sad
-         if (dist > 100 && moodIconState !== 'sad') {
-           if (navigator.vibrate) navigator.vibrate(20); 
-           setMoodIconState('sad');
-         }
-      } else {
-        setMoodIconState('neutral');
-      }
-
-    } else {
-      setActiveRail(null);
-      setMoodIconState('neutral');
-      api.start({ x: 0, y: 0 });
-
-      // Calculate Drop Zone (T-Rail: Up, Down, Left)
-      if (my < -50) handleSaveMood('happy');
-      else if (my > 50) handleSaveMood('sad');
-      else if (mx < -50) handleSaveMood('neutral');
-      else {
-        // Just Tap -> Save as Note (Neutral) if text exists
-        if (text.trim()) handleSaveMood('neutral');
-      }
-    }
-  }, { filterTaps: true });
-
-  // --- SAVE LOGIC ---
-  const handleSaveTask = async (priority: string) => {
-    if (!text.trim()) return;
-    const parsed = parseInputText(text);
-    const id = uuidv4();
+  // --- LOGIC HAPTIC & FEEDBACK ---
+  const triggerHaptic = (dist: number) => {
+    if (!navigator.vibrate) return;
     const now = Date.now();
-    
-    // Check Echo (5 min rule) - Simplistic check last entry
-    const lastEntry = await db.tasks.orderBy('createdAt').last();
-    const isLinked = lastEntry && (now - lastEntry.createdAt < 5 * 60 * 1000);
+    if (now - lastHaptic.current < 200) return;
 
-    const newTask = {
-      id,
-      type: 'task',
-      content: parsed.content,
-      quantity: parsed.quantity,
-      unit: parsed.unit,
-      status: 'todo',
-      priority,
-      createdAt: now,
-      updatedAt: now,
-      wordCount: text.split(' ').length,
-      linkedIds: isLinked ? [lastEntry.id] : [],
-    };
-
-    await db.tasks.add(newTask as any);
-    useUserStore.getState().performAction('todo_new'); // Trigger Gamification
-    
-    // Reset UI
-    setText('');
-    setToast({ visible: true, msg: `Saved Task [${priority}]`, lastId: id, type: 'task' });
+    if (dist > THRESHOLD_2) {
+      navigator.vibrate(20);
+      lastHaptic.current = now;
+    } else if (dist > THRESHOLD_1) {
+      navigator.vibrate(10);
+      lastHaptic.current = now;
+    }
   };
 
-  const handleSaveMood = async (val: 'happy' | 'sad' | 'neutral') => {
-    const id = uuidv4();
-    const now = Date.now();
-    
-    const newThought = {
-      id,
-      type: val === 'neutral' && text.trim() ? 'thought' : 'mood',
-      content: text,
-      moodValue: val,
-      createdAt: now,
-      updatedAt: now,
-      opacity: 1,
-      isBookmarked: false,
-      wordCount: text.split(' ').length,
-    };
-
-    await db.thoughts.add(newThought as any);
-    useUserStore.getState().performAction(val === 'neutral' ? 'thought' : 'identity_fill'); // Approximate mapping
-    
-    setText('');
-    setToast({ visible: true, msg: `Saved ${val.toUpperCase()}`, lastId: id, type: 'thought' });
+  // --- LOGIC MAPPING ---
+  const getTaskZone = (x: number, y: number) => {
+    const angle = Math.atan2(y, x) * (180 / Math.PI);
+    if (angle >= -180 && angle < -90) return { label: 'NORMAL', color: 'text-blue-500', bg: 'bg-blue-100' };
+    if (angle >= -90 && angle < 0) return { label: 'URGENT', color: 'text-orange-500', bg: 'bg-orange-100' };
+    if (angle >= 0 && angle <= 90) return { label: 'CRITICAL', color: 'text-red-500', bg: 'bg-red-100' };
+    return { label: 'NEEDED', color: 'text-purple-500', bg: 'bg-purple-100' };
   };
 
-  // --- RENDER HELPERS ---
-  const isGhost = activeRail !== null; // Blur text when dragging
+  const getMoodZone = (x: number, y: number) => {
+    if (y < -THRESHOLD_1) return { type: 'happy', icon: Smile, color: 'text-green-500', bg: 'bg-green-100' };
+    if (y > THRESHOLD_1) return { type: 'sad', icon: Frown, color: 'text-slate-500', bg: 'bg-slate-100' };
+    if (x < -THRESHOLD_1) return { type: 'neutral', icon: Minus, color: 'text-purple-500', bg: 'bg-purple-100' };
+    return { type: 'note', icon: AlignLeft, color: 'text-slate-400', bg: 'bg-slate-50' };
+  };
+
+  // --- HANDLERS ---
+  const handleDragStart = (type: 'task' | 'mood') => {
+    setActiveAnchor(type);
+  };
+
+  const handleDrag = (event: any, info: PanInfo) => {
+    const dist = Math.sqrt(info.offset.x ** 2 + info.offset.y ** 2);
+    setDragDistance(dist);
+    setDragCoords({ x: info.offset.x, y: info.offset.y });
+    triggerHaptic(dist);
+  };
+
+  const handleDragEnd = async (event: any, info: PanInfo) => {
+    const dist = Math.sqrt(info.offset.x ** 2 + info.offset.y ** 2);
+    const { x, y } = info.offset;
+
+    if (dist < THRESHOLD_1) {
+      taskControls.start({ x: 0, y: 0 });
+      moodControls.start({ x: 0, y: 0 });
+      setActiveAnchor(null);
+      setDragDistance(0);
+      return;
+    }
+
+    if (activeAnchor === 'task' && content.trim()) {
+      const zone = getTaskZone(x, y);
+      await db.tasks.add({
+        id: uuidv4(), type: 'task', content, status: 'todo', 
+        priority: zone.label.toLowerCase() as any, 
+        createdAt: Date.now(), updatedAt: Date.now(), tags: [], linkedIds: []
+      } as Task);
+      
+      setContent('');
+      setTyping(false);
+    } 
+    else if (activeAnchor === 'mood') {
+      const zone = getMoodZone(x, y);
+      const moodVal = zone.type === 'happy' ? 5 : zone.type === 'sad' ? 1 : 3;
+      
+      await db.thoughts.add({
+        id: uuidv4(), type: 'thought', 
+        content: content || `Feeling ${zone.type}`,
+        moodValue: moodVal, opacity: 1,
+        createdAt: Date.now(), updatedAt: Date.now(), tags: [], linkedIds: []
+      } as Thought);
+      
+      setContent('');
+      if(content) setTyping(false);
+    }
+
+    taskControls.start({ x: 0, y: 0 });
+    moodControls.start({ x: 0, y: 0 });
+    setActiveAnchor(null);
+    setDragDistance(0);
+  };
+
+  const renderMoodIcon = () => {
+    const zone = getMoodZone(dragCoords.x, dragCoords.y);
+    const Icon = zone.icon;
+    
+    if (dragDistance > THRESHOLD_2) {
+      if (zone.type === 'happy') return <Smile size={28} strokeWidth={2.5} className="animate-bounce" />;
+      if (zone.type === 'sad') return <Frown size={28} strokeWidth={2.5} className="animate-pulse" />;
+    }
+    return <Icon size={24} />;
+  };
+
+  // Logic màu nền động cho Mood
+  const getMoodBgColor = () => {
+      if (activeAnchor === 'mood' && dragDistance > THRESHOLD_1) {
+          const zone = getMoodZone(dragCoords.x, dragCoords.y);
+          // Map class Tailwind sang mã màu Hex tương đối (vì inline style cần hex/rgb)
+          if (zone.bg === 'bg-green-100') return '#dcfce7';
+          if (zone.bg === 'bg-slate-100') return '#f1f5f9';
+          if (zone.bg === 'bg-purple-100') return '#f3e8ff';
+      }
+      return '#fff';
+  };
 
   return (
     <>
-      {/* --- 1. MAIN INPUT CONTAINER --- */}
-      <div className="fixed bottom-6 left-0 right-0 px-4 z-40 flex items-end gap-3 max-w-lg mx-auto">
+      {isTyping && (
+        <div 
+          className="fixed inset-0 bg-white/90 backdrop-blur-sm z-[-1]"
+          onClick={() => setTyping(false)}
+        />
+      )}
+
+      <div className={`w-full px-4 transition-all duration-500 flex flex-col items-center ${isTyping ? 'h-full pt-4' : 'h-auto pb-6'}`}>
         
-        {/* TEXT AREA */}
-        <div className={clsx(
-          "flex-1 bg-white/90 backdrop-blur-md rounded-2xl shadow-lg border border-slate-200 transition-all duration-300 overflow-hidden",
-          isGhost && "opacity-20 blur-sm scale-95" // Ghost Mode
-        )}>
-          <textarea
-            ref={inputRef}
-            value={text}
-            onChange={(e) => {
-              setText(e.target.value);
-              setIsTyping(e.target.value.length > 0);
-              setGlobalTyping(typing); // [NEW] Global state cho Focus module
-              if (toast.visible) setToast({ ...toast, visible: false }); // Hide toast on typing
-            }}
-            placeholder="What's on your mind?"
-            className="w-full p-4 bg-transparent outline-none resize-none max-h-32 text-slate-800 placeholder:text-slate-400"
-            rows={1}
-            style={{ minHeight: '3.5rem' }}
-          />
-        </div>
+        <textarea
+          value={content}
+          onFocus={() => setTyping(true)}
+          onChange={(e) => setContent(e.target.value)}
+          placeholder="What's on your mind?"
+          className={`w-full bg-slate-100 rounded-3xl p-4 text-lg resize-none focus:outline-none focus:ring-0 focus:bg-white transition-all shadow-sm ${
+            isTyping ? 'flex-1 shadow-none bg-transparent text-2xl placeholder:text-slate-300' : 'h-12 text-sm'
+          }`}
+        />
 
-        {/* --- 2. SATELLITE ANCHORS --- */}
-        <div className="relative flex gap-2 h-14">
-          
-          {/* A. TASK BUTTON (X-RAIL) */}
-          <div className="relative">
-            {/* The Rail (Behind Button) */}
-            <AnimatePresence>
-              {activeRail === 'task' && (
-                <motion.div 
-                  initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 pointer-events-none"
-                >
-                  {/* Visual Guide X-Shape */}
-                  <div className="absolute top-0 left-0 text-slate-400 text-xs font-bold">Urgent</div>
-                  <div className="absolute top-0 right-0 text-slate-400 text-xs font-bold">Normal</div>
-                  <div className="absolute bottom-0 left-0 text-slate-400 text-xs font-bold">Needed</div>
-                  <div className="absolute bottom-0 right-0 text-red-400 text-xs font-bold">Critical</div>
-                  <div className="absolute inset-0 border-2 border-dashed border-slate-300 rounded-full opacity-30" />
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* The Button */}
-            <motion.div
-              {...bindTask()}
-              style={{ x: activeRail === 'task' ? x : 0, y: activeRail === 'task' ? y : 0, touchAction: 'none' }}
-              className={clsx(
-                "w-14 h-14 rounded-full flex items-center justify-center shadow-lg cursor-pointer transition-opacity z-10",
-                activeRail === 'task' ? "bg-blue-600 text-white" : "bg-white text-slate-700",
-                activeRail === 'mood' && "opacity-30" // Fade out if other rail active
-              )}
+        <AnimatePresence>
+          {isTyping && (
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="w-full flex justify-center gap-12 mt-8 pb-10 relative"
             >
-               <Plus size={24} />
-            </motion.div>
-          </div>
-
-          {/* B. MOOD/SAVE BUTTON (T-RAIL) */}
-          <div className="relative">
-             {/* The Rail */}
-             <AnimatePresence>
-              {activeRail === 'mood' && (
+              
+              {/* TASK ANCHOR */}
+              <div className="relative flex items-center justify-center">
                 <motion.div 
-                  initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-40 h-60 pointer-events-none"
+                  className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                  animate={{ opacity: activeAnchor === 'task' ? 1 : 0, scale: activeAnchor === 'task' ? 1 : 0.5 }}
                 >
-                  <div className="absolute top-0 left-1/2 -translate-x-1/2 text-green-500 font-bold">Happy</div>
-                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2 text-slate-500 font-bold">Sad</div>
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 text-purple-500 font-bold">Note</div>
-                  <div className="absolute inset-x-[45%] top-0 bottom-0 bg-slate-200/50 -z-10 rounded-full" /> {/* Vertical Line */}
-                  <div className="absolute inset-y-[45%] left-0 right-[45%] bg-slate-200/50 -z-10 rounded-full" /> {/* Horizontal Line */}
+                   <div className="w-[1px] h-32 bg-slate-200 absolute" />
+                   <div className="h-[1px] w-32 bg-slate-200 absolute" />
+                   <span className="absolute -top-16 -left-16 text-[9px] font-bold text-slate-300">NORMAL</span>
+                   <span className="absolute -top-16 left-16 text-[9px] font-bold text-slate-300">URGENT</span>
+                   <span className="absolute top-16 left-16 text-[9px] font-bold text-slate-300">CRIT</span>
+                   <span className="absolute top-16 -left-16 text-[9px] font-bold text-slate-300">NEED</span>
                 </motion.div>
-              )}
-            </AnimatePresence>
 
-            <motion.div
-              {...bindMood()}
-              style={{ x: activeRail === 'mood' ? x : 0, y: activeRail === 'mood' ? y : 0, touchAction: 'none' }}
-              className={clsx(
-                "w-14 h-14 rounded-full flex items-center justify-center shadow-lg cursor-pointer transition-colors z-10",
-                activeRail === 'mood' ? "bg-purple-600 text-white" : "bg-blue-600 text-white",
-                activeRail === 'task' && "opacity-30"
-              )}
-            >
-              {/* Morphing Icons */}
-              {moodIconState === 'happy' ? <Smile size={28} /> : 
-               moodIconState === 'sad' ? <Frown size={28} /> : 
-               <Save size={24} />}
+                <motion.div
+                  drag
+                  dragElastic={0.1}
+                  dragConstraints={{ top: 0, left: 0, right: 0, bottom: 0 }}
+                  animate={taskControls}
+                  onDragStart={() => handleDragStart('task')}
+                  onDrag={handleDrag}
+                  onDragEnd={handleDragEnd}
+                  className={`w-14 h-14 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-xl z-10 cursor-grab active:cursor-grabbing ${
+                    activeAnchor === 'mood' ? 'opacity-20 blur-sm scale-90' : 'opacity-100 scale-100'
+                  }`}
+                >
+                  <Zap size={24} fill="currentColor" />
+                </motion.div>
+              </div>
+
+              {/* MOOD ANCHOR */}
+              <div className="relative flex items-center justify-center">
+                <motion.div 
+                   className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                   animate={{ opacity: activeAnchor === 'mood' ? 1 : 0, scale: activeAnchor === 'mood' ? 1 : 0.5 }}
+                >
+                   <div className="w-[1px] h-32 bg-slate-200 absolute" />
+                   <div className="h-[1px] w-16 bg-slate-200 absolute -left-8" />
+                   
+                   <div className="absolute -top-16"><Smile size={16} className="text-green-400" /></div>
+                   <div className="absolute top-16"><Frown size={16} className="text-slate-400" /></div>
+                   <div className="absolute -left-16"><Minus size={16} className="text-purple-400" /></div>
+                </motion.div>
+
+                <motion.div
+                  drag
+                  dragElastic={0.1}
+                  dragConstraints={{ top: 0, left: 0, right: 0, bottom: 0 }}
+                  animate={moodControls}
+                  onDragStart={() => handleDragStart('mood')}
+                  onDrag={handleDrag}
+                  onDragEnd={handleDragEnd}
+                  className={`w-14 h-14 rounded-full border border-slate-200 text-slate-600 flex items-center justify-center shadow-xl z-10 cursor-grab active:cursor-grabbing ${
+                    activeAnchor === 'task' ? 'opacity-20 blur-sm scale-90' : 'opacity-100 scale-100'
+                  }`}
+                  style={{ backgroundColor: getMoodBgColor() }}
+                >
+                  {activeAnchor === 'mood' ? renderMoodIcon() : <AlignLeft size={24} />}
+                </motion.div>
+              </div>
+
             </motion.div>
-          </div>
-
-        </div>
+          )}
+        </AnimatePresence>
       </div>
-
-      {/* --- 3. POST-ACTION TOAST & MODAL --- */}
-      <ActionToast 
-        visible={toast.visible} 
-        message={toast.msg}
-        onUndo={async () => {
-          if (toast.lastId && toast.type) {
-             // Logic Undo: Delete from DB & Restore Text
-             const table = toast.type === 'task' ? db.tasks : db.thoughts;
-             const item = await table.get(toast.lastId);
-             if (item) setText(item.content);
-             await table.delete(toast.lastId);
-             setToast({ ...toast, visible: false });
-          }
-        }}
-        onEdit={() => {
-          setModalOpen(true);
-          setToast({ ...toast, visible: false });
-        }}
-        onClose={() => setToast({ ...toast, visible: false })}
-      />
-
-      <QuickEditModal 
-        isOpen={modalOpen}
-        type={toast.type || 'task'}
-        initialData={{ content: text }} // In real app, fetch full data from DB using lastId
-        onClose={() => setModalOpen(false)}
-        onSave={(data) => {
-          // Implement update logic here
-          console.log("Updated:", data);
-          setModalOpen(false);
-        }}
-      />
     </>
   );
 };

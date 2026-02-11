@@ -3,7 +3,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { db } from '../../../database/db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Link2, Zap, Seedling } from 'lucide-react';
+import { Link2, Zap, Sprout } from 'lucide-react';
 import clsx from 'clsx';
 
 export const LivingMemory: React.FC = () => {
@@ -44,7 +44,7 @@ export const LivingMemory: React.FC = () => {
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
                 {new Date(entry.createdAt).toLocaleDateString()}
               </span>
-              {entry.isBookmarked && <Seedling size={14} className="text-yellow-500" />}
+              {entry.isBookmarked && <Sprout size={14} className="text-yellow-500" />}
             </div>
 
             {/* Content */}

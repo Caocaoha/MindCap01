@@ -1,4 +1,3 @@
-// src/store/settingStore.ts
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -18,7 +17,7 @@ export const useSettingStore = create<SettingState>()(
       setSeenAudit: () => set({ hasSeenAudit: true }),
     }),
     {
-      name: 'mindcap-settings', // Lưu vào localStorage
+      name: 'mindcap-settings',
     }
   )
 );

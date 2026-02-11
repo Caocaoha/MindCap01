@@ -1,28 +1,33 @@
-import { startOfDay, differenceInDays } from 'date-fns';
+// src/features/journey/utils.ts
 
-// Cấu hình vật lý
-const MAX_ENTROPY_DAYS = 40; // Sau 40 ngày sẽ mờ hẳn nếu không bookmark
-const TODAY_START = startOfDay(new Date()).getTime();
-
-/**
- * Tính toán độ mờ (Opacity) dựa trên thời gian trôi qua
- */
-export const calculateEntropy = (timestamp: number, isBookmarked: boolean): number => {
-  if (isBookmarked) return 1; // Hạt giống vĩnh cửu
-
-  const daysPassed = differenceInDays(Date.now(), timestamp);
+interface EntropyParams {
+    createdAt: number;
+    isBookmarked: boolean;
+    linkedIds: string[];
+  }
   
-  if (daysPassed >= MAX_ENTROPY_DAYS) return 0; // Tan biến
-  if (daysPassed < 1) return 1; // Mới tinh
-
-  // Công thức tuyến tính: 1 -> 0 trong 40 ngày
-  return Math.max(0.1, 1 - (daysPassed / MAX_ENTROPY_DAYS)); 
-};
-
-/**
- * Kiểm tra xem bản ghi có thuộc về "Quá khứ" không
- * (Trước 00:00 hôm nay)
- */
-export const isFromPast = (timestamp: number): boolean => {
-  return timestamp < TODAY_START;
-};
+  /**
+   * Tính toán độ mờ (Opacity) dựa trên thời gian và giáp liên kết (ECHO)
+   */
+  export const calculateOpacity = ({ 
+    createdAt, 
+    isBookmarked, 
+    linkedIds 
+  }: EntropyParams): number => {
+    // 1. Nếu là Hạt giống (Bookmark), sáng vĩnh viễn
+    if (isBookmarked) return 1.0;
+  
+    // 2. Tính số ngày đã trôi qua (Time Decay)
+    const msPerDay = 24 * 60 * 60 * 1000;
+    const daysPassed = Math.floor((Date.now() - createdAt) / msPerDay);
+    
+    const decay = daysPassed * 0.01; // 1% mỗi ngày
+    
+    // 3. Tính giáp bảo vệ từ liên kết (Link Shield)
+    const shield = (linkedIds?.length || 0) * 0.05; // 5% mỗi liên kết
+  
+    // 4. Tổng hợp và áp dụng giới hạn [0.2 - 1.0]
+    const finalOpacity = (1.0 - decay) + shield;
+  
+    return Math.max(0.2, Math.min(1.0, finalOpacity));
+  };

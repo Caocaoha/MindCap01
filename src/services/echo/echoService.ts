@@ -1,92 +1,94 @@
-// src/services/echo/echoService.ts
-import { db, EntityType } from '../../database/db';
-import { extractKeywords } from './keywordExtractor';
-import { ECHO_DEBOUNCE_MS, MAX_SAMPLE_SIZE } from './constants';
+import { db, BaseEntity } from '../../database/db';
+import { extractKeywords } from '../../utils/keywordExtractor';
+
+const TEMPORAL_WINDOW = 5 * 60 * 1000; // 5 phút
+const DEBOUNCE_TIME = 4000; // 4 giây
 
 class EchoService {
-  private timers: Map<string, NodeJS.Timeout> = new Map();
+  private pendingIds: Set<string> = new Set();
+  private timer: any = null;
 
-  // [ENTRY POINT]: Hàm gọi từ UI/Component
-  public scheduleConnection(uuid: string, type: EntityType, content: string, parentId?: string) {
-    // 1. Debounce Logic: Xóa timer cũ nếu có
-    if (this.timers.has(uuid)) {
-      clearTimeout(this.timers.get(uuid));
-    }
-
-    // 2. Thiết lập timer mới (4s)
-    const timer = setTimeout(() => {
-      this.runResonance(uuid, type, content, parentId);
-      this.timers.delete(uuid);
-    }, ECHO_DEBOUNCE_MS);
-
-    this.timers.set(uuid, timer);
+  // Gọi hàm này khi có Task/Thought mới
+  scheduleScan(uuid: string) {
+    this.pendingIds.add(uuid);
+    
+    // Reset timer (Debounce)
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.processQueue(), DEBOUNCE_TIME);
   }
 
-  // [CORE LOGIC]: Thuật toán Cộng hưởng (Resonance)
-  private async runResonance(uuid: string, type: EntityType, content: string, parentId?: string) {
-    console.log(`[ECHO] Running resonance for: ${uuid}`);
-    const keywords = extractKeywords(content);
-    const linkedIds = new Set<string>();
+  private async processQueue() {
+    const idsToScan = Array.from(this.pendingIds);
+    this.pendingIds.clear();
 
-    // LAYER 1: STRUCTURAL (Cấu trúc)
-    if (parentId) linkedIds.add(parentId);
+    console.log(`[ECHO] Scanning resonance for ${idsToScan.length} items...`);
 
-    // LAYER 2: TEMPORAL (Thời gian ±5 phút)
-    // Query items created around NOW (chấp nhận sai số nhỏ vì logic chạy sau 4s)
-    const now = Date.now();
-    const timeWindow = 5 * 60 * 1000; // 5 mins
-    
-    // Helper function để query temporal (quét cả tasks và thoughts)
-    const findTemporal = async (table: any) => {
-      return await table
-        .where('createdAt')
-        .between(now - timeWindow, now + timeWindow)
-        .filter((item: any) => item.uuid !== uuid) // Trừ chính nó
-        .toArray();
-    };
+    for (const id of idsToScan) {
+      await this.findResonance(id);
+    }
+  }
 
-    const [tempTasks, tempThoughts] = await Promise.all([
-      findTemporal(db.tasks),
-      findTemporal(db.thoughts)
-    ]);
-    
-    [...tempTasks, ...tempThoughts].forEach(item => linkedIds.add(item.uuid));
+  private async findResonance(targetId: string) {
+    // 1. Lấy bản ghi gốc
+    const target = await db.tasks.get({ uuid: targetId }) || await db.thoughts.get({ uuid: targetId });
+    if (!target) return;
 
-    // LAYER 3: SEMANTIC (Ngữ nghĩa)
-    if (keywords.length >= 2) {
-      // Helper function để query semantic với Sampling
-      const findSemantic = async (table: any) => {
-        // [PERFORMANCE] Sampling: Lấy 1000 items mới nhất
-        const recentItems = await table.orderBy('createdAt').reverse().limit(MAX_SAMPLE_SIZE).toArray();
+    const keywords = extractKeywords(target.content);
+    const relatedIds: Set<string> = new Set(target.linkedIds || []);
+
+    // 2. Quét toàn bộ DB (Trong thực tế sẽ dùng Index để tối ưu)
+    // Ở đây demo quét 100 item gần nhất để tìm Temporal & Semantic
+    const recentItems = [
+      ...(await db.tasks.orderBy('createdAt').reverse().limit(100).toArray()),
+      ...(await db.thoughts.orderBy('createdAt').reverse().limit(100).toArray())
+    ];
+
+    for (const item of recentItems) {
+      if (item.uuid === target.uuid) continue; // Bỏ qua chính nó
+
+      let score = 0;
+
+      // --- LAYER 1: STRUCTURAL (Parent) ---
+      if (target.parentId === item.uuid || item.parentId === target.uuid) {
+        score += 100; // Hard link
+      }
+
+      // --- LAYER 2: TEMPORAL (±5 mins) ---
+      const timeDiff = Math.abs(target.createdAt - item.createdAt);
+      if (timeDiff <= TEMPORAL_WINDOW) {
+        score += 50; // Soft link
+      }
+
+      // --- LAYER 3: SEMANTIC (Keyword Overlap) ---
+      const itemKeywords = extractKeywords(item.content);
+      const overlap = keywords.filter(k => itemKeywords.includes(k));
+      if (overlap.length >= 2) { // Trùng ít nhất 2 từ khóa
+        score += 20 * overlap.length;
+      }
+
+      // KẾT LUẬN: Nếu đủ mạnh thì liên kết
+      if (score >= 40) { // Ngưỡng tối thiểu
+        relatedIds.add(item.uuid);
         
-        return recentItems.filter((item: any) => {
-           if (item.uuid === uuid) return false;
-           // Intersection logic
-           const overlap = item.tags?.filter((t: string) => keywords.includes(t));
-           return overlap && overlap.length >= 2;
-        });
-      };
-
-      const [semTasks, semThoughts] = await Promise.all([
-        findSemantic(db.tasks),
-        findSemantic(db.thoughts)
-      ]);
-
-      [...semTasks, ...semThoughts].forEach(item => linkedIds.add(item.uuid));
+        // Link 2 chiều (Backlink)
+        if (!item.linkedIds.includes(target.uuid)) {
+            await this.updateLinks(item, target.uuid);
+        }
+      }
     }
 
-    // [OUTPUT]: Cập nhật vào DB (Side Effect)
-    const table = type === 'task' ? db.tasks : db.thoughts;
-    
-    await table.where('uuid').equals(uuid).modify({
-      tags: keywords,
-      linkedIds: Array.from(linkedIds),
-      // updated_at không đổi để tránh trigger vòng lặp vô tận nếu có logic watch
-    });
+    // Cập nhật Target nếu có link mới
+    if (relatedIds.size > (target.linkedIds?.length || 0)) {
+        await this.updateLinks(target, ...Array.from(relatedIds));
+        console.log(`[ECHO] Linked ${target.content} <--> ${relatedIds.size} items`);
+    }
+  }
 
-    console.log(`[ECHO] Connected ${uuid} to ${linkedIds.size} nodes.`);
-    
-    // TODO: Trigger CME Engine (CPI Score) ở đây
+  // Helper cập nhật DB an toàn
+  private async updateLinks(item: any, ...newLinks: string[]) {
+    const table = item.type === 'task' ? db.tasks : db.thoughts;
+    const uniqueLinks = Array.from(new Set([...(item.linkedIds || []), ...newLinks]));
+    await table.update(item.id, { linkedIds: uniqueLinks });
   }
 }
 

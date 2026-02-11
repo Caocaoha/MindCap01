@@ -1,44 +1,93 @@
 // src/services/echo/echoService.ts
-import { db } from '../../database/db';
-import { EchoEngine } from './echoEngine';
-import { extractKeywords } from '../../utils/keywordExtractor';
-import { useUserStore } from '../../store/userStore';
+import { db, EntityType } from '../../database/db';
+import { extractKeywords } from './keywordExtractor';
+import { ECHO_DEBOUNCE_MS, MAX_SAMPLE_SIZE } from './constants';
 
-export class EchoService {
-  /**
-   * Hàm "Kết nối" chính - Chạy mỗi khi có Entry mới được tạo
-   */
-  static async connect(entityId: string, type: 'task' | 'thought') {
+class EchoService {
+  private timers: Map<string, NodeJS.Timeout> = new Map();
+
+  // [ENTRY POINT]: Hàm gọi từ UI/Component
+  public scheduleConnection(uuid: string, type: EntityType, content: string, parentId?: string) {
+    // 1. Debounce Logic: Xóa timer cũ nếu có
+    if (this.timers.has(uuid)) {
+      clearTimeout(this.timers.get(uuid));
+    }
+
+    // 2. Thiết lập timer mới (4s)
+    const timer = setTimeout(() => {
+      this.runResonance(uuid, type, content, parentId);
+      this.timers.delete(uuid);
+    }, ECHO_DEBOUNCE_MS);
+
+    this.timers.set(uuid, timer);
+  }
+
+  // [CORE LOGIC]: Thuật toán Cộng hưởng (Resonance)
+  private async runResonance(uuid: string, type: EntityType, content: string, parentId?: string) {
+    console.log(`[ECHO] Running resonance for: ${uuid}`);
+    const keywords = extractKeywords(content);
+    const linkedIds = new Set<string>();
+
+    // LAYER 1: STRUCTURAL (Cấu trúc)
+    if (parentId) linkedIds.add(parentId);
+
+    // LAYER 2: TEMPORAL (Thời gian ±5 phút)
+    // Query items created around NOW (chấp nhận sai số nhỏ vì logic chạy sau 4s)
+    const now = Date.now();
+    const timeWindow = 5 * 60 * 1000; // 5 mins
+    
+    // Helper function để query temporal (quét cả tasks và thoughts)
+    const findTemporal = async (table: any) => {
+      return await table
+        .where('createdAt')
+        .between(now - timeWindow, now + timeWindow)
+        .filter((item: any) => item.uuid !== uuid) // Trừ chính nó
+        .toArray();
+    };
+
+    const [tempTasks, tempThoughts] = await Promise.all([
+      findTemporal(db.tasks),
+      findTemporal(db.thoughts)
+    ]);
+    
+    [...tempTasks, ...tempThoughts].forEach(item => linkedIds.add(item.uuid));
+
+    // LAYER 3: SEMANTIC (Ngữ nghĩa)
+    if (keywords.length >= 2) {
+      // Helper function để query semantic với Sampling
+      const findSemantic = async (table: any) => {
+        // [PERFORMANCE] Sampling: Lấy 1000 items mới nhất
+        const recentItems = await table.orderBy('createdAt').reverse().limit(MAX_SAMPLE_SIZE).toArray();
+        
+        return recentItems.filter((item: any) => {
+           if (item.uuid === uuid) return false;
+           // Intersection logic
+           const overlap = item.tags?.filter((t: string) => keywords.includes(t));
+           return overlap && overlap.length >= 2;
+        });
+      };
+
+      const [semTasks, semThoughts] = await Promise.all([
+        findSemantic(db.tasks),
+        findSemantic(db.thoughts)
+      ]);
+
+      [...semTasks, ...semThoughts].forEach(item => linkedIds.add(item.uuid));
+    }
+
+    // [OUTPUT]: Cập nhật vào DB (Side Effect)
     const table = type === 'task' ? db.tasks : db.thoughts;
-    const item = await table.get(entityId);
     
-    if (!item) return;
-
-    // 1. Trích xuất từ khóa và lưu vào tags (Indexing)
-    const keywords = extractKeywords(item.content);
-    
-    // 2. Tìm liên kết thời gian (Cấp 2)
-    const temporalLinks = await EchoEngine.findTemporalLinks(item.id, item.createdAt);
-    
-    // 3. Tìm liên kết ngữ nghĩa (Cấp 3)
-    const semanticLinks = await EchoEngine.findSemanticLinks(item.id, keywords);
-
-    // 4. Hợp nhất và loại bỏ trùng lặp
-    const allLinks = Array.from(new Set([
-      ...(item.linkedIds || []),
-      ...temporalLinks,
-      ...semanticLinks
-    ]));
-
-    // 5. Cập nhật ngược lại Database
-    await table.update(entityId, {
+    await table.where('uuid').equals(uuid).modify({
       tags: keywords,
-      linkedIds: allLinks
+      linkedIds: Array.from(linkedIds),
+      // updated_at không đổi để tránh trigger vòng lặp vô tận nếu có logic watch
     });
 
-    // 6. Trigger tính toán lại CPI (Cross-Pollination Index) trong Gamification
-    // CPI = (Links_Explicit*3 + Links_Semantic*2 + Links_Temporal*1) / Total
-    // Hàm này đã được quy hoạch trong SVC_CME
-    console.log(`[ECHO] Connected ${entityId} with ${allLinks.length} nodes.`);
+    console.log(`[ECHO] Connected ${uuid} to ${linkedIds.size} nodes.`);
+    
+    // TODO: Trigger CME Engine (CPI Score) ở đây
   }
 }
+
+export const echoService = new EchoService();

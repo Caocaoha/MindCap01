@@ -1,22 +1,27 @@
+// src/store/ui-store.ts
 import { create } from 'zustand';
 
-type TabType = 'saban' | 'mind' | 'journey';
+interface UiState {
+  isSidebarOpen: boolean;
+  isFocusModeActive: boolean;
+  isTyping: boolean;
+  isInputFocused: boolean; // [NEW] Trạng thái Input nhảy lên Top
 
-interface UIStore {
-  activeTab: TabType;
-  setActiveTab: (tab: TabType) => void;
-  
-  isInputMode: boolean;
-  setInputMode: (isInput: boolean) => void;
-  
-  toggleInputMode: () => void;
+  // Actions
+  toggleSidebar: () => void;
+  setFocusMode: (isActive: boolean) => void;
+  setTyping: (isTyping: boolean) => void;
+  setInputFocused: (isFocused: boolean) => void; // [NEW]
 }
 
-export const useUIStore = create<UIStore>((set) => ({
-  activeTab: 'mind', // Mặc định vào màn hình chính
-  setActiveTab: (tab) => set({ activeTab: tab }),
-  
-  isInputMode: false,
-  setInputMode: (isInput) => set({ isInputMode: isInput }),
-  toggleInputMode: () => set((state) => ({ isInputMode: !state.isInputMode })),
+export const useUiStore = create<UiState>((set) => ({
+  isSidebarOpen: false,
+  isFocusModeActive: false,
+  isTyping: false,
+  isInputFocused: false,
+
+  toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
+  setFocusMode: (isActive) => set({ isFocusModeActive: isActive }),
+  setTyping: (isTyping) => set({ isTyping }),
+  setInputFocused: (isFocused) => set({ isInputFocused: isFocused }),
 }));

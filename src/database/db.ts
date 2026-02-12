@@ -1,5 +1,6 @@
 // src/database/db.ts
 import Dexie, { type Table } from 'dexie';
+import { Entry } from './types';
 import type { ITask, IThought, IMood, IUserProfile } from './types';
 
 // [CORE]: Tầng dữ liệu cơ sở sử dụng Dexie.js 
@@ -17,6 +18,7 @@ export class MindCapDatabase extends Dexie {
     this.version(1).stores({
       // Module Input & Focus & Saban
       tasks: '++id, status, createdAt, isFocusMode, scheduledFor, *tags', 
+      entries: '++id, createdAt, type, label',
       
       // Module Journey & Input
       thoughts: '++id, type, createdAt',

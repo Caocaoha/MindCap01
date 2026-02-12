@@ -1,5 +1,14 @@
 // src/database/types.ts
 
+export interface Entry {
+    id?: number;
+    content: string;
+    type: 'task' | 'mood';
+    label: string;
+    linkedIds: number[];
+    createdAt: number;
+}
+
 // Định nghĩa kiểu dữ liệu cho Task (Nhiệm vụ)
 export interface ITask {
     id?: number; // Auto-increment

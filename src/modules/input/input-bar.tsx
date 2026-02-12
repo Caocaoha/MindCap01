@@ -1,179 +1,95 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useJourneyStore } from '../../store/journey-store';
-import { useUiStore } from '../../store/ui-store';
+import React, { useState, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { GestureButton } from './components/gesture-button';
+import { useIdentityStore } from '../identity/identity-store';
 import { db } from '../../database/db';
-import { nlpEngine } from '../../utils/nlp-engine';
-import { GestureButton, Zone } from './components/gesture-button';
-import { Plus, CheckCircle2, Zap, AlertTriangle, AlertOctagon, Heart } from 'lucide-react';
-
-// --- CONFIGURATION ZONES ---
-
-// X-Rail (4 Góc) cho Task
-const TASK_ZONES: Zone[] = [
-  { id: 'urgent', x: -1, y: -1, label: 'Urgent', color: '#f59e0b', baseIcon: '⚡', iconLevel1: <AlertTriangle size={20}/>, iconLevel2: <AlertTriangle size={24}/> },
-  { id: 'normal', x: 1, y: -1, label: 'Normal', color: '#3b82f6', baseIcon: '🔵', iconLevel1: <CheckCircle2 size={20}/>, iconLevel2: <CheckCircle2 size={24}/> },
-  { id: 'needed', x: -1, y: 1, label: 'Needed', color: '#8b5cf6', baseIcon: '🟣', iconLevel1: <Zap size={20}/>, iconLevel2: <Zap size={24}/> },
-  { id: 'critical', x: 1, y: 1, label: 'Critical', color: '#ef4444', baseIcon: '🔴', iconLevel1: <AlertOctagon size={20}/>, iconLevel2: <AlertOctagon size={24}/> },
-];
-
-// T-Rail (Bỏ phải) cho Mood - Có Progressive Icons
-const MOOD_ZONES: Zone[] = [
-  // UP: Happy
-  { id: 'happy', x: 0, y: -1, label: 'Happy', color: '#10b981', 
-    baseIcon: '⬆️', iconLevel1: '🙂', iconLevel2: '😍' 
-  },
-  // DOWN: Sad
-  { id: 'sad', x: 0, y: 1, label: 'Sad', color: '#6366f1', 
-    baseIcon: '⬇️', iconLevel1: '🙁', iconLevel2: '😭' 
-  },
-  // LEFT: Neutral
-  { id: 'neutral', x: -1, y: 0, label: 'Neutral', color: '#a855f7', // Tím
-    baseIcon: '⬅️', iconLevel1: '😐', iconLevel2: '🤔' 
-  },
-];
+import { useUIStore } from '../../store/ui-store'; // Đã sửa thành UI viết hoa
 
 export const InputBar: React.FC = () => {
   const [content, setContent] = useState('');
-  
-  // State quản lý việc làm mờ đối thủ
-  const [isTaskDragging, setIsTaskDragging] = useState(false);
-  const [isMoodDragging, setIsMoodDragging] = useState(false);
-
+  const [isDragging, setIsDragging] = useState(false);
+  const { isInputMode, setInputMode } = useUIStore(); // Đã sửa thành UI viết hoa
+  const { setMood } = useIdentityStore();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { addEntry } = useJourneyStore();
-  const { setInputMode, isInputMode } = useUiStore();
 
-  // Resize Textarea logic
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+  const handleSave = async (type: 'task' | 'mood', label: string) => {
+    if (type === 'task' && !content.trim()) return;
+
+    // db.entries giờ đây đã được TypeScript nhận diện nhờ file db.ts ở trên
+    const lastEntry = await db.entries.orderBy('createdAt').last();
+    const linkedIds: number[] = [];
+
+    if (lastEntry && lastEntry.createdAt) {
+      const timeDiff = Date.now() - lastEntry.createdAt;
+      if (timeDiff < 5 * 60 * 1000) {
+        linkedIds.push(lastEntry.id!);
+      }
     }
-  }, [content]);
 
-  const processSubmission = async (type: 'task' | 'mood', zoneId: string) => {
-    const rawText = content.trim();
-    // Logic xử lý submit (giữ nguyên như trước, chỉ cập nhật icon/score map nếu cần)
-    const now = new Date();
+    const entryData = {
+      content: content.trim(),
+      type,
+      label,
+      linkedIds,
+      createdAt: Date.now(),
+    };
+
+    await db.entries.add(entryData);
     
-    if (type === 'task') {
-       if (!rawText) return;
-       const nlpData = nlpEngine.extractTokens(rawText);
-       // ... Logic Echo Linker ...
-       const newTask = {
-         title: nlpData.cleanContent,
-         status: 'pending',
-         createdAt: now,
-         priority: zoneId,
-         tags: [...nlpData.tags, zoneId],
-         isFocusMode: zoneId === 'critical',
-         frequency: 'ONCE', streakCurrent: 0, streakRecoveryCount: 0
-       };
-       const id = await db.tasks.add(newTask as any);
-       addEntry({ ...newTask, id } as any);
-    } else {
-       // Mood Logic
-       const scoreMap: Record<string, number> = { 'happy': 2, 'sad': -2, 'neutral': 0 };
-       const newMood = {
-         score: scoreMap[zoneId] || 0,
-         label: zoneId,
-         note: rawText,
-         createdAt: now
-       };
-       await db.moods.add(newMood);
-    }
-
-    // Reset
+    if (type === 'mood') setMood(label);
+    
     setContent('');
     setInputMode(false);
-    textareaRef.current?.blur();
+    if (textareaRef.current) textareaRef.current.blur();
   };
 
   return (
-    // CONTAINER: Vị trí thay đổi dựa trên isInputMode
-    // - isInputMode: Fixed top (Bám Header)
-    // - !isInputMode: Absolute bottom (Bám Footer)
-    <div 
-      className={`
-        w-full px-4 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]
-        ${isInputMode ? 'fixed top-20 z-50' : 'absolute bottom-4 z-10'}
-      `}
+    <motion.div
+      layout
+      animate={{
+        bottom: isInputMode ? 'auto' : '1.5rem',
+        top: isInputMode ? '1rem' : 'auto',
+        width: isInputMode ? '95%' : '90%',
+      }}
+      className="fixed left-1/2 -translate-x-1/2 z-50 bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl p-3"
     >
-      <div className="relative w-full max-w-2xl mx-auto">
-        
-        {/* 1. TEXTAREA CONTAINER */}
-        <div className={`
-          bg-white rounded-2xl shadow-xl overflow-hidden border border-indigo-50 transition-all duration-300
-          ${isMoodDragging ? 'opacity-30 scale-95 blur-[1px]' : 'opacity-100 scale-100'} 
-        `}>
-          <textarea
-            ref={textareaRef}
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            onFocus={() => setInputMode(true)}
-            onBlur={() => {
-              // Delay nhỏ để tránh flicker khi touch
-              if (!content) setTimeout(() => setInputMode(false), 200);
-            }}
-            placeholder={isInputMode ? "Type..." : "Tap to write"}
-            className="w-full p-4 text-lg text-gray-800 placeholder:text-gray-400 focus:outline-none resize-none min-h-[60px] max-h-[160px]"
-          />
-        </div>
+      <div className="relative flex flex-col gap-3">
+        <motion.textarea
+          ref={textareaRef}
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          onFocus={() => setInputMode(true)}
+          placeholder="What's on your mind?"
+          animate={{
+            opacity: isDragging ? 0.2 : 1,
+            filter: isDragging ? 'blur(2px)' : 'blur(0px)',
+          }}
+          className="w-full bg-transparent text-white resize-none outline-none min-h-[80px] p-2 text-lg"
+        />
 
-        {/* 2. BUTTONS ROW (Nằm dưới Textarea) */}
-        {/* Chỉ hiện rõ khi có nội dung hoặc đang focus, mờ đi khi idle */}
-        <div className={`
-          flex items-start mt-4 transition-all duration-300
-          ${isInputMode || content ? 'opacity-100 translate-y-0' : 'opacity-80 translate-y-2'}
-        `}>
-          
-          {/* TASK BUTTON (Giữa) */}
-          <div className="flex-1 flex justify-center">
-            <GestureButton
-              baseIcon={<Plus size={28} strokeWidth={2.5} />}
-              baseColor="#4f46e5" // Indigo
-              zones={TASK_ZONES}
-              onDragStateChange={setIsTaskDragging}
-              onTrigger={(zone) => processSubmission('task', zone)}
-              // Bị mờ khi nút Mood đang kéo
-              isDimmed={isMoodDragging}
-            />
-          </div>
+        <AnimatePresence>
+          {isInputMode && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              className="flex justify-around items-center px-2 py-2"
+            >
+              <GestureButton
+                type="task"
+                onAction={(label) => handleSave('task', label)}
+                onDragStateChange={setIsDragging}
+              />
 
-          {/* MOOD / TEXT BUTTON (Bên Phải) */}
-          <div className="flex-none mr-2">
-            <GestureButton
-              baseIcon={<Heart size={24} />}
-              baseColor="#ec4899" // Pink
-              zones={MOOD_ZONES}
-              onDragStateChange={setIsMoodDragging}
-              onTrigger={(zone) => processSubmission('mood', zone)}
-              // Bị mờ khi nút Task đang kéo
-              isDimmed={isTaskDragging}
-            />
-          </div>
-
-        </div>
-
-        {/* Gợi ý chữ (Helper Text) khi kéo */}
-        {(isTaskDragging || isMoodDragging) && (
-           <div className="absolute -bottom-10 left-0 right-0 text-center text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">
-             {isTaskDragging ? 'Release to select Priority' : 'Release to log Mood'}
-           </div>
-        )}
-
+              <GestureButton
+                type="mood"
+                onAction={(label) => handleSave('mood', label)}
+                onDragStateChange={setIsDragging}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
-      
-      {/* OVERLAY BACKDROP (Khi Input Mode -> Che mờ nội dung phía sau) */}
-      {isInputMode && (
-         <div 
-           className="fixed inset-0 bg-white/80 backdrop-blur-sm -z-10 animate-in fade-in duration-300" 
-           onClick={() => {
-             setInputMode(false);
-             textareaRef.current?.blur();
-           }}
-         />
-      )}
-    </div>
+    </motion.div>
   );
 };

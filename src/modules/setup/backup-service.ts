@@ -1,93 +1,96 @@
-import { db } from '../../database/db'; // Import instance Dexie của bạn
-import { format } from 'date-fns'; // Hoặc dùng native Date nếu chưa cài date-fns
+// src/modules/setup/backup-service.ts
+import { db } from '../../database/db';
 
 export interface BackupData {
   version: string;
   timestamp: string;
-  data: {
-    [tableName: string]: any[];
-  };
+  data: { [tableName: string]: any[] };
 }
 
-// 1. EXPORT: Lấy toàn bộ dữ liệu ra JSON
-export const exportData = async (): Promise<void> => {
+/**
+ * CORE: Chỉ lấy dữ liệu thô (Raw Data)
+ * Dùng cho cả Download Local và Upload Drive
+ */
+export const generateBackupData = async (): Promise<BackupData> => {
+  const allTables = db.tables;
+  const data: any = {};
+
+  for (const table of allTables) {
+    data[table.name] = await table.toArray();
+  }
+
+  return {
+    version: '3.6', // Mind Cap v3.6
+    timestamp: new Date().toISOString(),
+    data: data,
+  };
+};
+
+/**
+ * ACTION: Tải file .json về máy (Local Download)
+ */
+export const downloadBackupFile = async () => {
   try {
-    const allTables = db.tables;
-    const data: any = {};
-
-    // Lặp qua từng bảng để lấy dữ liệu
-    for (const table of allTables) {
-      data[table.name] = await table.toArray();
-    }
-
-    const backup: BackupData = {
-      version: '3.5', // Theo version hiện tại
-      timestamp: new Date().toISOString(),
-      data: data,
-    };
-
-    // Tạo Blob và trigger download
+    const backup = await generateBackupData();
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     
     const a = document.createElement('a');
     a.href = url;
-    a.download = `mindcap_backup_${format(new Date(), 'yyyy-MM-dd_HH-mm')}.json`;
+    a.download = `mindcap_backup_${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(a);
     a.click();
     
-    // Cleanup
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-
   } catch (error) {
-    console.error("Export Failed:", error);
+    console.error("Export Local Failed:", error);
     throw new Error("Không thể tạo file backup.");
   }
 };
 
-// 2. IMPORT: Đọc file JSON và ghi đè vào DB
-export const importData = async (file: File): Promise<void> => {
+/**
+ * CORE: Nhập dữ liệu từ Object (Dùng cho cả Local File và Drive)
+ */
+export const restoreFromData = async (backup: BackupData): Promise<void> => {
+  if (!backup.data || !backup.version) {
+    throw new Error("Cấu trúc file backup không hợp lệ.");
+  }
+
+  await db.transaction('rw', db.tables, async () => {
+    // 1. Xóa sạch dữ liệu cũ (Reset)
+    for (const table of db.tables) {
+      await table.clear(); 
+    }
+    
+    // 2. Nạp dữ liệu mới
+    const tableNames = Object.keys(backup.data);
+    for (const tableName of tableNames) {
+      const table = db.table(tableName);
+      if (table) {
+        await table.bulkAdd(backup.data[tableName]);
+      }
+    }
+  });
+};
+
+/**
+ * ACTION: Đọc file từ input (Local Import)
+ */
+export const parseBackupFile = async (file: File): Promise<void> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-
     reader.onload = async (e) => {
       try {
         const jsonContent = e.target?.result as string;
         if (!jsonContent) throw new Error("File rỗng");
-
         const backup: BackupData = JSON.parse(jsonContent);
-
-        // Validation cơ bản
-        if (!backup.data || !backup.version) {
-          throw new Error("File backup không hợp lệ");
-        }
-
-        // Transaction: Xóa cũ -> Ghi mới (Atomic)
-        await db.transaction('rw', db.tables, async () => {
-          // Xóa dữ liệu hiện tại (Nguy hiểm nhưng cần thiết để tránh trùng ID)
-          // Nếu muốn an toàn hơn, có thể thêm logic "Merge", nhưng "Replace" sạch sẽ hơn cho Backup.
-          for (const table of db.tables) {
-            await table.clear(); 
-          }
-
-          // Nhập dữ liệu mới
-          const tableNames = Object.keys(backup.data);
-          for (const tableName of tableNames) {
-            const table = db.table(tableName);
-            if (table) {
-              await table.bulkAdd(backup.data[tableName]);
-            }
-          }
-        });
-
+        await restoreFromData(backup);
         resolve();
       } catch (error) {
-        console.error("Import Failed:", error);
         reject(error);
       }
     };
-
     reader.onerror = () => reject(new Error("Lỗi đọc file"));
     reader.readAsText(file);
   });

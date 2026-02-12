@@ -1,18 +1,22 @@
 import { create } from 'zustand';
 
-interface UiState {
-  isFocusSessionActive: boolean;
-  isInputMode: boolean; // [NEW] Trạng thái đang nhập liệu
+type TabType = 'saban' | 'mind' | 'journey';
+
+interface UIStore {
+  activeTab: TabType;
+  setActiveTab: (tab: TabType) => void;
   
-  // Actions
-  setFocusSessionActive: (isActive: boolean) => void;
-  setInputMode: (isInput: boolean) => void; // [NEW]
+  isInputMode: boolean;
+  setInputMode: (isInput: boolean) => void;
+  
+  toggleInputMode: () => void;
 }
 
-export const useUiStore = create<UiState>((set) => ({
-  isFocusSessionActive: false,
-  isInputMode: false, // Mặc định là false
-
-  setFocusSessionActive: (isActive) => set({ isFocusSessionActive: isActive }),
+export const useUIStore = create<UIStore>((set) => ({
+  activeTab: 'mind', // Mặc định vào màn hình chính
+  setActiveTab: (tab) => set({ activeTab: tab }),
+  
+  isInputMode: false,
   setInputMode: (isInput) => set({ isInputMode: isInput }),
+  toggleInputMode: () => set((state) => ({ isInputMode: !state.isInputMode })),
 }));

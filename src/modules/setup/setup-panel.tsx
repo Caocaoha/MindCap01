@@ -1,70 +1,107 @@
-import React, { useState, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { exportData, importData } from './backup-service';
+// src/modules/setup/setup-panel.tsx
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { downloadBackupFile, parseBackupFile } from './backup-service';
+import { initGoogleClient, syncToDrive, loadFromDrive } from './google-drive';
 
-export const SetupPanel = () => {
-  const [isImporting, setIsImporting] = useState(false);
+export const SetupPanel = ({ onClose }: { onClose: () => void }) => {
+  const [status, setStatus] = useState<string>('');
+  const [isBusy, setIsBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Xử lý khi chọn file
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  useEffect(() => {
+    try { initGoogleClient(); } catch (e) { console.warn("Google API not loaded"); }
+  }, []);
 
-    if (window.confirm("CẢNH BÁO: Hành động này sẽ XÓA dữ liệu hiện tại và thay thế bằng bản backup. Bạn có chắc không?")) {
-      try {
-        setIsImporting(true);
-        await importData(file);
-        alert("Khôi phục thành công! Ứng dụng sẽ tải lại.");
-        window.location.reload(); // Reload để app cập nhật state mới từ DB
-      } catch (error) {
-        alert("Lỗi khôi phục: " + error);
-      } finally {
-        setIsImporting(false);
+  const handleDriveAction = async (action: 'save' | 'load') => {
+    setIsBusy(true);
+    setStatus(action === 'save' ? 'Đang đồng bộ...' : 'Đang tải về...');
+    try {
+      if (action === 'save') {
+        await syncToDrive();
+        setStatus('✅ Đã lưu lên Drive!');
+      } else {
+        if (!confirm("Cảnh báo: Dữ liệu hiện tại sẽ bị thay thế. Tiếp tục?")) return;
+        await loadFromDrive();
+        setStatus('✅ Khôi phục thành công! Reloading...');
+        setTimeout(() => window.location.reload(), 1000);
       }
+    } catch (err) {
+      setStatus('❌ Lỗi: ' + (err as Error).message);
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleLocalImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!confirm("Ghi đè dữ liệu bằng file này?")) return;
+    
+    try {
+      await parseBackupFile(file);
+      alert("Xong! Tải lại ứng dụng.");
+      window.location.reload();
+    } catch (err) {
+      alert("Lỗi file.");
     }
   };
 
   return (
-    <div className="p-6 flex flex-col gap-6 bg-zinc-900 text-zinc-200 rounded-xl border border-zinc-800">
-      <h2 className="text-xl font-bold border-b border-zinc-700 pb-2">Data & Safety</h2>
+    <motion.div 
+      initial={{ x: 300 }} animate={{ x: 0 }} exit={{ x: 300 }}
+      className="fixed top-0 right-0 h-full w-80 bg-zinc-900 border-l border-zinc-800 p-6 z-50 shadow-2xl"
+    >
+      <div className="flex justify-between mb-6">
+        <h2 className="text-xl font-bold text-zinc-100">Setup & Data</h2>
+        <button onClick={onClose} className="text-zinc-500 hover:text-white">✕</button>
+      </div>
+
+      <div className="space-y-6">
+        {/* Google Drive Section */}
+        <div className="p-4 bg-zinc-800/50 rounded-xl border border-zinc-700/50">
+          <h3 className="text-sm font-semibold text-blue-400 mb-3 uppercase">Google Drive</h3>
+          <div className="flex flex-col gap-2">
+            <button 
+              onClick={() => handleDriveAction('save')} disabled={isBusy}
+              className="bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg text-sm font-medium transition"
+            >
+              ☁️ Sync to Cloud
+            </button>
+            <button 
+              onClick={() => handleDriveAction('load')} disabled={isBusy}
+              className="bg-zinc-700 hover:bg-zinc-600 text-zinc-200 py-2 rounded-lg text-sm transition"
+            >
+              📥 Restore from Cloud
+            </button>
+          </div>
+          {status && <div className="mt-2 text-xs text-center text-zinc-300">{status}</div>}
+        </div>
+
+        {/* Local Section */}
+        <div className="p-4 bg-zinc-800/50 rounded-xl border border-zinc-700/50">
+          <h3 className="text-sm font-semibold text-green-400 mb-3 uppercase">Local File</h3>
+          <div className="flex flex-col gap-2">
+            <button 
+              onClick={() => downloadBackupFile()}
+              className="bg-zinc-700 hover:bg-zinc-600 text-zinc-200 py-2 rounded-lg text-sm transition"
+            >
+              💾 Save .json
+            </button>
+            <input type="file" ref={fileInputRef} onChange={handleLocalImport} className="hidden" accept=".json"/>
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="bg-zinc-700 hover:bg-zinc-600 text-zinc-200 py-2 rounded-lg text-sm transition"
+            >
+              📂 Open .json
+            </button>
+          </div>
+        </div>
+      </div>
       
-      {/* EXPORT SECTION */}
-      <div className="flex flex-col gap-2">
-        <label className="text-sm text-zinc-400">Tạo bản sao lưu về máy</label>
-        <motion.button
-          whileTap={{ scale: 0.95 }}
-          onClick={() => exportData()}
-          className="bg-zinc-800 hover:bg-zinc-700 text-white py-3 px-4 rounded-lg flex items-center justify-center gap-2 border border-zinc-600 transition-colors"
-        >
-          <span>📦</span> Tải xuống Backup (.json)
-        </motion.button>
+      <div className="absolute bottom-4 left-0 w-full text-center text-xs text-zinc-600">
+        Mind Cap v3.6 - Identity
       </div>
-
-      <div className="h-px bg-zinc-800 w-full" />
-
-      {/* IMPORT SECTION (DANGER ZONE) */}
-      <div className="flex flex-col gap-2">
-        <label className="text-sm text-red-400 font-medium">Khôi phục dữ liệu (Nguy hiểm)</label>
-        <p className="text-xs text-zinc-500">Dữ liệu hiện tại sẽ bị ghi đè hoàn toàn.</p>
-        
-        {/* Input file ẩn */}
-        <input 
-          type="file" 
-          ref={fileInputRef} 
-          onChange={handleFileChange} 
-          accept=".json" 
-          className="hidden" 
-        />
-
-        <motion.button
-          whileTap={{ scale: 0.95 }}
-          onClick={() => fileInputRef.current?.click()}
-          className="bg-red-900/30 hover:bg-red-900/50 text-red-200 border border-red-900/50 py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
-        >
-          {isImporting ? 'Đang xử lý...' : '⚠️ Nhập file Backup'}
-        </motion.button>
-      </div>
-    </div>
+    </motion.div>
   );
 };

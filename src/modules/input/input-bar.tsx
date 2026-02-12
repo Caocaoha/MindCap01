@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useJourneyStore } from '../../store/journey-store'; // [STATE]
-import { db } from '../../database/db'; // [CORE]
+import { useJourneyStore } from '../../store/journey-store';
+import { useUiStore } from '../../store/ui-store'; // [NEW]
+import { db } from '../../database/db';
 import type { ITask } from '../../database/types';
 
 export const InputBar: React.FC = () => {
@@ -8,8 +9,8 @@ export const InputBar: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   
-  // Lấy action từ Store
   const addEntryToStore = useJourneyStore((state) => state.addEntry);
+  const { setInputMode } = useUiStore(); // [NEW]
 
   // Auto-resize textarea
   useEffect(() => {
@@ -25,35 +26,31 @@ export const InputBar: React.FC = () => {
     setIsSubmitting(true);
     const rawText = content.trim();
     
-    // [VELOCITY LOOP - PHASE 1]: Ingestion
-    // Tạo object dữ liệu ban đầu
+    // Tạo object dữ liệu
     const newEntry: ITask = {
-      // id: để Dexie tự sinh (auto-increment)
       title: rawText,
-      status: 'pending', // Trạng thái chờ xử lý NLP
+      status: 'pending',
       createdAt: new Date(),
       isFocusMode: false,
-      tags: [], // Sẽ được Shadow Lane điền sau
+      frequency: 'ONCE',
+      tags: [],
+      streakCurrent: 0,
+      streakRecoveryCount: 0
     };
 
     try {
-      // [VELOCITY LOOP - PHASE 2]: Shadow Sync (Fast Lane)
-      // 1. Ghi vào DB (Source of Truth)
       const id = await db.tasks.add(newEntry);
-      
-      // 2. Cập nhật Store (Optimistic UI) để hiển thị ngay lập tức
-      // Gán ID vừa sinh ra từ DB để Store đồng bộ
       addEntryToStore({ ...newEntry, id });
-
-      // Reset UI
+      
       setContent('');
       if (textareaRef.current) textareaRef.current.style.height = 'auto';
       
-      console.log(`[Input] 🚀 Fast Lane: Entry ${id} created. Waiting for Shadow Lane...`);
+      // [OPTIONAL] Sau khi submit có thể giữ focus hoặc blur tùy trải nghiệm
+      // Ở đây ta blur để trả lại giao diện bình thường
+      textareaRef.current?.blur();
       
     } catch (error) {
       console.error("Failed to add entry:", error);
-      alert("Lỗi: Không thể lưu dữ liệu. Vui lòng kiểm tra lại.");
     } finally {
       setIsSubmitting(false);
     }
@@ -67,35 +64,37 @@ export const InputBar: React.FC = () => {
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto p-4 fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-md border-t border-gray-200 z-50">
-      <div className="relative">
+    <div className="w-full max-w-2xl mx-auto px-4">
+      <div className="relative shadow-lg rounded-xl bg-white border border-indigo-100">
         <textarea
           ref={textareaRef}
           value={content}
           onChange={(e) => setContent(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Nhập task, ý tưởng, hoặc cảm xúc... (Enter để gửi)"
-          className="w-full p-4 pr-12 rounded-xl border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none resize-none min-h-[56px] max-h-[200px] shadow-sm transition-all"
+          // [NEW] Logic Step-by-step Disclosure
+          onFocus={() => setInputMode(true)}
+          onBlur={() => {
+            // Delay nhỏ để tránh flicker nếu user click nút gửi (mất focus)
+            setTimeout(() => setInputMode(false), 200);
+          }}
+          placeholder="Bạn đang nghĩ gì? (Nhập task, idea...)"
+          className="w-full p-4 pr-12 rounded-xl focus:outline-none resize-none min-h-[56px] max-h-[150px] bg-transparent text-gray-700 placeholder:text-gray-400"
           disabled={isSubmitting}
         />
         
         <button
           onClick={handleSubmit}
           disabled={!content.trim() || isSubmitting}
-          className={`absolute right-3 bottom-3 p-2 rounded-lg transition-colors ${
+          className={`absolute right-2 bottom-2 p-2 rounded-lg transition-all duration-200 ${
             content.trim() 
-              ? 'bg-blue-600 text-white hover:bg-blue-700' 
-              : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              ? 'bg-indigo-600 text-white hover:bg-indigo-700 scale-100' 
+              : 'bg-transparent text-gray-300 scale-90'
           }`}
         >
-          {/* Icon Send đơn giản */}
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
           </svg>
         </button>
-      </div>
-      <div className="text-xs text-gray-400 mt-2 text-center">
-        Mind Cap v0.1 • Local-First • Zero-Network
       </div>
     </div>
   );

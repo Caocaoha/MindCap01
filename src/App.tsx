@@ -1,16 +1,17 @@
-// src/App.tsx
 import React, { useEffect, useState } from 'react';
 import { InputBar } from './modules/input/input-bar';
 import { JourneyList } from './modules/journey/journey-list';
-import { SabanBoard } from './modules/saban/saban-board'; // [NEW]
+import { SabanBoard } from './modules/saban/saban-board';
 import { initializeNlpListener } from './store/middleware/nlp-listener';
 
-function App() {
+// [FIX]: Chuyển thành Named Export 'export const App' để khớp với main.tsx
+export const App = () => {
   const [activeTab, setActiveTab] = useState<'journey' | 'saban'>('saban');
 
+  // [TRÁI TIM]: Khởi động "Ninja" lắng nghe NLP khi App start
   useEffect(() => {
-    const cleanup = initializeNlpListener();
-    return () => cleanup();
+    const cleanupListener = initializeNlpListener();
+    return () => cleanupListener();
   }, []);
 
   return (
@@ -45,6 +46,4 @@ function App() {
       </footer>
     </div>
   );
-}
-
-export default App;
+};

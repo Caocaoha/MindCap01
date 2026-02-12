@@ -1,33 +1,50 @@
-// src/App.tsx (Minh họa)
-const App = () => {
-  const [isDashboardOpen, setDashboardOpen] = useState(false);
-  const { currentQuestionIndex, hasCompletedOnboarding, isInCooldown } = useIdentityStore();
-  
-  // Logic tự động mở Overlay nhập liệu nếu chưa xong Onboarding
-  // (Chỉ mở khi user KHÔNG ở trong cooldown và CHƯA hoàn thành)
-  const showOnboardingOverlay = !hasCompletedOnboarding && !isInCooldown && !isDashboardOpen;
+// src/App.tsx
+import React, { useEffect, useState } from 'react';
+import { InputBar } from './modules/input/input-bar';
+import { JourneyList } from './modules/journey/journey-list';
+import { SabanBoard } from './modules/saban/saban-board'; // [NEW]
+import { initializeNlpListener } from './store/middleware/nlp-listener';
+
+function App() {
+  const [activeTab, setActiveTab] = useState<'journey' | 'saban'>('saban');
+
+  useEffect(() => {
+    const cleanup = initializeNlpListener();
+    return () => cleanup();
+  }, []);
 
   return (
-    <div>
-      <Header>
-        {/* Các nút khác... */}
-        <StarCompass onClick={() => setDashboardOpen(true)} />
-      </Header>
+    <div className="min-h-screen bg-gray-50 font-sans pb-24">
+      <header className="p-4 bg-white shadow-sm sticky top-0 z-10 flex justify-between items-center">
+        <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+          Mind Cap OS
+        </h1>
+        {/* Tab Switcher */}
+        <div className="flex bg-gray-100 p-1 rounded-lg">
+          <button 
+            onClick={() => setActiveTab('saban')}
+            className={`px-3 py-1 text-sm rounded-md transition-all ${activeTab === 'saban' ? 'bg-white shadow text-gray-800 font-medium' : 'text-gray-500'}`}
+          >
+            Saban (Brain)
+          </button>
+          <button 
+            onClick={() => setActiveTab('journey')}
+            className={`px-3 py-1 text-sm rounded-md transition-all ${activeTab === 'journey' ? 'bg-white shadow text-gray-800 font-medium' : 'text-gray-500'}`}
+          >
+            Journey (History)
+          </button>
+        </div>
+      </header>
 
-      <MainContent />
+      <main className="mt-4">
+        {activeTab === 'saban' ? <SabanBoard /> : <JourneyList />}
+      </main>
 
-      {/* 1. Dashboard (Thánh đường) - Mở khi click sao */}
-      <IdentityDashboard 
-        isOpen={isDashboardOpen} 
-        onClose={() => setDashboardOpen(false)} 
-      />
-
-      {/* 2. Onboarding Input (Phòng tối) - Mở tự động hoặc manual */}
-      {/* Lưu ý: Nếu user đang mở Dashboard thì không hiện cái này đè lên */}
-      <IdentityOverlay 
-        isOpen={showOnboardingOverlay} 
-        onClose={() => {/* Logic tạm đóng hoặc force user làm tiếp tuỳ bạn */}} 
-      />
+      <footer>
+        <InputBar />
+      </footer>
     </div>
   );
-};
+}
+
+export default App;

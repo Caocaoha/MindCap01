@@ -1,4 +1,3 @@
-// vite.config.ts
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -7,34 +6,30 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'prompt', // [Update Mechanism]: Hỏi trước khi update
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+      registerType: 'prompt', //  Hiển thị thông báo khi có bản cập nhật mới
+      injectRegister: 'auto',
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'], // Cache toàn bộ tài nguyên 
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.destination === 'document',
+            handler: 'CacheFirst', // Ưu tiên bộ nhớ đệm để tải tức thì 
+          }
+        ],
+        cleanupOutdatedCaches: true, // Xóa cache cũ để tránh xung đột 
+      },
       manifest: {
         name: 'Mind Cap',
         short_name: 'MindCap',
-        description: 'Personal Management OS with Living Memory',
-        theme_color: '#ffffff',
-        background_color: '#ffffff', // Monochrome style
-        display: 'standalone',
+        description: 'Personal Mind Operating System',
+        theme_color: '#000000',
+        background_color: '#000000',
+        display: 'standalone', //  Giao diện ứng dụng độc lập
         icons: [
-          { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' }
-        ]
-      },
-      workbox: {
-        // [Offline Strategy]: Cache First cho Assets/Fonts/Images
-        runtimeCaching: [
-          {
-            urlPattern: ({ request }) => request.destination === 'image',
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'images-cache',
-              expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 * 30 }, // 30 ngày
-            },
-          },
-          // JS/CSS assets mặc định được xử lý bởi StaleWhileRevalidate hoặc CacheFirst của VitePWA
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }
         ]
       }
     })
-  ],
+  ]
 });

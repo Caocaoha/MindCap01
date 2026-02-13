@@ -1,32 +1,33 @@
-// src/store/setting-store.ts
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 
 interface SettingState {
-  theme: 'light' | 'dark' | 'system';
-  enableAutoDelete: boolean; // Tính năng tự hủy dữ liệu
-  enableHaptic: boolean;     // Rung phản hồi
-
-  // Actions
-  setTheme: (theme: 'light' | 'dark' | 'system') => void;
-  toggleAutoDelete: () => void;
-  toggleHaptic: () => void;
+  lastOnlineTimestamp: number;
+  updateOnlineTimestamp: () => void;
+  isStorageAtRisk: () => boolean;
 }
 
-// Sử dụng persist middleware của Zustand để lưu setting vào localStorage
+/**
+ * [STATE]: Quản lý cấu hình và cơ chế sinh tồn dữ liệu 
+ */
 export const useSettingStore = create<SettingState>()(
   persist(
-    (set) => ({
-      theme: 'system',
-      enableAutoDelete: false,
-      enableHaptic: true,
+    (set, get) => ({
+      lastOnlineTimestamp: Date.now(),
 
-      setTheme: (theme) => set({ theme }),
-      toggleAutoDelete: () => set((state) => ({ enableAutoDelete: !state.enableAutoDelete })),
-      toggleHaptic: () => set((state) => ({ enableHaptic: !state.enableHaptic })),
+      updateOnlineTimestamp: () => set({ lastOnlineTimestamp: Date.now() }),
+
+      /**
+       * Kiểm tra nếu thời gian ngoại tuyến > 3 ngày 
+       */
+      isStorageAtRisk: () => {
+        const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+        return (Date.now() - get().lastOnlineTimestamp) > THREE_DAYS_MS;
+      }
     }),
     {
-      name: 'mind-cap-settings', // key trong localStorage
+      name: 'mind-cap-settings',
+      storage: createJSONStorage(() => localStorage), // Lưu trữ bền vững
     }
   )
 );

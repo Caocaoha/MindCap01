@@ -7,7 +7,7 @@ import { ITask } from '../database/types';
  * Tuân thủ tuyệt đối Master Doc v3.1
  */
 export interface JourneyState {
-  // --- Các tính năng hiện có ---
+  // --- Các tính năng hiện có (Bảo tồn 100%) ---
   viewMode: 'stats' | 'diary';
   searchQuery: string;
   setViewMode: (mode: 'stats' | 'diary') => void;
@@ -15,7 +15,7 @@ export interface JourneyState {
   calculateOpacity: (lastUpdate: number, isBookmarked?: boolean) => number;
   isDiaryEntry: (item: any) => boolean;
 
-  // --- Tính năng Task mới (Atomic) ---
+  // --- Tính năng Task (Tích hợp Dò lỗi chuyên sâu) ---
   tasks: ITask[];
   setTasks: (tasks: ITask[]) => void;
   updateTask: (id: number, updates: Partial<ITask>) => Promise<void>;
@@ -28,73 +28,116 @@ export const useJourneyStore = create<JourneyState>((set, get) => ({
   searchQuery: '',
   tasks: [],
 
-  // --- Logic hiện có (Bảo toàn 100%) ---
+  // --- Logic hiện có (Bảo tồn 100%) ---
   setViewMode: (mode) => set({ viewMode: mode }),
   setSearchQuery: (query) => set({ searchQuery: query }),
 
   /**
-   * Tính toán độ mờ Entropy ($Opacity = 1 - (Days/40)$)
+   * Tính toán độ mờ Entropy ($Opacity = 1 - (Days/40)$) [cite: 31, 47]
    */
   calculateOpacity: (lastUpdate, isBookmarked) => {
     if (isBookmarked) return 1; // Entropy Shield cho Hạt giống
     
     const diffDays = (Date.now() - lastUpdate) / (1000 * 60 * 60 * 24);
-    const opacity = 1 - (diffDays / 40); // 40 ngày tan rã theo journey-constants.ts
+    const opacity = 1 - (diffDays / 40); 
     
     return Math.max(0, Math.min(1, opacity));
   },
 
   /**
-   * Bộ lọc Diary: Loại bỏ các task 'backlog' không nằm trong tiêu điểm
+   * Bộ lọc Diary: Loại bỏ các task 'backlog' không nằm trong tiêu điểm [cite: 42]
    */
   isDiaryEntry: (item) => {
-    // Nếu là task, chỉ giữ lại những gì đã hoàn thành (done) hoặc đang focus
     if (item.status === 'backlog' && !item.isFocusMode) {
       return false;
     }
     return true;
   },
 
-  // --- Logic mới: Quản lý Task chuẩn Master Doc v3.1 ---
+  // --- Logic Task chuẩn Master Doc v3.1 + Diagnostic Trace ---
 
-  setTasks: (tasks) => set({ tasks }),
+  setTasks: (tasks) => {
+    console.log("MindCap Trace: setTasks called with", tasks.length, "items.");
+    set({ tasks: [...tasks] }); // Tạo tham chiếu mảng mới
+  },
 
   /**
-   * Cập nhật Task (Fast-lane + Shadow-sync)
+   * Cập nhật Task (Functional Update + Deep Logging)
    */
   updateTask: async (id, updates) => {
-    const allTasks = get().tasks;
-    const updatedAt = Date.now(); // Chuẩn number timestamp
+    const updatedAt = Date.now();
+    
+    console.group(`🚀 MindCap Trace: updateTask(ID: ${id})`);
+    console.log("Updates payload:", updates);
 
-    // 1. Fast-lane: Cập nhật UI ngay lập tức
-    set({
-      tasks: allTasks.map(t => t.id === id ? { ...t, ...updates, updatedAt } : t)
-    });
+    try {
+      // 1. Fast-lane (Zustand): Đảm bảo tạo tham chiếu Object mới [cite: 40]
+      set((state) => {
+        const index = state.tasks.findIndex(t => t.id === id);
+        if (index === -1) {
+          console.warn("❌ Trace Error: Task ID not found in Store!");
+          return state;
+        }
 
-    // 2. Shadow-lane: Ghi vào Dexie DB ngầm
-    await db.tasks.update(id, { ...updates, updatedAt });
+        const newTasks = [...state.tasks];
+        newTasks[index] = { ...newTasks[index], ...updates, updatedAt };
+        
+        console.log("Zustand State updated successfully.");
+        return { tasks: newTasks };
+      });
+
+      // 2. Shadow-lane (Dexie DB) [cite: 41, 53]
+      const dbResult = await db.tasks.update(id, { ...updates, updatedAt });
+      if (dbResult === 0) {
+        console.error("❌ Trace Error: Dexie update failed. ID might not exist in DB.");
+      } else {
+        console.log("Dexie DB committed successfully.");
+      }
+    } catch (err) {
+      console.error("❌ Trace Fatal Error:", err);
+    } finally {
+      console.groupEnd();
+    }
   },
 
   /**
    * Tăng số lượng thực hiện nguyên tử (Atomic Increment)
-   * Giải quyết lỗi "núm nhảy nhưng không tăng"
+   * Kèm theo ép kiểu Number tường minh [cite: 58-59]
    */
   incrementDoneCount: async (id) => {
     const task = get().tasks.find(t => t.id === id);
-    if (!task || task.status === 'done') return;
-
-    const nextDoneCount = (task.doneCount || 0) + 1;
-    const target = task.targetCount || 1; // Mặc định 1 nếu không có target
     
-    // Nếu đạt hoặc vượt mục tiêu, tự động chuyển trạng thái 'done'
+    console.group(`➕ MindCap Trace: incrementDoneCount(ID: ${id})`);
+    
+    if (!task) {
+      console.error("❌ Trace Error: Task not found in Store.");
+      console.groupEnd();
+      return;
+    }
+
+    if (task.status === 'done') {
+      console.warn("⚠️ Trace Warning: Task is already done. Ignoring increment.");
+      console.groupEnd();
+      return;
+    }
+
+    // Ép kiểu tường minh để tránh lỗi dữ liệu string
+    const currentDone = Number(task.doneCount || 0);
+    const target = Number(task.targetCount || 1);
+    const nextDoneCount = currentDone + 1;
+    
+    console.log(`Current: ${currentDone}, Target: ${target}, Next: ${nextDoneCount}`);
+
     const shouldComplete = nextDoneCount >= target;
+    const finalStatus = shouldComplete ? 'done' : task.status;
 
-    const updates: Partial<ITask> = {
+    console.log(`New Status candidate: ${finalStatus}`);
+
+    await get().updateTask(id, {
       doneCount: nextDoneCount,
-      status: shouldComplete ? 'done' : task.status,
-    };
-
-    // Gọi hàm updateTask để xử lý cả State và DB
-    await get().updateTask(id, updates);
+      status: finalStatus as 'todo' | 'done' | 'backlog',
+    });
+    
+    console.groupEnd();
   }
 }));

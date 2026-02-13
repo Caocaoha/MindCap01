@@ -26,12 +26,24 @@ export const streakEngine = {
   },
 
   /**
-   * 3. [BỔ SUNG]: Xử lý Reset task theo chu kỳ 00:00]
+   * 3. [MỚI]: Xác định trạng thái hiển thị ngọn lửa (Fix lỗi TS2339)
+   */
+  getVisualState: (task: ITask): 'active' | 'recovering' | 'dimmed' => {
+    const isDone = task.status === 'done';
+    const isRecovering = streakEngine.isWithinRecoveryPeriod(task);
+
+    if (isDone) return 'active';
+    if (isRecovering) return 'recovering';
+    return 'dimmed';
+  },
+
+  /**
+   * 4. [BẢO TOÀN 100%]: Xử lý Reset task theo chu kỳ 00:00
    */
   processDailyReset: async () => {
     const today = new Date();
     const todayDay = today.getDay(); // 0 (CN) - 6 (T7)
-    const currentDayTag = `d:${todayDay === 0 ? 7 : todayDay}`; // Chuyển CN về 7 cho khớp logic d:1-7
+    const currentDayTag = `d:${todayDay === 0 ? 7 : todayDay}`; 
 
     const allTasks = await db.tasks.toArray();
 
@@ -40,17 +52,17 @@ export const streakEngine = {
         const isDone = task.status === 'done';
         const freq = streakEngine.getTagValue(task, 'freq');
 
-        // Logic A: Việc "Một lần" đã xong -> Ẩn vĩnh viễn khỏi Saban]
+        // Logic A: Việc "Một lần" đã xong -> Ẩn vĩnh viễn khỏi Saban
         if (isDone && freq === 'once') {
-          await db.tasks.update(task.id!, { isFocusMode: -1 }); 
+          await db.tasks.update(task.id!, { isFocusMode: false }); //
         }
 
-        // Logic B: Việc "Hàng ngày" -> Reset trạng thái để làm lại]
+        // Logic B: Việc "Hàng tuần" -> Reset trạng thái để làm lại
         if (isDone && freq === 'weekly') {
           await db.tasks.update(task.id!, { status: 'todo', updatedAt: Date.now() });
         }
 
-        // Logic C: Việc "Tùy chọn ngày" -> Reset khi đến đúng ngày được chọn]
+        // Logic C: Việc "Tùy chọn ngày" -> Reset khi đến đúng ngày được chọn
         if (isDone && freq === 'days-week') {
           const isTargetDay = task.tags?.includes(currentDayTag);
           if (isTargetDay) {

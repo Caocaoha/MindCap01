@@ -1,8 +1,8 @@
 /**
- * [CORE]: Định nghĩa interface và kiểu dữ liệu (Schema Types) cho database
+ * [CORE]: Định nghĩa interface và kiểu dữ liệu cho database (v3.3)
  */
 
-// --- MODULE: INPUT & SABAN & FOCUS ---
+// --- MODULE: INPUT & SABAN & FOCUS (Giữ nguyên 100%) ---
 export interface ITask {
   id?: number;
   content: string;
@@ -12,16 +12,14 @@ export interface ITask {
   isFocusMode: boolean; 
   scheduledFor?: number; 
   tags?: string[]; 
-  // Bổ sung cho Journey
   isBookmarked?: boolean;
   bookmarkReason?: string;
-  // BỔ SUNG: Hỗ trợ tiến độ số lượng
   targetCount?: number;
   doneCount?: number;
-  unit?: string; // Đơn vị tính: ly, trang, km, lần...
+  unit?: string;
 }
 
-// --- MODULE: JOURNEY & INPUT ---
+// --- MODULE: JOURNEY & INPUT (Giữ nguyên 100%) ---
 export interface IThought {
   id?: number;
   content: string;
@@ -29,13 +27,12 @@ export interface IThought {
   wordCount: number;
   createdAt: number;
   recordStatus: 'pending' | 'processing' | 'success';
-  // Bổ sung cho Journey & Entropy
   updatedAt?: number; 
   isBookmarked?: boolean;
   bookmarkReason?: string;
 }
 
-// --- MODULE: IDENTITY ---
+// --- MODULE: IDENTITY (Giữ nguyên 100%) ---
 export interface IMood {
   id?: number;
   score: number;
@@ -43,7 +40,7 @@ export interface IMood {
   createdAt: number;
 }
 
-// --- SERVICE: CME (GAMIFICATION) ---
+// --- SERVICE: CME (Nâng cấp identityProgress) ---
 export interface IUserProfile {
   id?: number;
   totalScore: number;
@@ -54,9 +51,12 @@ export interface IUserProfile {
   lastReset: number;
   identityProgress: {
     currentQuestionIndex: number;
-    answers: Record<number, string>;
+    // BỔ SUNG: Chuyển từ string sang string[] để lưu lịch sử trả lời
+    answers: Record<number, string[]>; 
     draftAnswer: string;
     cooldownEndsAt: number | null;
+    // BỔ SUNG: Lưu mốc thời gian cuối cùng tương tác để tính Bio-Pulse
+    lastAuditAt: number | null; 
     isManifestoUnlocked: boolean;
     lastStatus: 'newbie' | 'paused' | 'cooldown' | 'enlightened';
   };

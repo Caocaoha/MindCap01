@@ -1,31 +1,64 @@
 import React from 'react';
-import type { ITask } from '../../../database/types';
+import { ITask } from '../../../database/types';
 import { streakEngine } from '../streak-engine';
 
+/**
+ * [MOD_SABAN]: Hiển thị ngọn lửa Streak dựa trên trạng thái thực thi.
+ * Sửa lỗi TS2367 (Comparison) và TS2339 (Property Access).
+ */
 export const StreakBadge: React.FC<{ task: ITask }> = ({ task }) => {
-  // Chỉ hiện cho task chưa hoàn thành (Active) và có tần suất lặp lại
-  if (task.status === 'completed' || task.status === 'dismissed') return null;
-  if (!task.frequency || task.frequency === 'ONCE') return null;
+  // --- 1. SỬA LỖI TS2367: So sánh đúng Status trong Database ---
+  // Thay vì "completed", ta dùng "done" như định nghĩa trong ITask
+  const isFinished = task.status === 'done';
+  const isBacklog = task.status === 'backlog';
 
-  const { isVisible, opacity } = streakEngine.getVisualState(task);
+  // --- 2. SỬA LỖI TS2339: Chuyển đổi String State sang Visual Object ---
+  // streakEngine.getVisualState(task) trả về 'active' | 'recovering' | 'dimmed'
+  const stateKey = streakEngine.getVisualState(task);
 
-  if (!isVisible) return null;
+  // Map các giá trị string sang thuộc tính hiển thị để tránh lỗi truy cập property trên string
+  const config = {
+    active: {
+      icon: '🔥',
+      opacity: 1,
+      color: 'text-orange-500',
+      glow: 'drop-shadow-[0_0_8px_rgba(249,115,22,0.6)]'
+    },
+    recovering: {
+      icon: '⏳',
+      opacity: 0.5,
+      color: 'text-blue-400',
+      glow: ''
+    },
+    dimmed: {
+      icon: '🌑',
+      opacity: 0.15,
+      color: 'text-white/20',
+      glow: ''
+    }
+  };
 
-  // [FIX ERROR]: Xử lý trường hợp streakCurrent bị undefined
-  const currentStreak = task.streakCurrent ?? 0;
-  
-  const displayNum = currentStreak > 99 ? '99+' : currentStreak;
+  const currentVisual = config[stateKey];
 
   return (
     <div 
-      className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-50 border border-orange-100 transition-all duration-300"
-      style={{ opacity }}
-      title={`Streak: ${currentStreak} | Recovery: ${task.streakRecoveryCount || 0}/3`}
+      style={{ opacity: currentVisual.opacity }}
+      className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-white/5 bg-white/5 transition-all duration-700 ${currentVisual.glow}`}
     >
-      <span className="text-sm animate-pulse">🔥</span>
-      <span className="text-xs font-bold text-orange-600 font-mono">
-        {displayNum}
+      <span className="text-[10px]">
+        {currentVisual.icon}
       </span>
+      
+      <span className={`text-[9px] font-black tracking-tighter ${currentVisual.color}`}>
+        {task.streakCurrent || 0}
+      </span>
+
+      {/* Hiển thị số ngày hồi phục nếu có */}
+      {(task.streakRecoveryCount ?? 0) > 0 && stateKey === 'recovering' && (
+        <span className="text-[7px] opacity-40">
+          +{task.streakRecoveryCount}
+        </span>
+      )}
     </div>
   );
 };

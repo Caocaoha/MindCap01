@@ -18,6 +18,7 @@ export interface ITask {
   // BỔ SUNG: Hỗ trợ tiến độ số lượng
   targetCount?: number;
   doneCount?: number;
+  unit?: string; // Đơn vị tính: ly, trang, km, lần...
 }
 
 // --- MODULE: JOURNEY & INPUT ---

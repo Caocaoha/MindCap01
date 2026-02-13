@@ -99,16 +99,16 @@ export const App: React.FC = () => {
           <div className="h-full flex flex-col relative">
             
             {/* GIẢI PHÁP: Nâng z-index lên [40] - Phải cao hơn Footer (30) */}
-            <div className={`relative z-40 transition-all duration-700 ease-in-out ${isInputFocused ? 'opacity-0 -translate-y-10 scale-95 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
+            <div className={`relative z-50 transition-all duration-700 ease-in-out ${isInputFocused ? 'opacity-0 -translate-y-10 scale-95 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
               <FocusSession />
             </div>
 
             {/* INPUT BAR: pointer-events-none để không chặn click xuyên qua */}
-            <div className={`absolute left-0 right-0 z-[45] transition-all duration-500 ease-out 
-              ${isInputFocused ? 'top-0 z-50' : 'bottom-6'} 
+            <div className={`absolute left-0 right-0 transition-all duration-500 ease-out 
+              ${isInputFocused ? 'top-0 z-50 h-screen bg-black/60 backdrop-blur-sm' : 'bottom-6 z-10 h-auto'} 
               pointer-events-none`}
             >
-              <div className="pointer-events-auto w-full h-full">
+              <div className="pointer-events-auto">
                 <InputBar 
                   onFocus={() => { triggerHaptic('light'); setInputFocused(true); }}
                   onBlur={() => setInputFocused(false)}

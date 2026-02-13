@@ -14,12 +14,8 @@ export const FocusItem: React.FC<FocusItemProps> = ({ taskId, isActive }) => {
   if (!task) return null;
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    // Chấp nhận mọi loại thiết bị (Chuột/Touch) lọt vào đây
     e.stopPropagation();
-
-    // Log này BUỘC phải hiện nếu phân tầng z-index đã đúng
-    console.log(`🎯 MindCap Trace: Interaction detected on ID ${taskId}`);
-
+    console.log(`🎯 Hitbox Clicked: Task ID ${taskId}`); // Log xác nhận
     if (task.status !== 'done') {
       incrementDoneCount(taskId);
     }
@@ -36,28 +32,36 @@ export const FocusItem: React.FC<FocusItemProps> = ({ taskId, isActive }) => {
 
   const isCompleted = task.status === 'done';
   
-  // GIẢI PHÁP: z-index nội bộ z-50 để chắc chắn nằm trên footer
+  // Container chính: Tắt touch-action để tránh conflict scroll
   const containerClass = `
-    group relative z-50 pointer-events-auto flex items-center p-4 mb-3 rounded-2xl transition-all duration-300
+    group relative flex items-center p-4 mb-3 rounded-2xl transition-all duration-300
     ${isActive ? 'bg-zinc-900 border border-zinc-700 shadow-xl scale-[1.02]' : 'bg-zinc-900/40 border border-transparent opacity-50'}
     ${isCompleted ? 'opacity-40' : 'active:scale-95'}
-    select-none touch-none cursor-pointer
+    select-none touch-none
   `;
 
   return (
-    <div 
-      onPointerDown={handlePointerDown}
-      className={containerClass}
-      style={{ cursor: isCompleted ? 'default' : 'pointer' }}
-    >
+    <div className={containerClass}>
+      
+      {/* --- HITBOX CURTAIN (LỚP MÀNG CẢM ỨNG) --- */}
+      {/* Lớp này phủ lên TOÀN BỘ item, chịu trách nhiệm nhận Click */}
+      <div 
+        onPointerDown={handlePointerDown}
+        className="absolute inset-0 z-20 cursor-pointer rounded-2xl"
+      />
+
+      {/* --- NÚT HOÀN THÀNH (BÊN TRÁI) --- */}
+      {/* z-30 để nổi lên trên lớp Hitbox (20), giúp bấm riêng được */}
       <div 
         onPointerDown={handleQuickComplete}
-        className="mr-4 w-6 h-6 rounded-full border-2 border-zinc-500 flex items-center justify-center hover:border-white transition-colors z-50"
+        className="relative z-30 mr-4 w-6 h-6 rounded-full border-2 border-zinc-500 flex items-center justify-center hover:border-white transition-colors cursor-pointer"
       >
         {isCompleted && <span className="text-green-500 text-xs">✓</span>}
       </div>
 
-      <div className="flex-1 min-w-0">
+      {/* --- NỘI DUNG (TEXT & THANH TIẾN ĐỘ) --- */}
+      {/* pointer-events-none: Vô hiệu hóa chuột ở đây để click xuyên qua trúng Hitbox */}
+      <div className="relative z-10 flex-1 min-w-0 pointer-events-none">
         <h3 className={`text-base font-semibold truncate ${isCompleted ? 'line-through text-zinc-600' : 'text-white'}`}>
           {task.content}
         </h3>
@@ -77,8 +81,9 @@ export const FocusItem: React.FC<FocusItemProps> = ({ taskId, isActive }) => {
         )}
       </div>
 
+      {/* --- NÚT +1 (VISUAL ONLY) --- */}
       {isActive && !isCompleted && (
-        <div className="ml-4 w-8 h-8 flex items-center justify-center bg-zinc-800 rounded-full text-zinc-400 group-active:text-white">
+        <div className="relative z-10 ml-4 w-8 h-8 flex items-center justify-center bg-zinc-800 rounded-full text-zinc-400 group-active:text-white pointer-events-none">
           +1
         </div>
       )}

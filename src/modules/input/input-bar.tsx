@@ -1,201 +1,179 @@
-// src/modules/input/input-bar.tsx
-import React, { useState, useRef, useEffect } from 'react';
-import { useUiStore } from '../../store/ui-store';
-import { useJourneyStore } from '../../store/journey-store';
-import { parseInput } from '../../utils/nlp-engine';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../../database/db';
 import { triggerHaptic } from '../../utils/haptic';
-import { GestureButton } from './components/gesture-button';
+import { ITask, IThought } from '../../database/types';
 
-const HEADER_HEIGHT = '3.5rem'; 
+interface InputBarProps {
+  onFocus: () => void;
+  onBlur: () => void;
+}
 
-export const InputBar: React.FC = () => {
-  const { isInputFocused, setInputFocused } = useUiStore();
-  const { updateActiveEntry } = useJourneyStore();
+export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
+  const [entryType, setEntryType] = useState<'task' | 'thought'>('task');
+  const [content, setContent] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
+  
+  // Task States
+  const [freq, setFreq] = useState<'once' | 'weekly' | 'days-week' | 'days-month'>('once');
+  const [selectedDays, setSelectedDays] = useState<number[]>([]);
+  const [isUrgent, setIsUrgent] = useState(false);
+  const [isImportant, setIsImportant] = useState(false);
 
-  const [text, setText] = useState('');
+  // Thought State
+  const [moodScore, setMoodScore] = useState(0); // -2 to 2
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // --- [NEW] KEYBOARD INTELLIGENCE START ---
-  
-  // 1. Global Auto-focus: Bắt phím bất kỳ để mở Input
+  // 1. Tín hiệu bàn phím: Tự động focus và xử lý Ctrl+S
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      // Bỏ qua nếu đang focus vào input/textarea khác
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      // Bỏ qua các phím chức năng (Ctrl, Alt, Meta...)
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
-      // Bỏ qua nếu có Modal đang mở (Check logic UI store nếu cần)
+      // Tự động focus khi bắt đầu gõ (nếu không đang gõ ở đâu khác)
+      if (document.activeElement?.tagName !== 'TEXTAREA' && document.activeElement?.tagName !== 'INPUT') {
+        if (e.key.length === 1 || e.key === 'Enter') {
+          textareaRef.current?.focus();
+        }
+      }
 
-      // Kích hoạt
-      if (e.key.length === 1) { // Chỉ bắt ký tự in được
-        setInputFocused(true);
-        // Lưu ý: Việc focus() ngay lập tức có thể bị chặn bởi browser policy nếu không từ user event direct
-        // Nhưng ở đây ta set state -> render -> effect focus
-        setTimeout(() => textareaRef.current?.focus(), 50);
+      // Phím tắt Lưu: Ctrl+S (Win) hoặc Cmd+S (Mac)
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSave();
       }
     };
 
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [setInputFocused]);
+  }, [content, entryType, moodScore, isUrgent, isImportant]);
 
-  // 2. Shortcuts trong Textarea (Ctrl+S, Ctrl+Enter)
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Ctrl + Enter: Lưu Task (Normal)
-    if (e.ctrlKey && e.key === 'Enter') {
-      e.preventDefault();
-      handleSubmit('task', 'center'); // 'center' maps to pending/normal
-    }
-    
-    // Ctrl + S: Lưu Mood/Note (Neutral)
-    if (e.ctrlKey && e.key === 's') {
-      e.preventDefault();
-      handleSubmit('note', 'left'); // 'left' maps to Neutral/Save
-    }
+  const handleSave = async () => {
+    if (!content.trim()) return;
 
-    // Escape: Đóng
-    if (e.key === 'Escape') {
-      handleDismiss();
-    }
-  };
-  
-  // --- KEYBOARD INTELLIGENCE END ---
-
-  const handleFocus = () => {
-    setInputFocused(true);
-    triggerHaptic('light');
-  };
-
-  const handleDismiss = () => {
-    if (!text.trim()) {
-      setInputFocused(false);
-      textareaRef.current?.blur();
+    const now = Date.now();
+    if (entryType === 'task') {
+      const newTask: ITask = {
+        content,
+        status: 'todo',
+        createdAt: now,
+        updatedAt: now,
+        isFocusMode: false,
+        tags: [
+          `freq:${freq}`,
+          isUrgent ? 'p:urgent' : '',
+          isImportant ? 'p:important' : '',
+          ...selectedDays.map(d => `d:${d}`)
+        ].filter(Boolean)
+      };
+      await db.tasks.add(newTask);
     } else {
-      setInputFocused(false);
-      textareaRef.current?.blur();
+      const newThought: IThought = {
+        content,
+        type: 'thought',
+        wordCount: content.split(/\s+/).length,
+        createdAt: now,
+        recordStatus: 'success'
+      };
+      await db.thoughts.add(newThought);
+      // Lưu mood đi kèm vào bảng moods
+      await db.moods.add({ score: moodScore, label: 'thought-entry', createdAt: now });
     }
-  };
 
-  const handleSubmit = async (type: 'task' | 'note', railZone: string) => {
-    if (!text.trim()) return;
-
-    const parsed = parseInput(text);
-    const now = new Date();
-
-    try {
-      if (type === 'task') {
-        let status: 'pending' | 'processing' = 'pending';
-        let priorityTag = 'normal';
-
-        if (railZone === 'top-right') priorityTag = 'urgent';
-        else if (railZone === 'bottom-right') priorityTag = 'critical';
-        else if (railZone === 'left') status = 'processing';
-
-        await db.tasks.add({
-          title: parsed.cleanText,
-          status: status, 
-          createdAt: now,
-          isFocusMode: false,
-          tags: [...parsed.tags, priorityTag],
-          // parsed.meta.frequency, parsed.meta.quantity sẽ được dùng nếu schema hỗ trợ mở rộng
-        });
-        
-      } else {
-        if (railZone === 'top' || railZone === 'bottom') {
-           const moodScore = railZone === 'top' ? 2 : -2; 
-           await db.moods.add({
-             score: moodScore,
-             note: parsed.cleanText,
-             createdAt: now
-           });
-        }
-
-        await db.thoughts.add({
-          content: parsed.cleanText,
-          type: 'note', 
-          createdAt: now,
-          keywords: parsed.tags
-        });
-      }
-
-      triggerHaptic('success');
-      setText('');
-      updateActiveEntry('');
-      handleDismiss();
-
-    } catch (error) {
-      console.error('Failed to save entry:', error);
-      triggerHaptic('error');
-    }
-  };
-
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newVal = e.target.value;
-    setText(newVal);
-    updateActiveEntry(newVal);
+    // Reset Form
+    setContent('');
+    triggerHaptic('success');
+    textareaRef.current?.blur();
   };
 
   return (
-    <>
-      {isInputFocused && (
-        <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 touch-none"
-          onClick={handleDismiss}
-        />
-      )}
-
-      <div 
-        className={`
-          fixed left-0 w-full z-50 transition-all duration-300 ease-out
-          bg-white dark:bg-gray-900 shadow-2xl rounded-t-2xl border-t border-gray-200 dark:border-gray-800 overflow-hidden
-        `}
-        style={{ 
-          top: isInputFocused ? HEADER_HEIGHT : 'auto', 
-          bottom: isInputFocused ? 'auto' : 0 
-        }}
-      >
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={handleChange}
-            onFocus={handleFocus}
-            onKeyDown={handleKeyDown} // [NEW] Attach Handler
-            placeholder="Bạn đang nghĩ gì?..."
-            className={`
-              w-full bg-transparent text-lg p-4 outline-none resize-none
-              placeholder-gray-400 text-gray-800 dark:text-gray-100
-              transition-all duration-300
-              ${isInputFocused ? 'h-48' : 'h-14'} 
-            `}
-          />
-
-          {isInputFocused && (
-            <div className="relative h-20 w-full bg-gray-50 dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700">
-              <div className="absolute left-1/2 -translate-x-1/2 -top-8">
-                <GestureButton 
-                  label="Task" 
-                  type="task" 
-                  className="bg-blue-600 hover:bg-blue-500 shadow-blue-500/50"
-                  onAction={(zone) => handleSubmit('task', zone)}
-                />
-              </div>
-
-              <div className="absolute right-6 -top-6">
-                 <GestureButton 
-                  label="Note" 
-                  type="mood" 
-                  className="bg-purple-600 w-12 h-12 text-sm hover:bg-purple-500 shadow-purple-500/50"
-                  onAction={(zone) => handleSubmit('note', zone)}
-                />
-              </div>
-
-              <div className="absolute bottom-2 w-full text-center text-xs text-gray-400 pointer-events-none">
-                 Kéo nút để phân loại • Ctrl+Enter: Task • Ctrl+S: Note
-              </div>
-            </div>
-          )}
+    <div className={`transition-all duration-300 ${isFocused ? 'shadow-[0_0_30px_rgba(59,130,246,0.2)]' : ''}`}>
+      
+      {/* TOGGLE SELECTOR */}
+      <div className="flex gap-4 mb-4">
+        {['task', 'thought'].map((t) => (
+          <button
+            key={t}
+            onClick={() => setEntryType(t as any)}
+            className={`text-[10px] font-black tracking-[0.2em] uppercase py-1 px-3 rounded-full border transition-all ${
+              entryType === t ? 'border-blue-500 text-blue-500' : 'border-white/10 opacity-40'
+            }`}
+          >
+            {t === 'task' ? 'Nhiệm vụ' : 'Suy nghĩ'}
+          </button>
+        ))}
       </div>
-    </>
+
+      {/* TEXTAREA INPUT */}
+      <textarea
+        ref={textareaRef}
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        onFocus={() => { setIsFocused(true); onFocus(); }}
+        onBlur={() => { setIsFocused(false); onBlur(); }}
+        placeholder={entryType === 'task' ? "Bạn cần thực thi điều gì?" : "Bạn đang cảm thấy thế nào?"}
+        className="w-full bg-zinc-900/50 border border-white/5 rounded-2xl p-4 text-lg focus:outline-none focus:border-blue-500/50 min-h-[120px] transition-all resize-none"
+      />
+
+      {/* OPTIONS PANEL (Only show when focused) */}
+      <div className={`mt-4 space-y-4 overflow-hidden transition-all duration-500 ${isFocused ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
+        
+        {entryType === 'task' ? (
+          <div className="space-y-4 bg-zinc-900/30 p-4 rounded-2xl border border-white/5">
+            {/* Tần suất */}
+            <div className="flex flex-wrap gap-2">
+              {[
+                { id: 'once', label: '1 Lần' },
+                { id: 'weekly', label: 'Hàng Tuần' },
+                { id: 'days-week', label: 'Thứ trong tuần' },
+                { id: 'days-month', label: 'Ngày trong tháng' }
+              ].map(f => (
+                <button 
+                  key={f.id}
+                  onClick={() => setFreq(f.id as any)}
+                  className={`text-[9px] px-2 py-1 rounded border ${freq === f.id ? 'bg-white text-black' : 'border-white/10 opacity-50'}`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Matrix Eisenhower */}
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setIsUrgent(!isUrgent)}
+                className={`flex-1 py-2 rounded-lg text-[10px] font-bold border ${isUrgent ? 'bg-red-500/20 border-red-500 text-red-500' : 'border-white/5 opacity-30'}`}
+              >
+                KHẨN CẤP
+              </button>
+              <button 
+                onClick={() => setIsImportant(!isImportant)}
+                className={`flex-1 py-2 rounded-lg text-[10px] font-bold border ${isImportant ? 'bg-yellow-500/20 border-yellow-500 text-yellow-500' : 'border-white/5 opacity-30'}`}
+              >
+                QUAN TRỌNG
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* Emotion Scale cho Thought */
+          <div className="flex justify-between items-center bg-zinc-900/30 p-4 rounded-2xl border border-white/5">
+            {[-2, -1, 0, 1, 2].map((score) => (
+              <button
+                key={score}
+                onClick={() => setMoodScore(score)}
+                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+                  moodScore === score ? 'bg-blue-500 scale-125' : 'bg-zinc-800 opacity-40'
+                }`}
+              >
+                {score === -2 && '😠'}
+                {score === -1 && '🙁'}
+                {score === 0 && '😐'}
+                {score === 1 && '😊'}
+                {score === 2 && '🥰'}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <p className="text-[9px] opacity-20 text-center uppercase tracking-widest">Nhấn Ctrl + S để lưu nhanh</p>
+      </div>
+    </div>
   );
 };

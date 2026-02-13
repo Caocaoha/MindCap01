@@ -1,105 +1,122 @@
-import React from 'react';
-import { useJourneyStore } from '../../store/journey-store';
-import { useUiStore } from '../../store/ui-store';
-import type { ITask } from '../../database/types';
+import React, { useEffect, useState, useRef } from 'react';
+import { db } from '../../database/db';
+import { ITask } from '../../database/types';
+import { triggerHaptic } from '../../utils/haptic';
+import { streakEngine } from '../saban/streak-engine';
 
 export const FocusSession: React.FC = () => {
-  const { entries, toggleTaskStatus } = useJourneyStore();
-  const { setFocusSessionActive } = useUiStore();
+  const [focusTasks, setFocusTasks] = useState<ITask[]>([]);
+  const holdInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Lấy danh sách các task đang được chọn Focus
-  const focusTasks = entries.filter((e: any) => e.isFocusMode && e.status !== 'completed') as ITask[];
+  const loadFocusTasks = async () => {
+    // Lấy tối đa 4 task đang trong chế độ Focus và chưa xong
+    const tasks = await db.tasks
+      .where('isFocusMode')
+      .equals(1) 
+      .toArray();
+    
+    setFocusTasks(tasks.filter(t => t.status !== 'done').slice(0, 4));
+  };
 
-  // Nếu hoàn thành hết -> Tự động chúc mừng hoặc thoát (Logic đơn giản: cho user tự thoát)
-  
+  useEffect(() => { loadFocusTasks(); }, []);
+
+  // Đẩy task về Saban với trạng thái hoàn thành
+  const completeAndReturnToSaban = async (task: ITask) => {
+    if (!task.id) return;
+    triggerHaptic('success');
+    
+    await db.tasks.update(task.id, {
+      status: 'done',
+      isFocusMode: false,
+      updatedAt: Date.now() 
+    });
+    
+    await loadFocusTasks();
+  };
+
+  // Cập nhật tiến độ dựa trên các cơ chế trực giác
+  const handleProgress = async (task: ITask, delta: number) => {
+    if (!task.id) return;
+
+    const currentStr = streakEngine.getTagValue(task, 'current') || '0';
+    const targetStr = streakEngine.getTagValue(task, 'target') || '1';
+    const current = parseInt(currentStr);
+    const target = parseInt(targetStr);
+
+    const nextValue = Math.max(0, current + delta);
+    
+    // Cập nhật giá trị vào tags
+    const newTags = (task.tags || []).filter(t => !t.startsWith('current:'));
+    newTags.push(`current:${nextValue}`);
+
+    await db.tasks.update(task.id, { 
+      tags: newTags,
+      updatedAt: Date.now()
+    });
+
+    triggerHaptic('light');
+
+    if (nextValue >= target) {
+      await completeAndReturnToSaban(task);
+    } else {
+      await loadFocusTasks();
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 bg-gray-900 text-white flex flex-col items-center justify-center p-6 animate-in fade-in duration-300">
-      
-      {/* Header: Exit Button */}
-      <div className="absolute top-6 right-6">
-        <button 
-          onClick={() => setFocusSessionActive(false)}
-          className="p-2 rounded-full bg-gray-800 hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
-          title="Thoát chế độ tập trung"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-
-      {/* Main Content */}
-      <div className="w-full max-w-lg space-y-8">
-        <div className="text-center space-y-2">
-          <h2 className="text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-400">
-            Deep Work Mode
-          </h2>
-          <p className="text-gray-400 text-sm">Đơn nhiệm. Tuyệt đối.</p>
+    <div className="fixed inset-0 bg-black z-50 p-6 flex flex-col font-sans text-white">
+      <header className="flex justify-between items-center mb-8">
+        <div>
+          <h2 className="text-2xl font-black tracking-tighter">FOCUS</h2>
+          <p className="text-[10px] opacity-40 uppercase tracking-widest">Deep Work Session</p>
         </div>
+        <div className="flex gap-1.5">
+          {[0, 1, 2, 3].map(i => (
+            <div key={i} className={`h-1 w-8 rounded-full ${i < focusTasks.length ? 'bg-blue-500' : 'bg-zinc-800'}`} />
+          ))}
+        </div>
+      </header>
 
-        {/* Task Slots (Grid 1 or 2 cols based on count) */}
-        <div className={`grid gap-4 ${focusTasks.length > 1 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
-          {focusTasks.length === 0 ? (
-             <div className="text-center text-gray-500 py-10 col-span-full border-2 border-dashed border-gray-700 rounded-xl">
-               <p>Không có nhiệm vụ nào được chọn.</p>
-               <button 
-                 onClick={() => setFocusSessionActive(false)}
-                 className="mt-4 text-blue-400 hover:underline"
-               >
-                 Quay lại Saban Board để chọn
-               </button>
-             </div>
-          ) : (
-            focusTasks.map((task) => (
-              <div 
-                key={task.id} 
-                className="bg-gray-800/50 backdrop-blur border border-gray-700 p-6 rounded-2xl shadow-xl hover:border-indigo-500/50 transition-all group"
-              >
-                <div className="flex flex-col h-full justify-between gap-4">
-                  <div>
-                    <h3 className="text-xl font-semibold leading-snug">{task.title}</h3>
-                    {task.tags && (
-                      <div className="flex gap-2 mt-2">
-                        {task.tags.map(t => (
-                          <span key={t} className="text-xs bg-gray-700 text-gray-300 px-2 py-0.5 rounded">#{t}</span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+      <div className="flex-1 grid grid-cols-1 gap-4 overflow-y-auto">
+        {focusTasks.map(task => {
+          const target = parseInt(streakEngine.getTagValue(task, 'target') || '1');
+          const current = parseInt(streakEngine.getTagValue(task, 'current') || '0');
+          const isDialMode = target > 12;
 
-                  <div className="flex gap-3 mt-2">
-                    {/* Complete Button */}
-                    <button
-                      onClick={() => toggleTaskStatus(task.id!, 'completed')}
-                      className="flex-1 bg-green-600/20 hover:bg-green-600/40 text-green-400 border border-green-600/50 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2"
-                    >
-                      <span>✓</span> Hoàn thành
-                    </button>
-                    
-                    {/* Kick out Button */}
-                    <button
-                      onClick={() => toggleTaskStatus(task.id!, 'dismissed')} 
-                      className="px-4 bg-gray-700 hover:bg-red-900/30 text-gray-400 hover:text-red-400 border border-transparent hover:border-red-800/50 rounded-xl transition-all"
-                      title="Hủy tiêu điểm (Đẩy về đầu Inbox)"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
+          return (
+            <div key={task.id} className="bg-zinc-900/50 rounded-[2rem] p-6 border border-white/5 flex flex-col justify-between">
+              <div>
+                <h3 className="text-xl font-bold leading-tight">{task.content}</h3>
+                <p className="text-blue-500 font-mono text-sm mt-1">{current} / {target}</p>
               </div>
-            ))
-          )}
-        </div>
 
-        {/* Slot Indicators (To reinforce limit of 4) */}
-        <div className="flex justify-center gap-2 mt-8">
-           {[...Array(4)].map((_, i) => (
-             <div 
-               key={i} 
-               className={`h-1.5 w-8 rounded-full transition-all ${i < focusTasks.length ? 'bg-indigo-500' : 'bg-gray-700'}`} 
-             />
-           ))}
-        </div>
+              {/* Vùng tương tác Smart Toggle */}
+              <div 
+                className="my-6 h-32 bg-zinc-800/30 rounded-2xl flex items-center justify-center touch-none select-none active:bg-zinc-800/50 transition-colors"
+                onClick={() => !isDialMode && handleProgress(task, 1)}
+                onWheel={(e) => isDialMode && handleProgress(task, e.deltaY > 0 ? -1 : 1)}
+                onMouseDown={() => {
+                  holdInterval.current = setInterval(() => handleProgress(task, 1), 150);
+                }}
+                onMouseUp={() => {
+                  if (holdInterval.current) clearInterval(holdInterval.current);
+                }}
+              >
+                <span className="text-xs font-black opacity-20 uppercase tracking-[0.5em]">
+                  {isDialMode ? "Slide to Dial" : "Tap to Step"}
+                </span>
+              </div>
+
+              {/* Thanh tiến độ "Hold to Fill" */}
+              <div className="h-4 bg-zinc-800 rounded-full p-1 overflow-hidden">
+                <div 
+                  className="h-full bg-blue-500 rounded-full transition-all duration-300 shadow-[0_0_15px_rgba(59,130,246,0.5)]" 
+                  style={{ width: `${(current / target) * 100}%` }} 
+                />
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

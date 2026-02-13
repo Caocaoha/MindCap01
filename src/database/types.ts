@@ -1,40 +1,52 @@
-// src/database/types.ts
+/**
+ * [CORE]: Định nghĩa interface và kiểu dữ liệu (Schema Types) cho database
+ */
 
-// [MOD_INPUT] & [MOD_SABAN] & [MOD_FOCUS]
+// --- MODULE: INPUT & SABAN & FOCUS ---
 export interface ITask {
-  id?: number;              // Auto-increment
-  title: string;            // Nội dung task
-  status: 'pending' | 'processing' | 'done' | 'dismissed';
-  createdAt: Date;          // [FIX]: Dùng Date thay vì number
-  scheduledFor?: Date;      // [FIX]: Dùng Date
-  isFocusMode: boolean;     // Có đang trong chế độ Focus không
-  tags?: string[];          // Index Multi-entry (*tags)
+  id?: number;
+  content: string;
+  status: 'todo' | 'done' | 'backlog'; 
+  createdAt: number;
+  updatedAt?: number;
+  isFocusMode: boolean; 
+  scheduledFor?: number; 
+  tags?: string[]; 
 }
 
-// [MOD_JOURNEY] & [MOD_INPUT]
+// --- MODULE: JOURNEY & INPUT ---
 export interface IThought {
-  id?: number;              // Auto-increment
-  content: string;          // Nội dung suy nghĩ/nhật ký
-  type: 'thought' | 'journal' | 'idea' | 'note'; // [FIX]: Bổ sung 'note'
-  createdAt: Date;          // [FIX]: Dùng Date
-  keywords?: string[];      // Hỗ trợ [SVC_ECHO]
+  id?: number;
+  content: string;
+  type: 'note' | 'thought' | 'insight';
+  wordCount: number;
+  createdAt: number;
+  recordStatus: 'pending' | 'processing' | 'success';
 }
 
-// [MOD_IDENTITY]
+// --- MODULE: IDENTITY ---
 export interface IMood {
-  id?: number;              // Auto-increment
-  score: number;            // Thang điểm từ -2 đến +2
-  note?: string;            // Ghi chú ngắn đi kèm mood
-  createdAt: Date;          // [FIX]: Dùng Date
+  id?: number;
+  score: number;
+  label: string;
+  createdAt: number;
 }
 
-// [SVC_CME] - Gamification & User Profile
+// --- SERVICE: CME (GAMIFICATION) ---
 export interface IUserProfile {
-  id?: number;              
+  id?: number;
+  totalScore: number;
   currentLevel: number;
-  currentXP: number;
-  archetype: string;
   eaScore: number;
   cpiScore: number;
-  lastUpdated: Date;        // [FIX]: Dùng Date
+  archetype: 'newbie' | 'manager-led' | 'curious-explorer' | 'harmonized';
+  lastReset: number;
+  identityProgress: {
+    currentQuestionIndex: number;
+    answers: Record<number, string>;
+    draftAnswer: string;
+    cooldownEndsAt: number | null;
+    isManifestoUnlocked: boolean;
+    lastStatus: 'newbie' | 'paused' | 'cooldown' | 'enlightened';
+  };
 }

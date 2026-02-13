@@ -1,38 +1,64 @@
-// src/store/journey-store.ts
 import { create } from 'zustand';
-import { nlpListener } from './middleware/nlp-listener';
-import type { IThought } from '../database/types';
+import { db } from '../database/db';
+import { ITask, IThought } from '../database/types';
+
+/**
+ * [STATE]: Quản lý trạng thái của các bản ghi hành trình và nhật ký [cite: 5, 11]
+ * Kết nối trực tiếp với Velocity Loop để cập nhật UI ngay lập tức 
+ */
 
 interface JourneyState {
-  entries: IThought[];
-  activeEntry: string;
+  items: (ITask | IThought)[];
+  isLoading: boolean;
   
   // Actions
-  setEntries: (entries: IThought[]) => void;
-  addEntry: (entry: IThought) => void;
-  updateActiveEntry: (content: string) => void;
+  fetchInitialData: () => Promise<void>;
+  addFastLaneItem: (item: ITask | IThought) => void;
+  syncFromDatabase: () => Promise<void>;
 }
 
-// [FINAL FIX]: Khai báo tường minh kiểu dữ liệu cho từng tham số (set, entry, state...)
-// để không phụ thuộc vào Type Inference từ Middleware nữa.
-export const useJourneyStore = create<JourneyState>(
-  nlpListener(
-    (set: any) => ({ // 1. Ép kiểu set là any
-      entries: [],
-      activeEntry: '',
+export const useJourneyStore = create<JourneyState>((set, get) => ({
+  items: [],
+  isLoading: false,
 
-      // 2. Khai báo rõ (entries: IThought[])
-      setEntries: (entries: IThought[]) => set({ entries }),
+  /**
+   * Tải dữ liệu ban đầu từ Dexie DB [cite: 1, 16]
+   */
+  fetchInitialData: async () => {
+    set({ isLoading: true });
+    try {
+      const [tasks, thoughts] = await Promise.all([
+        db.tasks.toArray(),
+        db.thoughts.toArray()
+      ]);
       
-      // 3. Khai báo rõ (entry: IThought) và (state: JourneyState)
-      addEntry: (entry: IThought) => set((state: JourneyState) => ({ 
-        entries: [entry, ...state.entries],
-        activeEntry: '' 
-      })),
+      const combined = [...tasks, ...thoughts].sort((a, b) => b.createdAt - a.createdAt);
+      set({ items: combined, isLoading: false });
+    } catch (error) {
+      console.error("Failed to fetch journey data:", error);
+      set({ isLoading: false });
+    }
+  },
 
-      // 4. Khai báo rõ (content: string)
-      updateActiveEntry: (content: string) => set({ activeEntry: content }),
-    }),
-    'JourneyStore'
-  ) as any
-);
+  /**
+   * Fast-lane: Cập nhật Store ngay khi người dùng nhập liệu 
+   * Giúp giao diện hiển thị "Action Toast" hoặc "Undo Option" mà không chờ DB 
+   */
+  addFastLaneItem: (item) => {
+    set((state) => ({
+      items: [item, ...state.items].sort((a, b) => b.createdAt - a.createdAt)
+    }));
+  },
+
+  /**
+   * Shadow-lane: Đồng bộ lại Store sau khi các tiến trình ngầm (NLP/Echo) hoàn tất [cite: 16, 17]
+   */
+  syncFromDatabase: async () => {
+    const [tasks, thoughts] = await Promise.all([
+      db.tasks.toArray(),
+      db.thoughts.toArray()
+    ]);
+    const combined = [...tasks, ...thoughts].sort((a, b) => b.createdAt - a.createdAt);
+    set({ items: combined });
+  }
+}));

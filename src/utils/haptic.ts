@@ -27,3 +27,27 @@ export const triggerHaptic = (type: HapticType = 'light') => {
     }
   }
 };
+/**
+ * [UTILS]: Quản lý rung phản hồi (Haptic Feedback)
+ */
+export const haptic = {
+  // Rung nhẹ khi nhảy 1 đơn vị (Bánh răng)
+  impactLight: () => {
+    if (navigator.vibrate) navigator.vibrate(10);
+  },
+  
+  // Rung trung bình khi đạt mốc quan trọng
+  impactMedium: () => {
+    if (navigator.vibrate) navigator.vibrate(30);
+  },
+  
+  // Rung mạnh/dài khi hoàn thành (Success)
+  success: () => {
+    if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+  },
+  
+  // Rung cảnh báo lỗi
+  error: () => {
+    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+  }
+};

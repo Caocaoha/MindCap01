@@ -1,97 +1,84 @@
-import React from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
-import { Settings, LayoutGrid, BrainCircuit, History } from 'lucide-react';
-import { useUIStore } from './store/ui-store';
-
-// Modules
+import React, { useState } from 'react';
 import { SabanBoard } from './modules/saban/saban-board';
+import { FocusSession } from './modules/focus/focus-session';
 import { InputBar } from './modules/input/input-bar';
-import { SetupPanel } from './modules/setup/setup-panel';
 import { JourneyList } from './modules/journey/journey-list';
+import { IdentityCheckin } from './modules/identity/identity-checkin';
+import { SetupPanel } from './modules/setup/setup-panel';
 
-export const App = () => {
-  const { activeTab, setActiveTab, isInputMode, setInputMode } = useUIStore();
-  const [isSetupOpen, setSetupOpen] = React.useState(false);
+/**
+ * [MAIN LAYOUT]: Điều phối Step-by-step Disclosure
+ * Quản lý trạng thái hiển thị dựa trên Tab và Tiêu điểm nhập liệu.
+ */
+export default function App() {
+  const [activeTab, setActiveTab] = useState<'saban' | 'mind' | 'journey'>('mind');
+  const [isInputFocused, setIsInputFocused] = useState(false);
 
   return (
-    <div className="fixed inset-0 bg-black text-zinc-100 overflow-hidden flex flex-col">
+    <div className="flex flex-col h-screen bg-black text-white overflow-hidden font-sans">
       
-      {/* HEADER */}
-      <header className="h-14 px-4 flex items-center justify-between border-b border-zinc-900 bg-black/50 backdrop-blur-xl z-50">
-        <div className="w-8" />
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-teal-500 animate-pulse" />
-          <span className="text-xs font-bold tracking-widest uppercase text-zinc-400">Identity</span>
+      {/* HEADER: Identity (Center) & Setup (Right) */}
+      <header className="h-14 border-b border-white/5 flex items-center justify-between px-4 z-50 bg-black">
+        <div className="w-10" /> {/* Spacer cho đối trọng */}
+        <div className="flex-1 flex justify-center">
+          <IdentityCheckin />
         </div>
-        <button onClick={() => setSetupOpen(true)} className="p-2 text-zinc-500"><Settings size={20} /></button>
+        <div className="w-10 flex justify-end">
+          <SetupPanel />
+        </div>
       </header>
 
-      {/* CONTENT AREA */}
-      <main className="flex-1 relative overflow-hidden">
-        <AnimatePresence mode="wait">
-          {activeTab === 'saban' && <TabWrapper key="saban"><SabanBoard /></TabWrapper>}
-          {activeTab === 'journey' && <TabWrapper key="journey"><JourneyList /></TabWrapper>}
-          
-          {activeTab === 'mind' && (
-            <div className="h-full flex flex-col p-4">
-              {/* FOCUS (Bám Header) - Ẩn khi InputMode bật */}
-              <AnimatePresence>
-                {!isInputMode && (
-                  <motion.div 
-                    initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -50, opacity: 0 }}
-                    className="flex-1 pt-4"
-                  >
-                    <div className="p-6 rounded-3xl bg-zinc-900/50 border border-zinc-800 text-center">
-                      <span className="text-[10px] text-zinc-500 uppercase tracking-widest">Current Focus</span>
-                      <h2 className="text-xl font-medium mt-1 italic text-zinc-300">"Xây dựng hệ thống Rail UI"</h2>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* INPUT (Bám Footer / Bay lên Header) */}
-              <motion.div 
-                layout
-                className={`absolute left-4 right-4 transition-all duration-500 z-50 ${
-                  isInputMode ? 'top-4' : 'bottom-20'
-                }`}
-              >
-                <InputBar />
-              </motion.div>
-
-              {/* Backdrop khi gõ */}
-              {isInputMode && (
-                <motion.div 
-                  initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                  onClick={() => setInputMode(false)}
-                  className="fixed inset-0 bg-black/80 backdrop-blur-md z-40"
-                />
-              )}
+      {/* MAIN CONTENT AREA */}
+      <main className="flex-1 overflow-y-auto relative p-4">
+        {activeTab === 'saban' && <SabanBoard />}
+        
+        {activeTab === 'mind' && (
+          <div className="flex flex-col h-full">
+            {/* Logic: Nếu đang gõ (isInputFocused), ẩn Focus để tập trung tuyệt đối */}
+            {!isInputFocused && (
+              <div className="flex-1 transition-all duration-500 ease-in-out">
+                <FocusSession />
+              </div>
+            )}
+            
+            {/* Khi Input Focused, nó sẽ bám lên sát Header nhờ logic CSS */}
+            <div className={`transition-all duration-500 ${isInputFocused ? 'fixed inset-x-0 top-14 bottom-0 bg-black z-40 p-4' : ''}`}>
+              <InputBar 
+                onFocus={() => setIsInputFocused(true)} 
+                onBlur={() => setIsInputFocused(false)} 
+              />
             </div>
-          )}
-        </AnimatePresence>
+          </div>
+        )}
+
+        {activeTab === 'journey' && <JourneyList />}
       </main>
 
-      {/* NAVIGATION */}
-      <nav className="h-16 border-t border-zinc-900 bg-black flex items-center justify-around z-50">
-        <NavButton icon={<LayoutGrid />} label="Saban" active={activeTab === 'saban'} onClick={() => setActiveTab('saban')} />
-        <NavButton icon={<BrainCircuit />} label="Mind" active={activeTab === 'mind'} onClick={() => setActiveTab('mind')} isCenter />
-        <NavButton icon={<History />} label="Journey" active={activeTab === 'journey'} onClick={() => setActiveTab('journey')} />
-      </nav>
+      {/* FOOTER: Saban (Left), Mind (Center), Journey (Right) */}
+      <footer className={`h-16 border-t border-white/5 flex items-center justify-around px-6 bg-black z-50 transition-transform duration-300 ${isInputFocused ? 'translate-y-full' : 'translate-y-0'}`}>
+        <button 
+          onClick={() => setActiveTab('saban')}
+          className={`text-[10px] font-black tracking-widest ${activeTab === 'saban' ? 'text-blue-500' : 'opacity-40'}`}
+        >
+          SABAN
+        </button>
 
-      <AnimatePresence>{isSetupOpen && <SetupPanel onClose={() => setSetupOpen(false)} />}</AnimatePresence>
+        <button 
+          onClick={() => setActiveTab('mind')}
+          className={`px-6 py-2 rounded-full border-2 transition-all ${
+            activeTab === 'mind' ? 'border-blue-500 text-blue-500 scale-110' : 'border-white/10 opacity-40'
+          }`}
+        >
+          MIND
+        </button>
+
+        <button 
+          onClick={() => setActiveTab('journey')}
+          className={`text-[10px] font-black tracking-widest ${activeTab === 'journey' ? 'text-blue-500' : 'opacity-40'}`}
+        >
+          JOURNEY
+        </button>
+      </footer>
     </div>
   );
-};
-
-// Sub-components
-const TabWrapper = ({ children }: { children: React.ReactNode }) => (
-  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full overflow-y-auto p-4">{children}</motion.div>
-);
-
-const NavButton = ({ icon, label, active, onClick, isCenter }: any) => (
-  <button onClick={onClick} className={`flex flex-col items-center gap-1 transition-colors ${active ? 'text-white' : 'text-zinc-600'} ${isCenter ? '-top-4 relative scale-125' : ''}`}>
-    <div className={isCenter && active ? 'p-3 bg-teal-500 rounded-full text-black' : ''}>{icon}</div>
-    {!isCenter && <span className="text-[10px] uppercase font-bold tracking-tighter">{label}</span>}
-  </button>
-);
+}

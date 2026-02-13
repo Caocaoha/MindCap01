@@ -1,95 +1,53 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useIdentityStore } from './identity-store';
-
-const MOOD_LEVELS = [
-  { score: -2, emoji: '😫', label: 'Kiệt sức', color: 'bg-red-500' },
-  { score: -1, emoji: '😟', label: 'Lo lắng', color: 'bg-orange-400' },
-  { score: 0,  emoji: '😐', label: 'Bình ổn', color: 'bg-gray-400' },
-  { score: 1,  emoji: '🙂', label: 'Tốt',     color: 'bg-green-400' },
-  { score: 2,  emoji: '🤩', label: 'Thăng hoa', color: 'bg-emerald-600' },
-];
+import { IDENTITY_QUESTIONS } from './identity-constants';
+import { SunCompass } from './components/sun-compass';
 
 export const IdentityCheckin: React.FC = () => {
-  const { isCheckinOpen, setCheckinOpen, logMood } = useIdentityStore();
-  const [selectedScore, setSelectedScore] = useState<number | null>(null);
-  const [note, setNote] = useState('');
-  
-  if (!isCheckinOpen) return null;
+  const { isOpen, progress, submitAnswer, saveAndExit, closeAudit, initStore } = useIdentityStore();
+  const [localAnswer, setLocalAnswer] = useState('');
 
-  const handleSave = () => {
-    if (selectedScore === null) return;
-    const moodObj = MOOD_LEVELS.find(m => m.score === selectedScore);
-    logMood(selectedScore, moodObj?.label || 'Unknown', note);
-    
-    // Reset form
-    setSelectedScore(null);
-    setNote('');
-  };
+  useEffect(() => { initStore(); }, []);
+  useEffect(() => { setLocalAnswer(progress.draftAnswer || ''); }, [progress.currentQuestionIndex]);
+
+  if (!isOpen) return <SunCompass status={progress.lastStatus} />;
+
+  const currentQ = IDENTITY_QUESTIONS[progress.currentQuestionIndex];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden transform transition-all scale-100">
-        
-        {/* Header */}
-        <div className="bg-gradient-to-r from-violet-500 to-fuchsia-500 p-6 text-white text-center relative">
-          <h2 className="text-xl font-bold">Thấu hiểu Bản thân</h2>
-          <p className="text-violet-100 text-sm opacity-90">Bạn đang cảm thấy thế nào?</p>
-          <button 
-            onClick={() => setCheckinOpen(false)}
-            className="absolute top-4 right-4 text-white/70 hover:text-white"
-          >
-            ✕
-          </button>
+    <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col p-8 animate-in fade-in duration-700">
+      {/* Header của Overlay */}
+      <div className="flex justify-between items-center mb-20">
+        <div className="text-[10px] tracking-[0.4em] opacity-30 uppercase">
+          Stage {currentQ?.stage} / 5 — Identity Audit
         </div>
+        <button onClick={() => saveAndExit(localAnswer)} className="text-xs opacity-50 hover:opacity-100">
+          LƯU & THOÁT
+        </button>
+      </div>
 
-        {/* Mood Selector */}
-        <div className="p-6 space-y-6">
-          <div className="flex justify-between gap-2">
-            {MOOD_LEVELS.map((level) => (
-              <button
-                key={level.score}
-                onClick={() => setSelectedScore(level.score)}
-                className={`
-                  flex flex-col items-center gap-1 p-2 rounded-xl transition-all w-full
-                  ${selectedScore === level.score 
-                    ? `${level.color} text-white scale-110 shadow-lg` 
-                    : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
-                  }
-                `}
-              >
-                <span className="text-2xl">{level.emoji}</span>
-                <span className="text-[10px] font-bold uppercase tracking-wider">{level.score}</span>
-              </button>
-            ))}
-          </div>
-          
-          {selectedScore !== null && (
-             <div className="text-center font-medium text-gray-600 animate-in slide-in-from-top-2">
-               {MOOD_LEVELS.find(m => m.score === selectedScore)?.label}
-             </div>
-          )}
+      {/* Vùng nội dung câu hỏi */}
+      <div className="flex-1 max-w-2xl mx-auto w-full flex flex-col justify-center">
+        <h2 className="text-2xl md:text-3xl font-serif italic mb-8 leading-tight text-orange-50/90">
+          "{currentQ?.text}"
+        </h2>
+        
+        <textarea
+          autoFocus
+          value={localAnswer}
+          onChange={(e) => setLocalAnswer(e.target.value)}
+          placeholder="Thành thật với chính mình..."
+          className="w-full bg-transparent border-l border-white/10 pl-6 py-2 text-xl focus:outline-none focus:border-blue-500 transition-colors min-h-[200px]"
+        />
 
-          {/* Reflection Note */}
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Ghi chú nhanh về suy nghĩ hiện tại... (Tùy chọn)"
-            className="w-full p-3 bg-gray-50 rounded-xl border-none focus:ring-2 focus:ring-violet-200 resize-none text-gray-700 min-h-[80px]"
-          />
-
-          {/* Save Button */}
-          <button
-            onClick={handleSave}
-            disabled={selectedScore === null}
-            className={`
-              w-full py-3 rounded-xl font-bold text-white transition-all
-              ${selectedScore !== null 
-                ? 'bg-violet-600 hover:bg-violet-700 shadow-lg shadow-violet-200' 
-                : 'bg-gray-200 cursor-not-allowed'
-              }
-            `}
+        <div className="mt-12 flex justify-end">
+          <button 
+            onClick={() => submitAnswer(localAnswer)}
+            disabled={!localAnswer.trim()}
+            className="group flex items-center gap-4 text-blue-500 disabled:opacity-20 transition-all"
           >
-            Ghi nhận
+            <span className="text-xs font-black tracking-widest uppercase">Tiếp theo</span>
+            <div className="w-12 h-[1px] bg-blue-500 group-hover:w-20 transition-all" />
           </button>
         </div>
       </div>

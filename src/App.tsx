@@ -10,7 +10,7 @@ import { SetupPanel } from './modules/setup/setup-panel';
  * [MAIN LAYOUT]: Điều phối Step-by-step Disclosure
  * Quản lý trạng thái hiển thị dựa trên Tab và Tiêu điểm nhập liệu.
  */
-export default function App() {
+export const App = () => {
   const [activeTab, setActiveTab] = useState<'saban' | 'mind' | 'journey'>('mind');
   const [isInputFocused, setIsInputFocused] = useState(false);
 

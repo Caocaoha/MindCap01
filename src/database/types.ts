@@ -7,6 +7,9 @@ export interface ITask {
   id?: number;
   content: string;
   status: 'todo' | 'done' | 'backlog'; 
+  frequency?: string;       // [BỔ SUNG]
+  streakCurrent?: number;   // [BỔ SUNG]
+  streakRecoveryCount?: number; // [BỔ SUNG]
   createdAt: number;
   updatedAt?: number;
   isFocusMode: boolean; 

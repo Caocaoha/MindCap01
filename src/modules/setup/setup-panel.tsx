@@ -1,77 +1,156 @@
-import React, { useState } from 'react';
-import { backupService } from './backup-service';
+import React, { useRef } from 'react';
+import { db } from '../../database/db';
 import { triggerHaptic } from '../../utils/haptic';
 
 export const SetupPanel: React.FC = () => {
-  const [log, setLog] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const legacyInputRef = useRef<HTMLInputElement>(null);
 
+  // --- 1. EXPORT JSON CHUẨN ---
   const handleExport = async () => {
-    const result = await backupService.exportToJson();
-    setLog(result.success ? "Vault exported successfully." : "Error exporting vault.");
-  };
-
-  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const confirmAction = window.confirm("CẢNH BÁO: Dữ liệu hiện tại sẽ bị xóa sạch và thay thế bằng file mới. Tiếp tục?");
-    if (!confirmAction) return;
-
     try {
-      await backupService.importFromJson(file);
-      setLog("Restore complete. Reloading...");
-      setTimeout(() => window.location.reload(), 1500);
+      const tasks = await db.tasks.toArray();
+      const thoughts = await db.thoughts.toArray();
+      const moods = await db.moods.toArray();
+
+      const backupData = {
+        version: 1.0,
+        timestamp: new Date().toISOString(),
+        data: { tasks, thoughts, moods }
+      };
+
+      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `MindCap_Full_Backup_${new Date().toLocaleDateString()}.json`;
+      a.click();
+      triggerHaptic('success');
     } catch (err) {
-      setLog("Restore failed: File mismatch.");
+      console.error("Export thất bại:", err);
     }
   };
 
+  // --- 2. IMPORT JSON CHUẨN ---
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const imported = JSON.parse(event.target?.result as string);
+        if (!imported.data) throw new Error("Định dạng file không đúng");
+
+        await db.transaction('rw', db.tasks, db.thoughts, db.moods, async () => {
+          await db.tasks.bulkPut(imported.data.tasks || []);
+          await db.thoughts.bulkPut(imported.data.thoughts || []);
+          await db.moods.bulkPut(imported.data.moods || []);
+        });
+
+        alert("Nhập dữ liệu thành công!");
+        triggerHaptic('success');
+      } catch (err) {
+        alert("Lỗi khi nhập file: " + err);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // --- 3. IMPORT LEGACY (MindCap_Backup_2026-02-13.json) ---
+  const handleLegacyImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const backup = JSON.parse(event.target?.result as string);
+        const entries = backup.entries || [];
+
+        await db.transaction('rw', db.thoughts, db.moods, async () => {
+          for (const entry of entries) {
+            const timestamp = new Date(entry.createdAt).getTime();
+            
+            // Gán content và createdAt, mặc định thought
+            await db.thoughts.add({
+              content: entry.content,
+              type: 'thought',
+              wordCount: entry.content.split(/\s+/).length,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+              recordStatus: 'success'
+            });
+
+            // Mặc định mood là Normal (score: 0)
+            await db.moods.add({
+              score: 0,
+              label: 'imported',
+              createdAt: timestamp
+            });
+          }
+        });
+
+        alert(`Đã nhập thành công ${entries.length} bản ghi legacy!`);
+        triggerHaptic('success');
+      } catch (err) {
+        alert("Lỗi import legacy: " + err);
+      }
+    };
+    reader.readAsText(file);
+  };
+
   return (
-    <div className="p-8 space-y-10 animate-in fade-in duration-500">
-      <header className="border-b border-white/5 pb-6">
-        <h2 className="text-[10px] font-black tracking-[0.4em] opacity-20 uppercase">System Protocol</h2>
-        <h1 className="text-3xl font-serif italic text-white/90 mt-1">Setup & Sovereignty</h1>
+    <div className="p-6 space-y-8 animate-in fade-in duration-700">
+      <header>
+        <h2 className="text-2xl font-black tracking-tighter">SETUP</h2>
+        <p className="text-[9px] uppercase tracking-widest opacity-30 font-bold">Quản trị dữ liệu & Hệ thống</p>
       </header>
 
-      <div className="grid grid-cols-1 gap-6">
-        {/* Backup Card */}
-        <section className="bg-zinc-900/40 border border-white/5 rounded-[2.5rem] p-8 space-y-6">
-          <div className="space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-blue-400">Data Sovereignty</h3>
-            <p className="text-xs text-white/30 leading-relaxed">
-              Mind Cap hoạt động dựa trên triết lý Local-first. Toàn bộ ký ức của bạn nằm trong tay bạn, không phải đám mây.
-            </p>
-          </div>
+      {/* Cụm nút Import/Export */}
+      <section className="space-y-4">
+        <h3 className="text-[10px] font-black uppercase tracking-widest opacity-50">Dữ liệu hệ thống</h3>
+        <div className="grid grid-cols-2 gap-3">
+          <button 
+            onClick={handleExport}
+            className="flex flex-col items-center justify-center p-6 bg-zinc-900/50 border border-white/5 rounded-[2rem] hover:bg-white hover:text-black transition-all group"
+          >
+            <span className="text-xs font-bold">Export JSON</span>
+            <span className="text-[8px] opacity-40 uppercase mt-1 group-hover:opacity-100">Sao lưu toàn bộ</span>
+          </button>
+          
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="flex flex-col items-center justify-center p-6 bg-zinc-900/50 border border-white/5 rounded-[2rem] hover:bg-blue-500 hover:text-white transition-all group"
+          >
+            <input type="file" ref={fileInputRef} onChange={handleImport} className="hidden" accept=".json" />
+            <span className="text-xs font-bold">Import JSON</span>
+            <span className="text-[8px] opacity-40 uppercase mt-1 group-hover:opacity-100">Khôi phục gốc</span>
+          </button>
+        </div>
+      </section>
 
-          <div className="flex flex-col gap-3">
-            <button 
-              onClick={handleExport}
-              className="w-full bg-white/5 hover:bg-white/10 border border-white/10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all"
-            >
-              Export JSON Vault
-            </button>
-
-            <label className="w-full bg-blue-500 hover:bg-blue-400 text-black py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-center cursor-pointer transition-all">
-              Restore from JSON
-              <input type="file" accept=".json" onChange={handleImport} className="hidden" />
-            </label>
-          </div>
-
-          {log && (
-            <p className="text-center text-[9px] font-bold text-blue-500/80 uppercase tracking-widest animate-pulse">
-              {log}
-            </p>
-          )}
-        </section>
-
-        {/* Panic Button [Planned] */}
+      {/* Nút Import file Legacy */}
+      <section className="space-y-4">
+        <h3 className="text-[10px] font-black uppercase tracking-widest text-yellow-500/50">Legacy Port</h3>
         <button 
-          onClick={() => triggerHaptic('warning')}
-          className="w-full py-4 border border-red-500/20 text-red-500/40 hover:text-red-500 hover:bg-red-500/5 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all italic"
+          onClick={() => legacyInputRef.current?.click()}
+          className="w-full p-5 bg-yellow-500/10 border border-yellow-500/20 rounded-2xl flex items-center justify-between group active:scale-95 transition-all"
         >
-          Panic: Emergency Wipe [Locked]
+          <input type="file" ref={legacyInputRef} onChange={handleLegacyImport} className="hidden" accept=".json" />
+          <div className="text-left">
+            <p className="text-[11px] font-bold text-yellow-500">Nhập MindCap Legacy</p>
+            <p className="text-[8px] opacity-40 uppercase mt-0.5">Content & CreatedAt (Mood: Normal)</p>
+          </div>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-yellow-500 opacity-50">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+          </svg>
         </button>
-      </div>
+      </section>
+
+      <footer className="pt-10 opacity-10 text-center">
+        <p className="text-[8px] font-black uppercase tracking-[0.4em]">Mind Cap Engine v1.0</p>
+      </footer>
     </div>
   );
 };

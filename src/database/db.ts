@@ -16,7 +16,7 @@ export class MindCapDatabase extends Dexie {
 
     // Định nghĩa Schema (Chỉ liệt kê các field cần index)
     this.version(1).stores({
-      tasks: '++id, status, createdAt, isFocusMode, scheduledFor, *tags', 
+      tasks: '++id, status, createdAt, isFocusMode, scheduledFor, *tags, doneCount, targetCount', 
       thoughts: '++id, type, createdAt',
       moods: '++id, score, createdAt',
       userProfile: '++id' 

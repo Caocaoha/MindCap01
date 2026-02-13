@@ -3,7 +3,7 @@ import { useUiStore } from './store/ui-store';
 import { triggerHaptic } from './utils/haptic';
 import { db } from './database/db'; 
 import { useJourneyStore } from './store/journey-store'; 
-import { useIdentityStore } from './modules/identity/identity-store'; // [BỔ SUNG]
+import { useIdentityStore } from './modules/identity/identity-store'; 
 import { FocusSession } from './modules/focus/focus-session';
 import { InputBar } from './modules/input/input-bar';
 import { SabanBoard } from './modules/saban/saban-board';
@@ -16,7 +16,6 @@ import { EntryModal } from './modules/input/components/entry-modal';
 export const App: React.FC = () => {
   const { activeTab, setActiveTab, isInputFocused, setInputFocused, setTyping } = useUiStore();
   const { setTasks } = useJourneyStore(); 
-  // [BỔ SUNG]: Lấy logic nhịp thở từ IdentityStore
   const { progress, openAudit, getPulseFrequency } = useIdentityStore();
   const frequency = getPulseFrequency();
 
@@ -62,19 +61,18 @@ export const App: React.FC = () => {
   return (
     <div className="h-screen w-full bg-black text-white overflow-hidden flex flex-col font-sans select-none">
       
-      {/* --- HEADER: Hợp nhất Mặt trời Bio-Pulse --- */}
+      {/* HEADER: Bio-Pulse [cite: 5] */}
       <header className="h-16 flex items-center justify-center px-6 relative z-[60]">
         <button 
           onClick={() => { 
             triggerHaptic('medium'); 
-            if (activeTab === 'identity') openAudit(); // Nếu đang ở tab, click để mở audit
+            if (activeTab === 'identity') openAudit(); 
             else setActiveTab('identity'); 
           }} 
           style={{ '--pulse-duration': `${frequency}s` } as React.CSSProperties}
           className={`transition-all duration-500 outline-none
             ${activeTab === 'identity' ? 'text-yellow-500 scale-125 animate-pulse-custom' : 'opacity-20 hover:opacity-100'}`}
         >
-          {/* Icon Mặt trời */}
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <circle cx="12" cy="12" r="5" fill={activeTab === 'identity' ? 'currentColor' : 'none'}/>
             <path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
@@ -94,12 +92,13 @@ export const App: React.FC = () => {
         
         {activeTab === 'mind' && (
           <div className="h-full flex flex-col relative">
-            <div className={`relative z-50 h-full overflow-y-auto pb-32 transition-all duration-700 ease-in-out ${isInputFocused ? 'opacity-0 -translate-y-10 scale-95 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
+            {/* [MOD]: Hạ z-index xuống z-20 để không đè lên InputBar  */}
+            <div className={`relative z-20 h-full overflow-y-auto pb-32 transition-all duration-700 ease-in-out ${isInputFocused ? 'opacity-0 -translate-y-10 scale-95 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
               <FocusSession />
             </div>
             
-            {/* [FIX]: Điều chỉnh z-index và bottom margin cho iPhone Safe Area */}
-            <div className={`absolute left-0 right-0 z-40 transition-all duration-500 ease-out ${isInputFocused ? 'top-0 h-screen bg-black/80' : 'bottom-10 sm:bottom-6 h-auto'} pointer-events-none`}>
+            {/* [FIX]: Nâng z-index lên z-50 để nhận diện click từ chuột/tay  */}
+            <div className={`absolute left-0 right-0 z-50 transition-all duration-500 ease-out ${isInputFocused ? 'top-0 h-screen bg-black/80' : 'bottom-10 sm:bottom-6 h-auto'} pointer-events-none`}>
               <div className="pointer-events-auto">
                 <InputBar onFocus={() => { triggerHaptic('light'); setInputFocused(true); }} onBlur={() => setInputFocused(false)} />
               </div>
@@ -108,6 +107,7 @@ export const App: React.FC = () => {
         )}
       </main>
 
+      {/* FOOTER: [cite: 7] */}
       <footer className={`h-20 flex items-center justify-between px-10 relative z-30 transition-transform duration-500 ${isInputFocused ? 'translate-y-24' : 'translate-y-0'}`}>
         <button onClick={() => { triggerHaptic('light'); setActiveTab('saban'); }} className={`transition-all ${activeTab === 'saban' ? 'text-white' : 'opacity-20'}`}>Saban</button>
         <button onClick={() => { triggerHaptic('medium'); setActiveTab('mind'); }} className={`px-8 py-2 rounded-full font-black uppercase text-[10px] tracking-widest transition-all ${activeTab === 'mind' ? 'bg-white text-black scale-110 shadow-xl' : 'bg-zinc-900 opacity-40'}`}>Mind</button>

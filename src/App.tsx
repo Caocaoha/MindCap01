@@ -97,7 +97,9 @@ export const App: React.FC = () => {
             <div className={`relative z-50 h-full overflow-y-auto pb-32 transition-all duration-700 ease-in-out ${isInputFocused ? 'opacity-0 -translate-y-10 scale-95 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
               <FocusSession />
             </div>
-            <div className={`absolute left-0 right-0 z-40 transition-all duration-500 ease-out ${isInputFocused ? 'top-0 h-screen bg-black/80' : 'bottom-6 h-auto'} pointer-events-none`}>
+            
+            {/* [FIX]: Điều chỉnh z-index và bottom margin cho iPhone Safe Area */}
+            <div className={`absolute left-0 right-0 z-40 transition-all duration-500 ease-out ${isInputFocused ? 'top-0 h-screen bg-black/80' : 'bottom-10 sm:bottom-6 h-auto'} pointer-events-none`}>
               <div className="pointer-events-auto">
                 <InputBar onFocus={() => { triggerHaptic('light'); setInputFocused(true); }} onBlur={() => setInputFocused(false)} />
               </div>

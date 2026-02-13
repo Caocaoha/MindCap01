@@ -1,169 +1,146 @@
 import React, { useState } from 'react';
 import { useIdentityStore } from './identity-store';
-import { IDENTITY_QUESTIONS } from './identity-constants';
-import { SunCompass } from './components/sun-compass';
+import { IDENTITY_QUESTIONS, IDENTITY_STAGES } from './identity-constants';
 import { triggerHaptic } from '../../utils/haptic';
 
-/**
- * [MOD_IDENTITY]: IdentityDashboard
- * Giao diện điều phối 2 Tab: The Manifesto (Tổng thể) và The Journey (Chi tiết)
- * Tích hợp hiệu ứng "The Fog" và cơ chế Tan mờ (Fog Dissolve).
- */
 export const IdentityDashboard: React.FC = () => {
-  const { progress, openAudit, checkCooldown } = useIdentityStore();
+  const { progress, openAudit } = useIdentityStore();
   const [activeTab, setActiveTab] = useState<'manifesto' | 'journey'>('journey');
-
-  // Lọc 5 câu hỏi cốt lõi cho Manifesto (Câu 20-24)
-  const manifestoQuestions = IDENTITY_QUESTIONS.filter(q => q.isManifesto);
-
-  // Xử lý tương tác với vùng mù hoặc câu hiện tại
-  const handleInteraction = () => {
-    if (checkCooldown()) {
-      triggerHaptic('warning');
-      return;
-    }
-    triggerHaptic('light');
-    openAudit();
-  };
+  const [selectedHistoryId, setSelectedHistoryId] = useState<number | null>(null);
 
   return (
-    <div className="h-full flex flex-col bg-black text-white overflow-hidden animate-in fade-in duration-700">
+    <div className="h-full flex flex-col bg-black text-white select-none overflow-hidden animate-in fade-in duration-1000">
       
-      {/* --- HEADER DASHBOARD: SunCompass & Tab Switcher --- */}
-      <header className="flex flex-col items-center pt-8 pb-4 border-b border-white/5 bg-zinc-950/30 backdrop-blur-md relative z-40">
-        <div className="mb-6 scale-125 hover:scale-110 transition-transform duration-500">
-          <SunCompass status={progress.lastStatus} />
-        </div>
-        
-        <nav className="flex justify-center gap-12 relative">
-          <button 
-            onClick={() => { triggerHaptic('light'); setActiveTab('manifesto'); }}
-            className={`text-[10px] font-black uppercase tracking-[0.3em] transition-all duration-500 ${
-              activeTab === 'manifesto' ? 'text-white border-b border-white pb-2' : 'opacity-20 hover:opacity-50'
-            }`}
-          >
-            The Manifesto
-          </button>
-          <button 
-            onClick={() => { triggerHaptic('light'); setActiveTab('journey'); }}
-            className={`text-[10px] font-black uppercase tracking-[0.3em] transition-all duration-500 ${
-              activeTab === 'journey' ? 'text-white border-b border-white pb-2' : 'opacity-20 hover:opacity-50'
-            }`}
-          >
-            The Journey
-          </button>
+      {/* --- DASHBOARD HEADER: Đã loại bỏ mặt trời nội khu --- */}
+      <header className="flex flex-col items-center pt-4 pb-4 border-b border-white/5 bg-zinc-950/20 backdrop-blur-md">
+        <nav className="flex justify-center gap-12">
+          {['manifesto', 'journey'].map(tab => (
+            <button 
+              key={tab} 
+              onClick={() => { triggerHaptic('light'); setActiveTab(tab as any); }}
+              className={`text-[10px] font-black uppercase tracking-[0.3em] transition-all duration-500 
+                ${activeTab === tab ? 'text-white border-b border-white pb-2' : 'opacity-20 hover:opacity-40'}`}
+            >
+              {tab}
+            </button>
+          ))}
         </nav>
       </header>
 
-      {/* --- MAIN CONTENT AREA --- */}
-      <div className="flex-1 overflow-y-auto px-6 pb-32 pt-8">
-        
-        {/* TAB 1: THE MANIFESTO (Tổng thể) */}
-        {activeTab === 'manifesto' && (
-          <div className="relative min-h-[500px] animate-in slide-in-from-right duration-700">
-            {/* Overlay nếu chưa mở khóa Manifesto */}
-            {!progress.isManifestoUnlocked && (
-              <div className="absolute inset-0 z-30 backdrop-blur-2xl bg-black/60 flex flex-col items-center justify-center text-center p-10 rounded-3xl border border-white/5 shadow-2xl">
-                <p className="text-sm font-serif italic text-zinc-400 mb-8 max-w-[240px] leading-relaxed">
-                  "Hãy hoàn thành hành trình để nhìn thấy Bản Tuyên Ngôn của chính mình."
-                </p>
-                <button 
-                  onClick={() => { triggerHaptic('medium'); setActiveTab('journey'); }}
-                  className="px-8 py-3 rounded-full border border-white/20 text-[10px] font-black uppercase tracking-widest hover:bg-white hover:text-black transition-all active:scale-95"
+      <main className="flex-1 overflow-y-auto px-6 py-10 custom-scrollbar">
+        {activeTab === 'journey' && (
+          <div className="flex flex-col gap-10 pb-40">
+            {IDENTITY_QUESTIONS.map((q, idx) => {
+              const answers = progress.answers[q.id] || [];
+              const isCleared = idx < progress.currentQuestionIndex;
+              const isCurrent = idx === progress.currentQuestionIndex;
+              
+              // [CẬP NHẬT]: Chỉ hiện tối đa 2 câu chưa hoàn thành (Câu hiện tại + 1 câu sương mù)
+              const isNext = idx === progress.currentQuestionIndex + 1;
+              const isHidden = idx > progress.currentQuestionIndex + 1;
+
+              if (isHidden) return null;
+
+              const stageInfo = IDENTITY_STAGES[q.stage as keyof typeof IDENTITY_STAGES];
+
+              return (
+                <div 
+                  key={q.id}
+                  // Double click để vào audit trực tiếp
+                  onDoubleClick={() => {
+                    if (isCleared) setSelectedHistoryId(q.id);
+                    else if (isCurrent) { triggerHaptic('medium'); openAudit(idx); }
+                  }}
+                  className={`group relative p-6 rounded-3xl transition-all duration-700 border border-white/5
+                    ${isNext ? 'backdrop-blur-xl bg-white/5 opacity-30 pointer-events-none' : 'bg-zinc-900/40 opacity-100'}`}
                 >
-                  Tiếp tục hành trình
-                </button>
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex flex-col">
+                      <span className={`text-[8px] font-black uppercase tracking-widest ${stageInfo.color}`}>
+                        {stageInfo.alias}
+                      </span>
+                      <span className="text-[10px] font-mono opacity-20">#{String(q.id).padStart(2, '0')}</span>
+                    </div>
+                    {isCleared && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); triggerHaptic('light'); openAudit(idx); }}
+                        className="text-[9px] font-bold text-blue-400 border border-blue-400/20 px-3 py-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        Trả lời mới
+                      </button>
+                    )}
+                  </div>
+                  
+                  <h4 className="text-sm font-bold leading-relaxed">{q.text}</h4>
+                  
+                  {/* [BỔ SUNG]: Lời mời soi sáng cho câu hiện tại */}
+                  {isCurrent && (
+                    <div className="mt-4 flex items-center gap-3 text-[9px] font-black text-blue-500 uppercase tracking-widest animate-pulse">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                      Tâm trí đang đợi câu trả lời của bạn...
+                    </div>
+                  )}
+
+                  {answers.length > 0 && (
+                    <p className="mt-4 text-sm font-serif italic text-blue-100/50 line-clamp-2 border-l border-white/10 pl-4">
+                      {answers[0]}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* TAB MANIFESTO */}
+        {activeTab === 'manifesto' && (
+          <div className="relative min-h-full">
+            {!progress.isManifestoUnlocked && (
+              <div className="absolute inset-0 z-10 backdrop-blur-2xl bg-black/60 flex flex-col items-center justify-center p-10 text-center rounded-3xl">
+                <p className="text-sm font-serif italic text-zinc-500 mb-8 max-w-[240px]">
+                  "Hoàn thành hành trình để diện kiến căn tính mới của bạn."
+                </p>
+                <button onClick={() => setActiveTab('journey')} className="px-8 py-3 rounded-full border border-white/20 text-[10px] font-black uppercase tracking-widest">Tiếp tục hành trình</button>
               </div>
             )}
-
-            {/* Danh sách 5 thẻ bài căn tính */}
             <div className="grid grid-cols-1 gap-8">
-              {manifestoQuestions.map((q) => (
-                <div key={q.id} className="p-8 rounded-3xl bg-zinc-900/20 border border-white/5 group hover:border-blue-500/20 transition-colors duration-500">
-                  <span className="text-[8px] font-black opacity-10 uppercase tracking-tighter block mb-2">Manifesto Point {q.id}</span>
-                  <p className="text-[9px] text-zinc-500 mb-4 uppercase tracking-[0.2em] font-bold">{q.text}</p>
-                  <p className="text-xl md:text-2xl font-serif italic text-blue-50/90 leading-tight">
-                    {progress.answers[q.id] || "..."}
+              {IDENTITY_QUESTIONS.filter(q => q.isManifesto).map(q => (
+                <div key={q.id} className="p-8 rounded-3xl bg-zinc-900/30 border border-white/5">
+                  <p className="text-[9px] text-zinc-500 uppercase tracking-widest mb-4 font-bold">{q.text}</p>
+                  <p className="text-xl font-serif italic text-blue-50/90 leading-relaxed italic">
+                    {(progress.answers[q.id] || [])[0] || "..."}
                   </p>
                 </div>
               ))}
             </div>
           </div>
         )}
+      </main>
 
-        {/* TAB 2: THE JOURNEY (Timeline Lớp mù) */}
-        {activeTab === 'journey' && (
-          <div className="flex flex-col gap-14 relative border-l border-white/5 ml-3 pl-10 py-6 animate-in slide-in-from-left duration-700">
-            
-            {/* Đường dẫn tiến trình (Active Path Indicator) */}
-            <div 
-              className="absolute left-[-1px] top-0 bg-blue-500 transition-all duration-[2000ms] ease-in-out shadow-[0_0_20px_rgba(59,130,246,0.5)]"
-              style={{ 
-                height: `${(progress.currentQuestionIndex / IDENTITY_QUESTIONS.length) * 100}%`, 
-                width: '2px' 
-              }}
-            />
-
-            {IDENTITY_QUESTIONS.map((q, index) => {
-              const isCleared = index < progress.currentQuestionIndex;
-              const isCurrent = index === progress.currentQuestionIndex;
-              const isFoggy = index > progress.currentQuestionIndex;
-
-              return (
-                <div 
-                  key={q.id} 
-                  className={`relative group transition-all duration-[1000ms] ease-in-out ${isFoggy || isCurrent ? 'cursor-pointer' : ''}`}
-                  onClick={isFoggy || isCurrent ? handleInteraction : undefined}
-                >
-                  {/* Dot Timeline (Điểm nút) */}
-                  <div className={`absolute -left-[49px] top-1.5 w-4.5 h-4.5 rounded-full border-2 transition-all duration-[1000ms] z-10
-                    ${isCleared ? 'bg-blue-500 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.7)] scale-75' : 
-                      isCurrent ? 'bg-white border-white scale-110 shadow-[0_0_20px_rgba(255,255,255,0.8)] animate-pulse' : 
-                      'bg-black border-white/20 scale-100 opacity-30'}`} 
-                  />
-
-                  {/* VỎ BỌC DISSOLVE (Hiệu ứng Tan mờ) */}
-                  <div className={`
-                    transition-all duration-[1500ms] ease-in-out rounded-3xl p-6 border
-                    ${isCleared ? 'backdrop-blur-none bg-transparent border-transparent' : 
-                      isCurrent ? 'backdrop-blur-sm bg-blue-500/5 border-blue-500/20 shadow-inner' : 
-                      'backdrop-blur-md bg-white/[0.02] border-white/5 opacity-40'}
-                  `}>
-                    {/* Header: ID & Question Text */}
-                    <div className="flex items-center gap-4 mb-4">
-                      <span className={`text-[10px] font-black font-mono transition-colors duration-1000 ${isCleared ? 'text-blue-500' : 'text-zinc-700'}`}>
-                        {String(q.id).padStart(2, '0')}
-                      </span>
-                      <h4 className={`text-xs uppercase tracking-[0.2em] leading-relaxed transition-all duration-1000 ${
-                        isCleared ? 'text-white/60 font-medium' : isCurrent ? 'text-white font-bold' : 'text-zinc-600'
-                      }`}>
-                        {q.text}
-                      </h4>
-                    </div>
-                    
-                    {/* Answer: Reveal effect (Chỉ hiện khi đã rõ nét) */}
-                    {isCleared && (
-                      <div className="animate-in fade-in slide-in-from-left duration-[1000ms]">
-                        <p className="text-base font-serif italic text-blue-100/30 leading-relaxed pl-5 border-l border-blue-500/10">
-                          {progress.answers[q.id]}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Current Step Indicator (Điểm chờ) */}
-                    {isCurrent && (
-                      <div className="flex items-center gap-3 mt-6 text-[9px] font-black text-blue-500 uppercase tracking-[0.3em] animate-pulse">
-                        <span className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,1)]" />
-                        Chạm để soi sáng
-                      </div>
-                    )}
-                  </div>
+      {/* --- HISTORY DRAWER (Double Click cho câu cũ) --- */}
+      {selectedHistoryId && (
+        <div className="fixed inset-0 z-[120] bg-black/95 p-8 flex flex-col animate-in fade-in slide-in-from-right duration-500">
+          <button onClick={() => setSelectedHistoryId(null)} className="absolute top-10 right-10 opacity-30 hover:opacity-100 uppercase text-[10px] tracking-widest font-black">Đóng</button>
+          <div className="max-w-2xl mx-auto w-full h-full flex flex-col pt-20">
+            <h2 className="text-2xl font-serif italic mb-2 text-blue-100 italic">
+              "{IDENTITY_QUESTIONS.find(q => q.id === selectedHistoryId)?.text}"
+            </h2>
+            <button onClick={() => { openAudit(IDENTITY_QUESTIONS.findIndex(q => q.id === selectedHistoryId)); setSelectedHistoryId(null); }}
+              className="mt-8 mb-16 bg-blue-600 text-white py-5 rounded-2xl text-[10px] font-black uppercase tracking-[0.3em]">Cập nhật phản hồi mới</button>
+            <div className="flex-1 overflow-y-auto space-y-16 pr-4 custom-scrollbar">
+              {(progress.answers[selectedHistoryId] || []).map((text, i) => (
+                <div key={i} className="border-l border-white/10 pl-8 relative">
+                  <div className="absolute left-[-5px] top-3 w-2.5 h-2.5 rounded-full bg-blue-500/50" />
+                  <span className="text-[9px] text-zinc-600 block mb-4 uppercase tracking-[0.2em] font-black">
+                    {i === 0 ? "Bản ghi hiện tại" : `Bản ghi cũ #${(progress.answers[selectedHistoryId] || []).length - i}`}
+                  </span>
+                  <p className="text-xl font-serif text-blue-50/80 leading-relaxed italic">{text}</p>
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

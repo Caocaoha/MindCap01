@@ -27,3 +27,29 @@ body {
 .animate-pulse-glow {
   animation: pulse-glow 3s infinite;
 }
+
+
+@keyframes pulse-custom {
+  0%, 100% { opacity: 0.2; transform: scale(0.95); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+.animate-pulse-custom {
+  animation: pulse-custom var(--pulse-duration, 40s) ease-in-out infinite;
+}
+
+.animate-spin-slow {
+  animation: spin 8s linear infinite;
+}
+
+.drop-shadow-sun {
+  filter: drop-shadow(0 0 15px rgba(234, 179, 8, 0.6));
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 3px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}

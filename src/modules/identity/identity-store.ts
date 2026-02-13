@@ -2,31 +2,23 @@ import { create } from 'zustand';
 import { db } from '../../database/db';
 import { IDENTITY_QUESTIONS } from './identity-constants';
 import { triggerHaptic } from '../../utils/haptic';
+import { IUserProfile } from '../../database/types';
 
 /**
- * [STATE]: Quản lý trạng thái của mô-đun Identity
+ * [STATE]: Quản lý trạng thái mô-đun Identity v3.3
+ * Hỗ trợ Bio-Pulse và Multi-Layer Answers.
  */
-
-// ĐỊNH NGHĨA INTERFACE (Giải quyết lỗi 2304)
-export interface IdentityProgress {
-  currentQuestionIndex: number;
-  answers: Record<number, string>;
-  draftAnswer: string;
-  cooldownEndsAt: number | null;
-  isManifestoUnlocked: boolean;
-  lastStatus: 'newbie' | 'paused' | 'cooldown' | 'enlightened';
-}
 
 interface IdentityState {
   isOpen: boolean;
-  progress: IdentityProgress;
+  progress: IUserProfile['identityProgress'];
   isLoading: boolean;
   initStore: () => Promise<void>;
-  openAudit: () => void;
+  openAudit: (forceIndex?: number) => void;
   closeAudit: () => void;
+  submitAnswer: (answer: string, targetId?: number) => Promise<void>;
   saveAndExit: (currentText: string) => Promise<void>;
-  submitAnswer: (answer: string) => Promise<void>; // Explicit type (Sửa lỗi 7006)
-  checkCooldown: () => boolean;
+  getPulseFrequency: () => number; // Trả về số giây cho 1 nhịp thở
 }
 
 export const useIdentityStore = create<IdentityState>((set, get) => ({
@@ -37,6 +29,7 @@ export const useIdentityStore = create<IdentityState>((set, get) => ({
     answers: {},
     draftAnswer: '',
     cooldownEndsAt: null,
+    lastAuditAt: null,
     isManifestoUnlocked: false,
     lastStatus: 'newbie',
   },
@@ -44,8 +37,16 @@ export const useIdentityStore = create<IdentityState>((set, get) => ({
   initStore: async () => {
     const profile = await db.userProfile.get(1);
     if (profile?.identityProgress) {
+      const stored = profile.identityProgress;
+      
+      // MIGRATION: Chuyển đổi dữ liệu cũ từ string sang string[]
+      const migratedAnswers: Record<number, string[]> = {};
+      Object.entries(stored.answers).forEach(([id, val]) => {
+        migratedAnswers[Number(id)] = Array.isArray(val) ? val : [val];
+      });
+
       set({ 
-        progress: profile.identityProgress as IdentityProgress, 
+        progress: { ...stored, answers: migratedAnswers }, 
         isLoading: false 
       });
     } else {
@@ -53,86 +54,81 @@ export const useIdentityStore = create<IdentityState>((set, get) => ({
     }
   },
 
-  openAudit: () => {
-    if (get().checkCooldown()) return;
-    set({ isOpen: true });
+  getPulseFrequency: () => {
+    const { progress } = get();
+    const now = Date.now();
+    const fortyDaysMs = 40 * 24 * 60 * 60 * 1000;
+
+    // 1. Newbie: Chưa có câu trả lời nào
+    if (Object.keys(progress.answers).length === 0) return 100;
+
+    // 2. Inactive: Lần cuối trả lời > 40 ngày
+    if (progress.lastAuditAt && (now - progress.lastAuditAt > fortyDaysMs)) return 80;
+
+    // 3. Started: Đang trong hành trình
+    return 40;
+  },
+
+  openAudit: (forceIndex?: number) => {
+    const { progress } = get();
+    // Chặn nếu đang cooldown
+    if (progress.cooldownEndsAt && Date.now() < progress.cooldownEndsAt) {
+      triggerHaptic('warning');
+      return;
+    }
+
+    if (forceIndex !== undefined) {
+      set(state => ({
+        progress: { ...state.progress, currentQuestionIndex: forceIndex },
+        isOpen: true
+      }));
+    } else {
+      set({ isOpen: true });
+    }
   },
 
   closeAudit: () => set({ isOpen: false }),
 
-  saveAndExit: async (currentText: string) => {
+  submitAnswer: async (answer: string, targetId?: number) => {
     const { progress } = get();
-    const updatedProgress: IdentityProgress = {
-      ...progress,
-      draftAnswer: currentText,
-      lastStatus: 'paused',
-    };
-
-    await db.userProfile.update(1, { identityProgress: updatedProgress });
-    set({ progress: updatedProgress, isOpen: false });
-  },
-
-  submitAnswer: async (answer: string) => { // Sửa lỗi 7006 (Parameter 'answer')
-    const { progress } = get();
-    const currentQIndex = progress.currentQuestionIndex;
-    const question = IDENTITY_QUESTIONS[currentQIndex];
+    const currentIdx = progress.currentQuestionIndex;
+    const question = targetId 
+      ? IDENTITY_QUESTIONS.find(q => q.id === targetId) 
+      : IDENTITY_QUESTIONS[currentIdx];
 
     if (!question) return;
 
-    const newAnswers = { ...progress.answers, [question.id]: answer };
-    let nextIndex = currentQIndex + 1;
-    let newStatus = progress.lastStatus;
-    let cooldownEndsAt = progress.cooldownEndsAt;
+    // Cập nhật mảng câu trả lời (Thêm vào đầu mảng để bản mới nhất luôn ở trên)
+    const existingAnswers = progress.answers[question.id] || [];
+    const newAnswers = {
+      ...progress.answers,
+      [question.id]: [answer, ...existingAnswers]
+    };
 
-    if (question.id === 5) {
-      cooldownEndsAt = Date.now() + 15 * 60 * 1000;
-      newStatus = 'cooldown';
-      triggerHaptic('warning');
-    }
+    let nextIndex = targetId ? progress.currentQuestionIndex : currentIdx + 1;
+    let isManifestoUnlocked = progress.isManifestoUnlocked;
 
-    if (question.id === 25) {
-      newStatus = 'enlightened';
-      // Sửa lỗi 7006 (Parameter 't') bằng cách khai báo kiểu string rõ ràng
-      const taskLines = answer.split('\n').filter((t: string) => t.trim() !== '');
-      
-      for (const content of taskLines) {
-        await db.tasks.add({
-          content: `[Identity] ${content}`,
-          status: 'todo',
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          isFocusMode: false,
-          tags: ['identity-audit', 'p:urgent', 'order:1']
-        });
-      }
-      triggerHaptic('success');
-    }
+    if (question.id === 25) isManifestoUnlocked = true;
 
-    const updatedProgress: IdentityProgress = {
+    const updatedProgress = {
       ...progress,
-      currentQuestionIndex: nextIndex,
       answers: newAnswers,
+      currentQuestionIndex: nextIndex,
+      lastAuditAt: Date.now(),
+      isManifestoUnlocked,
       draftAnswer: '',
-      cooldownEndsAt,
-      lastStatus: newStatus as any,
-      isManifestoUnlocked: question.id === 25 ? true : progress.isManifestoUnlocked,
+      lastStatus: (question.id === 25 ? 'enlightened' : 'paused') as any
     };
 
     await db.userProfile.update(1, { identityProgress: updatedProgress });
     set({ progress: updatedProgress });
-
-    if (question.id === 5 || question.id === 25) {
-      set({ isOpen: false });
-    } else {
-      triggerHaptic('light');
-    }
+    triggerHaptic('medium');
   },
 
-  checkCooldown: () => {
+  saveAndExit: async (currentText: string) => {
     const { progress } = get();
-    if (progress.cooldownEndsAt && Date.now() < progress.cooldownEndsAt) {
-      return true;
-    }
-    return false;
+    const updated = { ...progress, draftAnswer: currentText, lastStatus: 'paused' as any };
+    await db.userProfile.update(1, { identityProgress: updated });
+    set({ progress: updated, isOpen: false });
   }
 }));

@@ -20,17 +20,34 @@ export const App: React.FC = () => {
     setTyping 
   } = useUiStore();
 
-  // Phím tắt Escape để thoát chế độ nhập liệu
+  // Logic lắng nghe bàn phím điều hướng và nhập liệu
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // 1. Phím tắt Escape để thoát chế độ nhập liệu
       if (e.key === 'Escape') {
         setInputFocused(false);
         setTyping(false);
+        return;
+      }
+
+      // 2. Tự động kích hoạt Step-by-step Disclosure khi đang ở tab Mind
+      if (activeTab === 'mind' && !isInputFocused) {
+        // Tránh kích hoạt khi đang gõ trong một ô input hoặc textarea khác
+        if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
+        
+        // Bỏ qua các phím điều khiển (Ctrl, Alt, Meta, Shift)
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+        // Nếu nhấn phím ký tự hoặc Enter -> Kích hoạt Input
+        if (e.key.length === 1 || e.key === 'Enter') {
+          triggerHaptic('light');
+          setInputFocused(true);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setInputFocused, setTyping]);
+  }, [activeTab, isInputFocused, setInputFocused, setTyping]);
 
   return (
     <div className="h-screen w-full bg-black text-white overflow-hidden flex flex-col font-sans select-none">
@@ -41,7 +58,6 @@ export const App: React.FC = () => {
           onClick={() => { triggerHaptic('medium'); setActiveTab('identity'); }}
           className={`transition-all duration-500 ${activeTab === 'identity' ? 'text-yellow-500 scale-110' : 'opacity-20'}`}
         >
-          {/* Icon Mặt trời (Identity) */}
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="5"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
           </svg>
@@ -51,7 +67,6 @@ export const App: React.FC = () => {
           onClick={() => { triggerHaptic('light'); setActiveTab('setup'); }}
           className={`absolute right-6 transition-opacity ${activeTab === 'setup' ? 'text-blue-400' : 'opacity-20'}`}
         >
-          {/* Icon Bánh răng (Setup) */}
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>
           </svg>
@@ -68,12 +83,10 @@ export const App: React.FC = () => {
         {/* VIEW: MIND (Focus + Input) */}
         {activeTab === 'mind' && (
           <div className="h-full flex flex-col relative">
-            {/* Focus Session ẩn đi hoàn toàn khi nhập liệu */}
             <div className={`transition-all duration-700 ease-in-out ${isInputFocused ? 'opacity-0 -translate-y-10 scale-95 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
               <FocusSession />
             </div>
 
-            {/* Input Bar bám lấy Header khi isInputFocused */}
             <div className={`absolute left-0 right-0 transition-all duration-500 ease-out ${isInputFocused ? 'top-0' : 'bottom-6'}`}>
               <InputBar 
                 onFocus={() => { triggerHaptic('light'); setInputFocused(true); }}
@@ -108,7 +121,6 @@ export const App: React.FC = () => {
         </button>
       </footer>
 
-      {/* Lớp phủ chỉnh sửa vạn năng */}
       <EntryModal />
     </div>
   );

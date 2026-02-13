@@ -7,6 +7,12 @@ interface UserState {
   archetype: string;
   // ... các trường khác
 }
+export interface UserState {
+  profile: any; // Hoặc định nghĩa cụ thể IUserProfile
+  loadProfile: () => Promise<void>;
+  // ... các trường khác
+}
+
 
 export const useUserStore = create<UserState>((set) => ({
   currentLevel: 1,

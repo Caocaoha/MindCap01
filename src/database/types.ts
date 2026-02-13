@@ -1,6 +1,9 @@
 /**
  * [CORE]: Định nghĩa interface và kiểu dữ liệu (Schema Types) cho database
  */
+/**
+ * [CORE]: Định nghĩa interface và kiểu dữ liệu (Schema Types) cho database
+ */
 
 // --- MODULE: INPUT & SABAN & FOCUS ---
 export interface ITask {
@@ -12,6 +15,9 @@ export interface ITask {
   isFocusMode: boolean; 
   scheduledFor?: number; 
   tags?: string[]; 
+  // Bổ sung cho Journey
+  isBookmarked?: boolean;
+  bookmarkReason?: string;
 }
 
 // --- MODULE: JOURNEY & INPUT ---
@@ -22,7 +28,13 @@ export interface IThought {
   wordCount: number;
   createdAt: number;
   recordStatus: 'pending' | 'processing' | 'success';
+  // Bổ sung cho Journey & Entropy
+  updatedAt?: number; 
+  isBookmarked?: boolean;
+  bookmarkReason?: string;
 }
+
+// ... các interface IMood và IUserProfile giữ nguyên 100% như bạn đã gửi
 
 // --- MODULE: IDENTITY ---
 export interface IMood {

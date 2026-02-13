@@ -1,152 +1,67 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../database/db';
-import { ITask } from '../../database/types';
-import { streakEngine } from './streak-engine';
+import { TaskCard } from './ui/task-card';
 import { triggerHaptic } from '../../utils/haptic';
 
-/**
- * [MOD_SABAN]: Bảng điều khiển chiến thuật
- * Hiển thị luồng công việc (Task Chain) và quản lý trạng thái tập trung.
- */
 export const SabanBoard: React.FC = () => {
-  const [activeFlows, setActiveFlows] = useState<ITask[]>([]);
-  const [completedTasks, setCompletedTasks] = useState<ITask[]>([]);
+  const [filter, setFilter] = useState<'all' | 'urgent' | 'important' | 'once' | 'repeat'>('all');
+  const [search, setSearch] = useState('');
 
-  const loadSabanData = async () => {
-    const allTasks = await db.tasks.toArray();
+  // 1. Logic Lọc dữ liệu theo thời gian thực]
+  const tasks = useLiveQuery(async () => {
+    // Chỉ lấy task chưa vào Focus]
+    let query = db.tasks.where('isFocusMode').equals(0); 
 
-    // 1. Xử lý Logic Task Chain cho các tác vụ chưa xong
-    const activeRaw = allTasks.filter(t => t.status !== 'done');
+    const result = await query.toArray();
     
-    const chainedActive = activeRaw.filter(task => {
-      const gid = streakEngine.getTagValue(task, 'group');
-      if (!gid) return true; // Không có group thì luôn hiện
-
-      const groupMembers = activeRaw.filter(t => streakEngine.getTagValue(t, 'group') === gid);
-      const orders = groupMembers.map(t => parseInt(streakEngine.getTagValue(t, 'order') || '999'));
-      const minOrder = Math.min(...orders);
-      
-      return parseInt(streakEngine.getTagValue(task, 'order') || '999') === minOrder;
-    });
-
-    // 2. Lấy các tác vụ đã xong và sắp xếp theo thời gian hoàn thành (mới nhất lên đầu của nhóm Done)
-    const doneTasks = allTasks
-      .filter(t => t.status === 'done')
-      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-
-    setActiveFlows(chainedActive.sort((a, b) => b.createdAt - a.createdAt));
-    setCompletedTasks(doneTasks);
-  };
-
-  useEffect(() => {
-    loadSabanData();
-  }, []);
-
-  // Chuyển đổi trạng thái Focus (Tối đa 4)
-  const toggleFocus = async (task: ITask) => {
-    if (task.status === 'done') return;
-
-    const currentFocusCount = await db.tasks.where('isFocusMode').equals(1).count();
-    
-    if (!task.isFocusMode && currentFocusCount >= 4) {
-      triggerHaptic('warning');
-      alert("Focus Mode đã đầy (Tối đa 4). Hãy hoàn thành bớt!");
-      return;
-    }
-
-    await db.tasks.update(task.id!, { 
-      isFocusMode: !task.isFocusMode,
-      updatedAt: Date.now() 
-    });
-    
-    triggerHaptic('light');
-    loadSabanData();
-  };
-
-  // Đánh dấu hoàn thành thủ công tại Saban
-  const quickComplete = async (task: ITask) => {
-    if (!task.id) return;
-    triggerHaptic('success');
-    
-    await db.tasks.update(task.id, {
-      status: 'done',
-      isFocusMode: false,
-      updatedAt: Date.now()
-    });
-    
-    loadSabanData();
-  };
+    return result.filter(t => {
+      const matchSearch = t.content.toLowerCase().includes(search.toLowerCase());
+      if (filter === 'all') return matchSearch;
+      if (filter === 'urgent') return matchSearch && t.tags?.includes('p:urgent');
+      if (filter === 'important') return matchSearch && t.tags?.includes('p:important');
+      if (filter === 'once') return matchSearch && t.tags?.includes('freq:once');
+      if (filter === 'repeat') return matchSearch && t.tags?.some(tag => tag.startsWith('freq:') && tag !== 'freq:once');
+      return matchSearch;
+    }).sort((a, b) => (a.status === 'done' ? 1 : -1)); // Đẩy việc đã xong xuống cuối]
+  }, [filter, search]);
 
   return (
-    <div className="min-h-screen bg-black text-white p-6 font-sans">
-      <header className="mb-10">
-        <h1 className="text-4xl font-black tracking-tighter italic">SABAN.</h1>
-        <p className="text-[10px] opacity-40 uppercase tracking-[0.3em] mt-1">Tactical Backlog & Flow</p>
+    <div className="flex flex-col h-full space-y-6 animate-in fade-in duration-500">
+      <header className="space-y-4">
+        {/* Hàng nút On/Off Filter */}
+        <div className="flex flex-wrap gap-2 px-1">
+          {['all', 'urgent', 'important', 'once', 'repeat'].map((f) => (
+            <button
+              key={f}
+              onClick={() => { triggerHaptic('light'); setFilter(f as any); }}
+              className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${
+                filter === f ? 'bg-blue-500 border-blue-500 text-black shadow-lg shadow-blue-500/20' : 'border-white/5 opacity-30 text-white'
+              }`}
+            >
+              {f === 'all' ? 'Tất cả' : f === 'urgent' ? 'Khẩn cấp' : f === 'important' ? 'Quan trọng' : f === 'once' ? 'Một lần' : 'Lặp lại'}
+            </button>
+          ))}
+        </div>
+
+        {/* Thanh tìm kiếm */}
+        <div className="px-1">
+          <input 
+            type="text"
+            placeholder="Tìm kiếm nhiệm vụ..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full bg-zinc-900/40 border border-white/5 rounded-2xl py-3 px-5 text-sm focus:outline-none focus:border-white/20 transition-all"
+          />
+        </div>
       </header>
 
-      {/* DANH SÁCH ĐANG THỰC THI (ACTIVE) */}
-      <section className="space-y-3 mb-12">
-        <h2 className="text-xs font-bold opacity-30 uppercase mb-4">Active Flows</h2>
-        {activeFlows.map(task => (
-          <div 
-            key={task.id} 
-            className={`group relative p-5 rounded-2xl border transition-all duration-300 ${
-              task.isFocusMode 
-              ? 'bg-blue-600/10 border-blue-500/50 shadow-[0_0_20px_rgba(59,130,246,0.1)]' 
-              : 'bg-zinc-900 border-white/5'
-            }`}
-          >
-            <div className="flex justify-between items-start">
-              <div className="flex-1" onClick={() => toggleFocus(task)}>
-                <div className="flex gap-2 mb-2">
-                  {task.isFocusMode && (
-                    <span className="text-[9px] bg-blue-500 text-white px-1.5 py-0.5 rounded-full font-black animate-pulse">
-                      FOCUS
-                    </span>
-                  )}
-                  {task.tags?.map(tag => (
-                    <span key={tag} className="text-[9px] text-zinc-500 font-mono">#{tag}</span>
-                  ))}
-                </div>
-                <h3 className="text-lg font-bold leading-tight group-active:scale-95 transition-transform">
-                  {task.content}
-                </h3>
-              </div>
-              
-              <button 
-                onClick={() => quickComplete(task)}
-                className="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center hover:bg-white hover:text-black transition-colors"
-              >
-                ✓
-              </button>
-            </div>
-          </div>
+      {/* Danh sách Task */}
+      <main className="flex-1 overflow-y-auto space-y-3 custom-scrollbar pb-24">
+        {tasks?.map(task => (
+          <TaskCard key={task.id} task={task} />
         ))}
-      </section>
-
-      {/* DANH SÁCH ĐÃ XONG (COMPLETED) */}
-      {completedTasks.length > 0 && (
-        <section className="space-y-2 opacity-60">
-          <h2 className="text-xs font-bold opacity-30 uppercase mb-4">Completed</h2>
-          {completedTasks.map(task => (
-            <div key={task.id} className="p-4 bg-transparent border border-zinc-800 border-dashed rounded-xl flex justify-between items-center">
-              <span className="text-sm font-medium line-through text-zinc-500 italic">
-                {task.content}
-              </span>
-              <span className="text-[9px] font-mono opacity-30">
-                {new Date(task.updatedAt || 0).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </span>
-            </div>
-          ))}
-        </section>
-      )}
-
-      {/* EMPTY STATE */}
-      {activeFlows.length === 0 && completedTasks.length === 0 && (
-        <div className="h-64 flex flex-col items-center justify-center border-2 border-dashed border-zinc-800 rounded-3xl">
-          <p className="text-zinc-600 font-bold uppercase tracking-widest text-xs">No tasks found</p>
-        </div>
-      )}
+      </main>
     </div>
   );
 };

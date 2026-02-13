@@ -1,84 +1,115 @@
-import React, { useState } from 'react';
-import { SabanBoard } from './modules/saban/saban-board';
+import React, { useEffect } from 'react';
+import { useUiStore } from './store/ui-store';
+import { triggerHaptic } from './utils/haptic';
+
+// Import các Module dựa trên cấu trúc folder thực tế
 import { FocusSession } from './modules/focus/focus-session';
 import { InputBar } from './modules/input/input-bar';
+import { SabanBoard } from './modules/saban/saban-board';
 import { JourneyList } from './modules/journey/journey-list';
-import { IdentityCheckin } from './modules/identity/identity-checkin';
 import { SetupPanel } from './modules/setup/setup-panel';
+import { IdentityCheckin } from './modules/identity/identity-checkin';
+import { EntryModal } from './modules/input/components/entry-modal';
 
-/**
- * [MAIN LAYOUT]: Điều phối Step-by-step Disclosure
- * Quản lý trạng thái hiển thị dựa trên Tab và Tiêu điểm nhập liệu.
- */
-export const App = () => {
-  const [activeTab, setActiveTab] = useState<'saban' | 'mind' | 'journey'>('mind');
-  const [isInputFocused, setIsInputFocused] = useState(false);
+export const App: React.FC = () => {
+  const { 
+    activeTab, 
+    setActiveTab, 
+    isInputFocused, 
+    setInputFocused, 
+    setTyping 
+  } = useUiStore();
+
+  // Phím tắt Escape để thoát chế độ nhập liệu
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setInputFocused(false);
+        setTyping(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [setInputFocused, setTyping]);
 
   return (
-    <div className="flex flex-col h-screen bg-black text-white overflow-hidden font-sans">
+    <div className="h-screen w-full bg-black text-white overflow-hidden flex flex-col font-sans select-none">
       
-      {/* HEADER: Identity (Center) & Setup (Right) */}
-      <header className="h-14 border-b border-white/5 flex items-center justify-between px-4 z-50 bg-black">
-        <div className="w-10" /> {/* Spacer cho đối trọng */}
-        <div className="flex-1 flex justify-center">
-          <IdentityCheckin />
-        </div>
-        <div className="w-10 flex justify-end">
-          <SetupPanel />
-        </div>
+      {/* --- HEADER: Identity (Center) & Setup (Right) --- */}
+      <header className="h-16 flex items-center justify-center px-6 relative z-50">
+        <button 
+          onClick={() => { triggerHaptic('medium'); setActiveTab('identity'); }}
+          className={`transition-all duration-500 ${activeTab === 'identity' ? 'text-yellow-500 scale-110' : 'opacity-20'}`}
+        >
+          {/* Icon Mặt trời (Identity) */}
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="5"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+          </svg>
+        </button>
+
+        <button 
+          onClick={() => { triggerHaptic('light'); setActiveTab('setup'); }}
+          className={`absolute right-6 transition-opacity ${activeTab === 'setup' ? 'text-blue-400' : 'opacity-20'}`}
+        >
+          {/* Icon Bánh răng (Setup) */}
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
       </header>
 
-      {/* MAIN CONTENT AREA */}
-      <main className="flex-1 overflow-y-auto relative p-4">
+      {/* --- MAIN CONTENT --- */}
+      <main className="flex-1 relative px-4 overflow-hidden">
         {activeTab === 'saban' && <SabanBoard />}
+        {activeTab === 'journey' && <JourneyList />}
+        {activeTab === 'setup' && <SetupPanel />}
+        {activeTab === 'identity' && <IdentityCheckin />}
         
+        {/* VIEW: MIND (Focus + Input) */}
         {activeTab === 'mind' && (
-          <div className="flex flex-col h-full">
-            {/* Logic: Nếu đang gõ (isInputFocused), ẩn Focus để tập trung tuyệt đối */}
-            {!isInputFocused && (
-              <div className="flex-1 transition-all duration-500 ease-in-out">
-                <FocusSession />
-              </div>
-            )}
-            
-            {/* Khi Input Focused, nó sẽ bám lên sát Header nhờ logic CSS */}
-            <div className={`transition-all duration-500 ${isInputFocused ? 'fixed inset-x-0 top-14 bottom-0 bg-black z-40 p-4' : ''}`}>
+          <div className="h-full flex flex-col relative">
+            {/* Focus Session ẩn đi hoàn toàn khi nhập liệu */}
+            <div className={`transition-all duration-700 ease-in-out ${isInputFocused ? 'opacity-0 -translate-y-10 scale-95 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
+              <FocusSession />
+            </div>
+
+            {/* Input Bar bám lấy Header khi isInputFocused */}
+            <div className={`absolute left-0 right-0 transition-all duration-500 ease-out ${isInputFocused ? 'top-0' : 'bottom-6'}`}>
               <InputBar 
-                onFocus={() => setIsInputFocused(true)} 
-                onBlur={() => setIsInputFocused(false)} 
+                onFocus={() => { triggerHaptic('light'); setInputFocused(true); }}
+                onBlur={() => setInputFocused(false)}
               />
             </div>
           </div>
         )}
-
-        {activeTab === 'journey' && <JourneyList />}
       </main>
 
-      {/* FOOTER: Saban (Left), Mind (Center), Journey (Right) */}
-      <footer className={`h-16 border-t border-white/5 flex items-center justify-around px-6 bg-black z-50 transition-transform duration-300 ${isInputFocused ? 'translate-y-full' : 'translate-y-0'}`}>
+      {/* --- FOOTER: Saban (Left), Mind (Center), Journey (Right) --- */}
+      <footer className={`h-20 flex items-center justify-between px-10 transition-transform duration-500 ${isInputFocused ? 'translate-y-24' : 'translate-y-0'}`}>
         <button 
-          onClick={() => setActiveTab('saban')}
-          className={`text-[10px] font-black tracking-widest ${activeTab === 'saban' ? 'text-blue-500' : 'opacity-40'}`}
+          onClick={() => { triggerHaptic('light'); setActiveTab('saban'); }}
+          className={`transition-all ${activeTab === 'saban' ? 'text-white' : 'opacity-20'}`}
         >
-          SABAN
+          Saban
         </button>
 
         <button 
-          onClick={() => setActiveTab('mind')}
-          className={`px-6 py-2 rounded-full border-2 transition-all ${
-            activeTab === 'mind' ? 'border-blue-500 text-blue-500 scale-110' : 'border-white/10 opacity-40'
-          }`}
+          onClick={() => { triggerHaptic('medium'); setActiveTab('mind'); }}
+          className={`px-8 py-2 rounded-full font-black uppercase text-[10px] tracking-widest transition-all ${activeTab === 'mind' ? 'bg-white text-black scale-110 shadow-xl' : 'bg-zinc-900 opacity-40'}`}
         >
-          MIND
+          Mind
         </button>
 
         <button 
-          onClick={() => setActiveTab('journey')}
-          className={`text-[10px] font-black tracking-widest ${activeTab === 'journey' ? 'text-blue-500' : 'opacity-40'}`}
+          onClick={() => { triggerHaptic('light'); setActiveTab('journey'); }}
+          className={`transition-all ${activeTab === 'journey' ? 'text-white' : 'opacity-20'}`}
         >
-          JOURNEY
+          Journey
         </button>
       </footer>
+
+      {/* Lớp phủ chỉnh sửa vạn năng */}
+      <EntryModal />
     </div>
   );
-}
+};

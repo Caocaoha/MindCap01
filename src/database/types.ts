@@ -1,9 +1,6 @@
 /**
  * [CORE]: Định nghĩa interface và kiểu dữ liệu (Schema Types) cho database
  */
-/**
- * [CORE]: Định nghĩa interface và kiểu dữ liệu (Schema Types) cho database
- */
 
 // --- MODULE: INPUT & SABAN & FOCUS ---
 export interface ITask {
@@ -18,6 +15,9 @@ export interface ITask {
   // Bổ sung cho Journey
   isBookmarked?: boolean;
   bookmarkReason?: string;
+  // BỔ SUNG: Hỗ trợ tiến độ số lượng
+  targetCount?: number;
+  doneCount?: number;
 }
 
 // --- MODULE: JOURNEY & INPUT ---
@@ -33,8 +33,6 @@ export interface IThought {
   isBookmarked?: boolean;
   bookmarkReason?: string;
 }
-
-// ... các interface IMood và IUserProfile giữ nguyên 100% như bạn đã gửi
 
 // --- MODULE: IDENTITY ---
 export interface IMood {

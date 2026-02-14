@@ -14,9 +14,13 @@ interface UiState {
   // --- States điều phối Tab ---
   activeTab: ActiveTab;
 
-  // --- [NEW] States cho Universal Edit Modal ---]
+  // --- [NEW] States cho Universal Edit Modal ---
   isModalOpen: boolean;
   editingEntry: ITask | IThought | null;
+
+  // --- [NEW PHASE 4.5]: States cho Unified Search & Scoped Reset ---
+  searchQuery: string;
+  searchContext: ActiveTab | null;
 
   // --- Actions từ User (BẢO TỒN 100%) ---
   toggleSidebar: () => void;
@@ -27,9 +31,13 @@ interface UiState {
   // --- Actions điều phối Tab ---
   setActiveTab: (tab: ActiveTab) => void;
 
-  // --- [NEW] Actions cho Universal Edit Modal ---]
+  // --- [NEW] Actions cho Universal Edit Modal ---
   openEditModal: (entry: ITask | IThought) => void;
   closeModal: () => void;
+
+  // --- [NEW PHASE 4.5]: Actions cho Unified Search ---
+  setSearchQuery: (query: string, context: ActiveTab) => void;
+  clearSearch: () => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -40,9 +48,13 @@ export const useUiStore = create<UiState>((set) => ({
   isInputFocused: false,
   activeTab: 'mind',
 
-  // Khởi tạo trạng thái mới cho Modal
+  // Khởi tạo trạng thái cho Modal
   isModalOpen: false,
   editingEntry: null,
+
+  // [NEW PHASE 4.5]: Khởi tạo trạng thái tìm kiếm
+  searchQuery: '',
+  searchContext: null,
 
   // Triển khai Actions bảo tồn logic của User
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
@@ -50,14 +62,34 @@ export const useUiStore = create<UiState>((set) => ({
   setTyping: (isTyping) => set({ isTyping }),
   setInputFocused: (isFocused) => set({ isInputFocused: isFocused }),
 
-  // Triển khai Action điều hướng
-  setActiveTab: (tab) => set({ 
+  /**
+   * Triển khai Action điều hướng Tab
+   * Tích hợp kỹ thuật Scoped Reset: Tự động xóa tìm kiếm nếu chuyển sang Tab khác ngữ cảnh.
+   */
+  setActiveTab: (tab) => set((state) => ({ 
     activeTab: tab, 
     isTyping: false, 
-    isInputFocused: false 
-  }),
+    isInputFocused: false,
+    // [FIX]: Nếu tab mới khác với ngữ cảnh đang tìm kiếm, thực hiện Reset Scoped
+    searchQuery: state.searchContext !== tab ? '' : state.searchQuery,
+    searchContext: state.searchContext !== tab ? null : state.searchContext
+  })),
 
-  // Triển khai Actions mới cho Edit Modal]
+  // Triển khai Actions mới cho Edit Modal
   openEditModal: (entry) => set({ isModalOpen: true, editingEntry: entry }),
   closeModal: () => set({ isModalOpen: false, editingEntry: null }),
+
+  /**
+   * [NEW PHASE 4.5]: Triển khai hệ thống tìm kiếm hợp nhất
+   * Gắn chặt Query với Context để phục vụ logic lọc chính xác.
+   */
+  setSearchQuery: (query, context) => set({ 
+    searchQuery: query, 
+    searchContext: context 
+  }),
+
+  clearSearch: () => set({ 
+    searchQuery: '', 
+    searchContext: null 
+  }),
 }));

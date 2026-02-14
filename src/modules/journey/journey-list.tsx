@@ -41,13 +41,6 @@ export const JourneyList: React.FC = () => {
             </button>
           ))}
         </div>
-
-        {/* SEARCH BAR: Chỉ hiển thị khi ở tab Nhật ký */}
-        {viewMode === 'diary' && (
-          <div className="animate-in fade-in slide-in-from-top-1 duration-300">
-            <SearchBar />
-          </div>
-        )}
       </header>
 
       {/* MAIN CONTENT Area: Cuộn mượt với whitespace lớn */}

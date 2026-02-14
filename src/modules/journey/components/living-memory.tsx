@@ -5,11 +5,13 @@ import { useJourneyStore } from '../../../store/journey-store';
 import { useUiStore } from '../../../store/ui-store';
 import { triggerHaptic } from '../../../utils/haptic';
 import { BookmarkReasonModal } from './bookmark-reason-modal';
+import { SearchBar } from '../../../components/shared/search-bar'; 
+import { matchesSearch } from '../../../utils/nlp-engine'; 
 
 /**
  * [MOD_JOURNEY]: Thành phần hiển thị danh sách nhật ký sống động.
- * Giai đoạn 4: Thẩm mỹ Linear.app & Tối ưu hóa iPhone (Vertical Expansion).
- * Đảm bảo hiển thị 100% nội dung và neo vững các nút chức năng ở hai bên.
+ * Giai đoạn 4.5: Tích hợp Hệ thống Tìm kiếm Hợp nhất & Tối ưu hóa iPhone.
+ * [FIX]: Khắc phục lỗi TS2339 bằng cách kiểm tra thuộc tính 'tags' an toàn.
  */
 export const LivingMemory: React.FC = () => {
   // --- STORE ACTIONS & STATES (Bảo tồn 100%) ---
@@ -21,22 +23,36 @@ export const LivingMemory: React.FC = () => {
     isDiaryEntry 
   } = useJourneyStore(); 
 
-  const { openEditModal, setInputFocused } = useUiStore(); 
+  const { openEditModal, setInputFocused, searchQuery } = useUiStore(); 
 
   // --- LOCAL UI STATES ---
   const [bookmarkTarget, setBookmarkTarget] = useState<any | null>(null);
 
   /**
    * Truy vấn dữ liệu từ IndexedDB (Bảo tồn 100% logic trộn Task/Thought)
+   * Đã tích hợp logic lọc tìm kiếm Worker-side.
    */
   const entries = useLiveQuery(async () => {
     const tasks = await db.tasks.toArray();
     const thoughts = await db.thoughts.toArray();
     
     return [...tasks, ...thoughts]
-      .filter(item => isDiaryEntry(item) && !hiddenIds.includes(item.id as number)) 
+      .filter(item => {
+        // Kiểm tra điều kiện hiển thị cơ bản (Diary & Hidden)
+        const isValidEntry = isDiaryEntry(item) && !hiddenIds.includes(item.id as number);
+        if (!isValidEntry) return false;
+
+        /**
+         * [FIX]: Truy cập 'tags' một cách an toàn. 
+         * Vì IThought không có tags trong types.ts, chúng ta truyền undefined nếu không tồn tại.
+         */
+        const itemTags = 'tags' in item ? item.tags : undefined;
+
+        // Áp dụng bộ máy tìm kiếm chuẩn hóa
+        return matchesSearch(item.content, itemTags, searchQuery);
+      }) 
       .sort((a, b) => b.createdAt - a.createdAt); 
-  }, [hiddenIds]);
+  }, [hiddenIds, searchQuery]);
 
   /**
    * Xử lý xác nhận Gieo hạt ký ức (Bookmark)
@@ -55,23 +71,25 @@ export const LivingMemory: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-3 pb-40">
+      
+      {/* Thanh tìm kiếm dùng chung */}
+      <div className="mb-2 px-1">
+        <SearchBar context="journey" placeholder="Tìm kiếm trong vùng ký ức..." />
+      </div>
+
       {entries?.map((item: any) => {
-        // [MOD]: calculateOpacity vẫn được giữ lại nhưng áp dụng vào màu chữ thay vì container
         const entropyOpacity = calculateOpacity(item.createdAt, item.isBookmarked); 
         const isTask = 'status' in item;
 
         return (
-          /* CARD CONTAINER: Chuyển sang items-start để các nút bấm neo ở đỉnh khi text dài.
-             DNA Linear: Nền trắng, Border Slate mảnh, Bo góc 6px.
-          */
+          /* CARD CONTAINER: Tối ưu iPhone (Vertical Expansion) */
           <div 
             key={`${isTask ? 'task' : 'thought'}-${item.id}`}
             className="flex items-start gap-4 group bg-white p-4 rounded-[6px] border border-slate-200 transition-all hover:bg-slate-50 hover:border-slate-300 shadow-none"
           >
             
-            {/* --- 1. CỤM TRÁI: INCEPTION (Neo đỉnh bằng flex-shrink-0) --- */}
+            {/* --- 1. CỤM TRÁI: INCEPTION --- */}
             <div className="flex-shrink-0 flex flex-col gap-5 pt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-              {/* Nút Bookmark: Nhấn Blue hoặc Slate-400 */}
               <button 
                 onClick={() => !item.isBookmarked && setBookmarkTarget(item)}
                 className={`transition-all active:scale-90 ${item.isBookmarked ? 'text-[#2563EB]' : 'text-slate-400 hover:text-slate-900'}`}
@@ -81,7 +99,6 @@ export const LivingMemory: React.FC = () => {
                 </svg>
               </button>
 
-              {/* Nút Tạo Liên kết (Context Link) */}
               <button 
                 onClick={() => { 
                   if (item.id) {
@@ -98,22 +115,17 @@ export const LivingMemory: React.FC = () => {
               </button>
             </div>
 
-            {/* --- 2. TRUNG TÂM: NỘI DUNG (Mở rộng dọc không giới hạn dòng) --- */}
+            {/* --- 2. TRUNG TÂM: NỘI DUNG --- */}
             <div className="flex-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2 mb-2">
-                {/* DATE: Slate-400 font bold */}
                 <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
                   {new Date(item.createdAt).toLocaleDateString()}
                 </span>
-                {/* BADGES: Flat style, Slate-50 background */}
                 <span className={`text-[8px] font-bold px-2 py-0.5 rounded-[4px] border border-slate-200 text-slate-500 bg-slate-50`}>
                   {isTask ? 'ACTION' : 'REFLECTION'}
                 </span>
               </div>
               
-              {/* TEXT CONTENT: Loại bỏ 'line-clamp-4'. Thêm 'break-words whitespace-pre-wrap' 
-                  để hiện đủ văn bản và xuống dòng. Áp dụng Entropy Opacity.
-              */}
               <p 
                 style={{ color: `rgba(15, 23, 42, ${entropyOpacity})` }}
                 className="text-sm leading-relaxed italic font-medium tracking-tight break-words whitespace-pre-wrap"
@@ -121,7 +133,6 @@ export const LivingMemory: React.FC = () => {
                 {item.content}
               </p>
 
-              {/* Hiển thị lý do gieo hạt (Blue accent) */}
               {item.isBookmarked && item.bookmarkReason && (
                 <div className="mt-3 flex items-start gap-1.5 bg-blue-50/30 p-2 rounded-[4px] border border-blue-100/50">
                   <span className="text-[#2563EB] text-[10px] mt-0.5">✦</span>
@@ -132,9 +143,8 @@ export const LivingMemory: React.FC = () => {
               )}
             </div>
 
-            {/* --- 3. CỤM PHẢI: CONTROL (Neo đỉnh bằng flex-shrink-0) --- */}
+            {/* --- 3. CỤM PHẢI: CONTROL --- */}
             <div className="flex-shrink-0 flex flex-col gap-5 pt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-              {/* Nút Chỉnh sửa */}
               <button 
                 onClick={() => { triggerHaptic('light'); openEditModal(item); }}
                 className="text-slate-400 hover:text-slate-900 active:scale-90 transition-all"
@@ -145,7 +155,6 @@ export const LivingMemory: React.FC = () => {
                 </svg>
               </button>
 
-              {/* Nút Ẩn mềm (Soft Delete) */}
               <button 
                 onClick={() => { 
                   if (item.id) {
@@ -165,17 +174,19 @@ export const LivingMemory: React.FC = () => {
         );
       })}
 
-      {/* MODAL NHẬP LÝ DO BOOKMARK (Bảo tồn 100%) */}
+      {/* MODAL NHẬP LÝ DO BOOKMARK */}
       <BookmarkReasonModal 
         isOpen={!!bookmarkTarget} 
         onClose={() => setBookmarkTarget(null)} 
         onConfirm={handleBookmarkConfirm} 
       />
       
-      {/* Empty State: Linear style */}
+      {/* Empty State */}
       {entries?.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 border border-dashed border-slate-200 rounded-[6px] bg-slate-50/50">
-          <p className="text-[10px] uppercase font-bold tracking-widest text-slate-300">Vùng ký ức đang trống...</p>
+          <p className="text-[10px] uppercase font-bold tracking-widest text-slate-300">
+            {searchQuery ? 'Không tìm thấy kết quả phù hợp...' : 'Vùng ký ức đang trống...'}
+          </p>
         </div>
       )}
     </div>

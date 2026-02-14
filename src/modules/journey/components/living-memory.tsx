@@ -10,8 +10,8 @@ import { matchesSearch } from '../../../utils/nlp-engine';
 
 /**
  * [MOD_JOURNEY]: Thành phần hiển thị danh sách nhật ký sống động.
- * Giai đoạn 4.5: Tích hợp Hệ thống Tìm kiếm Hợp nhất & Tối ưu hóa iPhone.
- * [FIX]: Khắc phục lỗi TS2339 bằng cách kiểm tra thuộc tính 'tags' an toàn.
+ * Giai đoạn 4.6: Nâng cấp hiệu ứng Entropy/Bookmark & Sửa lỗi Linking context.
+ * Tối ưu hóa phản hồi thị giác và hành vi cuộn trên iPhone.
  */
 export const LivingMemory: React.FC = () => {
   // --- STORE ACTIONS & STATES (Bảo tồn 100%) ---
@@ -78,33 +78,54 @@ export const LivingMemory: React.FC = () => {
       </div>
 
       {entries?.map((item: any) => {
+        /**
+         * NÂNG CẤP ENTROPY & BOOKMARK LOGIC
+         * calculateOpacity trả về giá trị từ 0.2 đến 1 tùy thuộc vào thời gian và bookmark.
+         */
         const entropyOpacity = calculateOpacity(item.createdAt, item.isBookmarked); 
         const isTask = 'status' in item;
+        const isBookmarked = item.isBookmarked;
 
         return (
-          /* CARD CONTAINER: Tối ưu iPhone (Vertical Expansion) */
+          /* CARD CONTAINER: Tối ưu iPhone (Vertical Expansion).
+             [NEW]: Thêm hiệu ứng Border-left Blue và Background Blue-50 cho Bookmark.
+             [NEW]: Thêm Scale-down nhẹ cho các ký ức mờ dần theo Entropy.
+          */
           <div 
             key={`${isTask ? 'task' : 'thought'}-${item.id}`}
-            className="flex items-start gap-4 group bg-white p-4 rounded-[6px] border border-slate-200 transition-all hover:bg-slate-50 hover:border-slate-300 shadow-none"
+            style={{ 
+              opacity: isBookmarked ? 1 : Math.max(0.4, entropyOpacity),
+              transform: `scale(${isBookmarked ? 1 : 0.98 + (0.02 * entropyOpacity)})`
+            }}
+            className={`flex items-start gap-4 group p-4 rounded-[6px] border transition-all duration-500 shadow-none ${
+              isBookmarked 
+                ? 'bg-blue-50/40 border-slate-200 border-l-4 border-l-[#2563EB]' 
+                : 'bg-white border-slate-200 hover:border-slate-300'
+            }`}
           >
             
             {/* --- 1. CỤM TRÁI: INCEPTION --- */}
             <div className="flex-shrink-0 flex flex-col gap-5 pt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+              {/* Nút Bookmark: Chuyển màu Blue đậm khi đã bookmark */}
               <button 
-                onClick={() => !item.isBookmarked && setBookmarkTarget(item)}
-                className={`transition-all active:scale-90 ${item.isBookmarked ? 'text-[#2563EB]' : 'text-slate-400 hover:text-slate-900'}`}
+                onClick={() => !isBookmarked && setBookmarkTarget(item)}
+                className={`transition-all active:scale-90 ${isBookmarked ? 'text-[#2563EB]' : 'text-slate-400 hover:text-slate-900'}`}
               >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill={item.isBookmarked ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.5">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill={isBookmarked ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.5">
                   <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
                 </svg>
               </button>
 
+              {/* [FIX]: Nút Tạo Liên kết (Context Link). 
+                  Đã thêm logic cuộn lên đầu trang (Auto-scroll) để người dùng thấy InputBar.
+              */}
               <button 
                 onClick={() => { 
                   if (item.id) {
-                    triggerHaptic('light'); 
+                    triggerHaptic('medium'); // Nâng cấp rung để phản hồi mạnh hơn
                     setLinkingItem({ id: item.id, type: isTask ? 'task' : 'thought' }); 
                     setInputFocused(true); 
+                    window.scrollTo({ top: 0, behavior: 'smooth' }); // Cuộn lên InputBar
                   }
                 }}
                 className="text-slate-400 hover:text-[#2563EB] active:scale-90 transition-all"
@@ -121,20 +142,29 @@ export const LivingMemory: React.FC = () => {
                 <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
                   {new Date(item.createdAt).toLocaleDateString()}
                 </span>
-                <span className={`text-[8px] font-bold px-2 py-0.5 rounded-[4px] border border-slate-200 text-slate-500 bg-slate-50`}>
+                {/* BADGES: Tự động nhấn Blue nếu được Bookmark */}
+                <span className={`text-[8px] font-bold px-2 py-0.5 rounded-[4px] border ${
+                  isBookmarked 
+                    ? 'border-blue-200 text-[#2563EB] bg-blue-50' 
+                    : 'border-slate-200 text-slate-500 bg-slate-50'
+                }`}>
                   {isTask ? 'ACTION' : 'REFLECTION'}
                 </span>
               </div>
               
+              {/* TEXT CONTENT: Cố định màu Slate-900 cho Bookmark để tăng độ tương phản. */}
               <p 
-                style={{ color: `rgba(15, 23, 42, ${entropyOpacity})` }}
-                className="text-sm leading-relaxed italic font-medium tracking-tight break-words whitespace-pre-wrap"
+                style={{ color: isBookmarked ? '#0f172a' : undefined }}
+                className={`text-sm leading-relaxed italic font-medium tracking-tight break-words whitespace-pre-wrap ${
+                  isBookmarked ? 'text-slate-900' : 'text-slate-600'
+                }`}
               >
                 {item.content}
               </p>
 
-              {item.isBookmarked && item.bookmarkReason && (
-                <div className="mt-3 flex items-start gap-1.5 bg-blue-50/30 p-2 rounded-[4px] border border-blue-100/50">
+              {/* Hiển thị lý do gieo hạt (Blue accent) */}
+              {isBookmarked && item.bookmarkReason && (
+                <div className="mt-3 flex items-start gap-1.5 bg-blue-100/30 p-2 rounded-[4px] border border-blue-200/50">
                   <span className="text-[#2563EB] text-[10px] mt-0.5">✦</span>
                   <p className="text-[10px] text-[#2563EB] italic font-medium leading-relaxed">
                     {item.bookmarkReason}

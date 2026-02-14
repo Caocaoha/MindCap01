@@ -10,8 +10,8 @@ import { matchesSearch } from '../../../utils/nlp-engine';
 
 /**
  * [MOD_JOURNEY]: Thành phần hiển thị danh sách nhật ký sống động.
- * Giai đoạn 4.6: Nâng cấp hiệu ứng Entropy/Bookmark & Sửa lỗi Linking context.
- * Tối ưu hóa phản hồi thị giác và hành vi cuộn trên iPhone.
+ * Giai đoạn 4.6: Nâng cấp hiệu ứng Entropy/Bookmark.
+ * [FIX]: Sử dụng EntryModal thay vì InputBar cho tính năng Link Context để tránh lỗi giao diện iPhone.
  */
 export const LivingMemory: React.FC = () => {
   // --- STORE ACTIONS & STATES (Bảo tồn 100%) ---
@@ -23,7 +23,8 @@ export const LivingMemory: React.FC = () => {
     isDiaryEntry 
   } = useJourneyStore(); 
 
-  const { openEditModal, setInputFocused, searchQuery } = useUiStore(); 
+  // [MOD]: Lấy action openCreateModal để thay thế setInputFocused
+  const { openEditModal, openCreateModal, searchQuery } = useUiStore(); 
 
   // --- LOCAL UI STATES ---
   const [bookmarkTarget, setBookmarkTarget] = useState<any | null>(null);
@@ -116,20 +117,17 @@ export const LivingMemory: React.FC = () => {
                 </svg>
               </button>
 
-              {/* [FIX CRITICAL]: SỬ DỤNG TIMEOUT ĐỂ TRÁNH XUNG ĐỘT FOCUS */}
+              {/* [FIXED]: Nút Tạo Liên kết (Context Link). 
+                  Sử dụng openCreateModal thay vì InputBar để đảm bảo giao diện Modal hiển thị tốt trên iPhone.
+              */}
               <button 
                 onClick={() => { 
                   if (item.id) {
                     triggerHaptic('medium'); 
                     setLinkingItem({ id: item.id, type: isTask ? 'task' : 'thought' }); 
                     
-                    // 1. Cuộn lên đỉnh trước
-                    window.scrollTo({ top: 0, behavior: 'smooth' }); 
-
-                    // 2. Chờ 350ms cho việc cuộn hoàn tất rồi mới gọi bàn phím
-                    setTimeout(() => {
-                      setInputFocused(true); 
-                    }, 350);
+                    // Gọi Action mở Modal tạo mới (thay vì setInputFocused)
+                    openCreateModal(); 
                   }
                 }}
                 className="text-slate-400 hover:text-[#2563EB] active:scale-90 transition-all"

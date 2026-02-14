@@ -33,6 +33,7 @@ interface UiState {
 
   // --- [NEW] Actions cho Universal Edit Modal ---
   openEditModal: (entry: ITask | IThought) => void;
+  openCreateModal: () => void; // [ADD]: Action mở modal tạo mới để fix lỗi InputBar
   closeModal: () => void;
 
   // --- [NEW PHASE 4.5]: Actions cho Unified Search ---
@@ -77,6 +78,10 @@ export const useUiStore = create<UiState>((set) => ({
 
   // Triển khai Actions mới cho Edit Modal
   openEditModal: (entry) => set({ isModalOpen: true, editingEntry: entry }),
+  
+  // [ADD]: Triển khai action mở modal tạo mới (editingEntry = null)
+  openCreateModal: () => set({ isModalOpen: true, editingEntry: null }),
+  
   closeModal: () => set({ isModalOpen: false, editingEntry: null }),
 
   /**

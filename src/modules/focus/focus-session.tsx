@@ -6,7 +6,8 @@ import { triggerHaptic } from '../../utils/haptic';
 
 /**
  * [MOD_FOCUS]: Chế độ thực thi tập trung.
- * Giai đoạn 3: Cập nhật thẩm mỹ Linear.app (Pure White background, Slate-200 borders).
+ * Giai đoạn 4: Thẩm mỹ Linear.app & Tối ưu hóa iPhone (Vertical Expansion).
+ * Đảm bảo hiển thị trọn vẹn văn bản và bảo toàn 100% logic cử chỉ.
  */
 export const FocusSession: React.FC = () => {
   // Lấy tối đa 4 việc đang thực thi (Bảo tồn 100% logic)
@@ -29,7 +30,8 @@ export const FocusSession: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 bg-white">
+    /* CONTAINER: Nền trắng tuyệt đối. Sử dụng flex-col để danh sách giãn nở dọc. */
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 bg-white min-h-full pb-32">
       <header className="px-2 flex justify-between items-end border-b border-slate-100 pb-4">
         <div>
           {/* TEXT: Chuyển sang Slate-900 chuẩn chuyên nghiệp */}
@@ -49,6 +51,7 @@ export const FocusSession: React.FC = () => {
 
 /**
  * [FOCUS_CARD]: Thẻ thực thi với tương tác cử chỉ.
+ * Tối ưu hóa iPhone: Hiển thị trọn vẹn nội dung textarea.
  */
 const FocusCard: React.FC<{ task: ITask }> = ({ task }) => {
   const [isHolding, setIsHolding] = useState(false);
@@ -118,42 +121,54 @@ const FocusCard: React.FC<{ task: ITask }> = ({ task }) => {
   const progressPercent = ((task.doneCount || 0) / (task.targetCount || 1)) * 100;
 
   return (
-    /* CARD CONTAINER: Nền trắng, Border Slate-200, Bo góc 6px */
+    /* CARD CONTAINER: Chuyển sang items-start để nút và số lượng luôn ở đỉnh khi text dài.
+       Bo góc 6px, Border Slate-200 theo DNA Linear.
+    */
     <div 
-      className="relative overflow-hidden bg-white border border-slate-200 rounded-[6px] p-5 flex items-center gap-4 transition-all active:scale-[0.98]"
+      className="relative overflow-hidden bg-white border border-slate-200 rounded-[6px] p-5 flex items-start gap-4 transition-all active:scale-[0.98]"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      {/* NÚT TÍCH NHANH: Chuyển sang phong cách Linear (Slate-50 background, Blue icon when done) */}
+      {/* NÚT TÍCH NHANH: flex-shrink-0 đảm bảo không bị văn bản dài đè bẹp. */}
       <button 
         onPointerDown={(e) => e.stopPropagation()} 
         onClick={handleQuickFinish}
-        className="relative z-20 w-10 h-10 flex items-center justify-center rounded-[6px] bg-slate-50 border border-slate-100 active:scale-75 transition-transform"
+        className="relative z-20 w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[6px] bg-slate-50 border border-slate-100 active:scale-75 transition-transform mt-0.5"
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="opacity-40 group-active:opacity-100">
           <polyline points="20 6 9 17 4 12"></polyline>
         </svg>
       </button>
 
-      {/* THANH TIẾN ĐỘ CHẢY: Chuyển sang màu Xanh nhấn #2563EB */}
+      {/* THANH TIẾN ĐỘ CHẢY: Tự động phủ kín diện tích thẻ khi thẻ giãn nở dọc. */}
       <div 
         onPointerDown={startHolding} onPointerUp={stopHolding} onPointerLeave={stopHolding}
         className="absolute inset-0 bg-[#2563EB] transition-all duration-300 pointer-events-auto"
         style={{ width: `${progressPercent}%`, opacity: isHolding ? 0.15 : 0.05 }}
       />
 
-      <div className="relative z-10 flex-1 flex justify-between items-center pointer-events-none">
+      {/* CENTER & RIGHT COLUMN: Căn đỉnh (items-start). */}
+      <div className="relative z-10 flex-1 flex justify-between items-start pointer-events-none">
         <div className="min-w-0 pr-4">
-          {/* TEXT CONTENT: Slate-900 Inter font */}
-          <h3 className="text-base font-bold tracking-tight text-slate-900 truncate">{task.content}</h3>
-          <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 mt-1">{task.unit || 'mục tiêu'}</p>
+          {/* TEXT CONTENT: Loại bỏ 'truncate'. Thêm 'break-words whitespace-pre-wrap' 
+              để hiển thị toàn bộ nội dung từ textarea bao gồm xuống dòng.
+          */}
+          <h3 className="text-base font-bold tracking-tight text-slate-900 break-words whitespace-pre-wrap leading-relaxed">
+            {task.content}
+          </h3>
+          <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 mt-2">
+            {task.unit || 'mục tiêu'}
+          </p>
         </div>
 
-        <div className="text-right shrink-0">
+        {/* CHỈ SỐ: flex-shrink-0 để neo vững vị trí trên iPhone. */}
+        <div className="text-right shrink-0 mt-0.5">
           <div className="text-xl font-bold font-mono tracking-tighter text-slate-900">
             {task.doneCount || 0}<span className="text-slate-200 mx-0.5">/</span>{task.targetCount}
           </div>
-          <p className="text-[7px] font-bold uppercase tracking-[0.2em] text-slate-300">{task.unit || 'LẦN'}</p>
+          <p className="text-[7px] font-bold uppercase tracking-[0.2em] text-slate-300">
+            {task.unit || 'LẦN'}
+          </p>
         </div>
       </div>
     </div>

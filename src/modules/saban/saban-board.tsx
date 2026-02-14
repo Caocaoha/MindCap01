@@ -6,7 +6,8 @@ import { triggerHaptic } from '../../utils/haptic';
 
 /**
  * [MOD_SABAN]: Quản lý backlog chiến lược.
- * Giai đoạn 3: Cập nhật thẩm mỹ Linear.app (Slate/Zinc monochrome).
+ * Giai đoạn 4: Cập nhật thẩm mỹ Linear.app & Tối ưu hóa iPhone (Vertical Expansion).
+ * Đảm bảo 100% logic lọc và bảo tồn cấu trúc dữ liệu.
  */
 export const SabanBoard: React.FC = () => {
   // 1. BẢO TỒN 100% BỘ LỌC VÀ SEARCH (Cơ sở logic từ Heartbeat v3.6)
@@ -50,11 +51,13 @@ export const SabanBoard: React.FC = () => {
   }, [filter, search]);
 
   return (
-    /* CONTAINER: Nền trắng tuyệt đối */
+    /* CONTAINER: Nền trắng tuyệt đối theo DNA Linear */
     <div className="flex flex-col h-full space-y-6 bg-white">
       <header className="space-y-4 px-1">
         
-        {/* NÚT LỌC CHIẾN THUẬT: Bo góc 6px, Border mảnh Slate-200 */}
+        {/* NÚT LỌC CHIẾN THUẬT: Bo góc 6px, Border mảnh Slate-200.
+            Sử dụng flex-wrap để tự động thích ứng với chiều ngang hẹp của iPhone.
+        */}
         <div className="flex flex-wrap gap-2">
           {(['all', 'urgent', 'important', 'once', 'repeat'] as const).map((f) => (
             <button
@@ -63,9 +66,9 @@ export const SabanBoard: React.FC = () => {
               className={`px-4 py-1.5 rounded-[6px] text-[10px] font-bold uppercase tracking-widest border transition-all ${
                 filter === f 
                   /* Active: Màu xanh đậm #2563EB chuẩn Linear */
-                  ? 'bg-[#2563EB] border-[#2563EB] text-white' 
+                  ? 'bg-[#2563EB] border-[#2563EB] text-white shadow-none' 
                   /* Inactive: Slate style */
-                  : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-slate-300'
+                  : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-slate-300 shadow-none'
               }`}
             >
               {f === 'all' ? 'Tất cả' : f === 'urgent' ? 'Khẩn cấp' : f === 'important' ? 'Quan trọng' : f === 'once' ? 'Một lần' : 'Lặp lại'}
@@ -73,20 +76,23 @@ export const SabanBoard: React.FC = () => {
           ))}
         </div>
 
-        {/* THANH TÌM KIẾM: Flat style, Border slate-200, bo góc 6px */}
+        {/* THANH TÌM KIẾM: Flat style, Border slate-200, bo góc 6px. */}
         <input 
           type="text" 
           placeholder="Tìm kiếm kế hoạch..." 
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-white border border-slate-200 rounded-[6px] py-2.5 px-4 text-sm text-slate-900 placeholder:text-slate-300 focus:outline-none focus:border-[#2563EB] transition-all"
+          className="w-full bg-white border border-slate-200 rounded-[6px] py-2.5 px-4 text-sm text-slate-900 placeholder:text-slate-300 focus:outline-none focus:border-[#2563EB] transition-all shadow-none"
         />
       </header>
 
-      {/* DANH SÁCH SA BÀN: Cuộn mượt với whitespace lớn */}
-      <main className="flex-1 overflow-y-auto space-y-2 pb-24 custom-scrollbar">
+      {/* DANH SÁCH SA BÀN: Thiết lập flex-col và items-stretch. 
+          Điều này đảm bảo các thẻ TaskCard luôn bám sát lề trái/phải trên iPhone, 
+          tạo không gian tối đa cho nội dung văn bản mở rộng theo chiều dọc.
+      */}
+      <main className="flex-1 overflow-y-auto flex flex-col items-stretch space-y-2 pb-24 custom-scrollbar">
         {tasks?.map(task => (
-          /* TaskCard sẽ được cập nhật đồng bộ sang phong cách Linear ở bước tiếp theo */
+          /* TaskCard là nơi thực thi logic "Top-Aligned Flexible Center" để hiện đủ text và nút. */
           <TaskCard key={task.id} task={task} />
         ))}
         

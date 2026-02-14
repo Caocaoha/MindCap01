@@ -8,8 +8,8 @@ import { BookmarkReasonModal } from './bookmark-reason-modal';
 
 /**
  * [MOD_JOURNEY]: Thành phần hiển thị danh sách nhật ký sống động.
- * Giai đoạn 4: Thẩm mỹ Linear.app (White base, Slate borders, 6px radius).
- * Cập nhật Entropy: Chuyển từ độ mờ (Opacity) sang sắc độ màu chữ (Slate-900 to Slate-300).
+ * Giai đoạn 4: Thẩm mỹ Linear.app & Tối ưu hóa iPhone (Vertical Expansion).
+ * Đảm bảo hiển thị 100% nội dung và neo vững các nút chức năng ở hai bên.
  */
 export const LivingMemory: React.FC = () => {
   // --- STORE ACTIONS & STATES (Bảo tồn 100%) ---
@@ -61,20 +61,22 @@ export const LivingMemory: React.FC = () => {
         const isTask = 'status' in item;
 
         return (
-          /* CARD CONTAINER: Nền trắng tuyệt đối, Border Slate mảnh, Bo góc 6px */
+          /* CARD CONTAINER: Chuyển sang items-start để các nút bấm neo ở đỉnh khi text dài.
+             DNA Linear: Nền trắng, Border Slate mảnh, Bo góc 6px.
+          */
           <div 
             key={`${isTask ? 'task' : 'thought'}-${item.id}`}
-            className="flex items-center gap-4 group bg-white p-4 rounded-[6px] border border-slate-200 transition-all hover:bg-slate-50 hover:border-slate-300"
+            className="flex items-start gap-4 group bg-white p-4 rounded-[6px] border border-slate-200 transition-all hover:bg-slate-50 hover:border-slate-300 shadow-none"
           >
             
-            {/* --- 1. CỤM TRÁI: INCEPTION (Slate Monochrome style) --- */}
-            <div className="flex flex-col gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
+            {/* --- 1. CỤM TRÁI: INCEPTION (Neo đỉnh bằng flex-shrink-0) --- */}
+            <div className="flex-shrink-0 flex flex-col gap-5 pt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
               {/* Nút Bookmark: Nhấn Blue hoặc Slate-400 */}
               <button 
                 onClick={() => !item.isBookmarked && setBookmarkTarget(item)}
                 className={`transition-all active:scale-90 ${item.isBookmarked ? 'text-[#2563EB]' : 'text-slate-400 hover:text-slate-900'}`}
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill={item.isBookmarked ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.5">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill={item.isBookmarked ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.5">
                   <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
                 </svg>
               </button>
@@ -90,56 +92,54 @@ export const LivingMemory: React.FC = () => {
                 }}
                 className="text-slate-400 hover:text-[#2563EB] active:scale-90 transition-all"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                   <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
                 </svg>
               </button>
             </div>
 
-            {/* --- 2. TRUNG TÂM: NỘI DUNG (Living Memory - Linear dynamic) --- */}
+            {/* --- 2. TRUNG TÂM: NỘI DUNG (Mở rộng dọc không giới hạn dòng) --- */}
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 mb-1.5">
+              <div className="flex flex-wrap items-center gap-2 mb-2">
                 {/* DATE: Slate-400 font bold */}
                 <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
                   {new Date(item.createdAt).toLocaleDateString()}
                 </span>
                 {/* BADGES: Flat style, Slate-50 background */}
-                <span className={`text-[8px] font-bold px-2 py-0.5 rounded-[4px] border ${
-                  isTask 
-                    ? 'border-slate-200 text-slate-600 bg-slate-50' 
-                    : 'border-slate-200 text-slate-600 bg-slate-50'
-                }`}>
+                <span className={`text-[8px] font-bold px-2 py-0.5 rounded-[4px] border border-slate-200 text-slate-500 bg-slate-50`}>
                   {isTask ? 'ACTION' : 'REFLECTION'}
                 </span>
               </div>
               
-              {/* TEXT CONTENT: Áp dụng Entropy Opacity vào màu chữ Slate-900 */}
+              {/* TEXT CONTENT: Loại bỏ 'line-clamp-4'. Thêm 'break-words whitespace-pre-wrap' 
+                  để hiện đủ văn bản và xuống dòng. Áp dụng Entropy Opacity.
+              */}
               <p 
                 style={{ color: `rgba(15, 23, 42, ${entropyOpacity})` }}
-                className="text-sm leading-relaxed italic font-medium line-clamp-4 tracking-tight"
+                className="text-sm leading-relaxed italic font-medium tracking-tight break-words whitespace-pre-wrap"
               >
                 {item.content}
               </p>
 
               {/* Hiển thị lý do gieo hạt (Blue accent) */}
               {item.isBookmarked && item.bookmarkReason && (
-                <div className="mt-2 flex items-start gap-1.5 bg-blue-50/50 p-2 rounded-[4px] border border-blue-100/50">
-                  <span className="text-[#2563EB] text-[10px]">✦</span>
-                  <p className="text-[10px] text-[#2563EB] italic font-medium">
+                <div className="mt-3 flex items-start gap-1.5 bg-blue-50/30 p-2 rounded-[4px] border border-blue-100/50">
+                  <span className="text-[#2563EB] text-[10px] mt-0.5">✦</span>
+                  <p className="text-[10px] text-[#2563EB] italic font-medium leading-relaxed">
                     {item.bookmarkReason}
                   </p>
                 </div>
               )}
             </div>
 
-            {/* --- 3. CỤM PHẢI: CONTROL (Hiệu chỉnh Slate style) --- */}
-            <div className="flex flex-col gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
+            {/* --- 3. CỤM PHẢI: CONTROL (Neo đỉnh bằng flex-shrink-0) --- */}
+            <div className="flex-shrink-0 flex flex-col gap-5 pt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
               {/* Nút Chỉnh sửa */}
               <button 
                 onClick={() => { triggerHaptic('light'); openEditModal(item); }}
                 className="text-slate-400 hover:text-slate-900 active:scale-90 transition-all"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                 </svg>
@@ -155,7 +155,7 @@ export const LivingMemory: React.FC = () => {
                 }} 
                 className="text-slate-400 hover:text-red-500 active:scale-90 transition-all"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <polyline points="3 6 5 6 21 6"/>
                   <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                 </svg>
@@ -165,7 +165,7 @@ export const LivingMemory: React.FC = () => {
         );
       })}
 
-      {/* MODAL NHẬP LÝ DO BOOKMARK (Bảo tồn) */}
+      {/* MODAL NHẬP LÝ DO BOOKMARK (Bảo tồn 100%) */}
       <BookmarkReasonModal 
         isOpen={!!bookmarkTarget} 
         onClose={() => setBookmarkTarget(null)} 

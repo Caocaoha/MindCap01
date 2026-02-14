@@ -15,8 +15,9 @@ interface EntryFormProps {
 }
 
 /**
- * [MOD_INPUT]: Form nhập liệu v3.8.2 - Phiên bản Toàn năng.
- * Bảo tồn 100%: Định lượng, Tần suất thích ứng, Eisenhower, Mood và Sticky Footer.
+ * [MOD_INPUT]: Form nhập liệu v4.0 - Thẩm mỹ Linear.app.
+ * Đặc điểm: Nền trắng, Slate Border 1px, Bo góc 6px, Nhấn Blue #2563EB.
+ * Bảo tồn 100%: Định lượng, Tần suất, Eisenhower, Mood và Sticky Footer.
  */
 export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, onCancel }) => {
   const { setInputFocused } = useUiStore();
@@ -159,16 +160,18 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
   };
 
   return (
-    <div className="flex flex-col h-[75vh] sm:h-auto max-h-[680px] overflow-hidden bg-black">
+    /* CONTAINER: Nền trắng tuyệt đối, Bo góc 6px, Không bóng đổ */
+    <div className="flex flex-col h-[75vh] sm:h-auto max-h-[680px] overflow-hidden bg-white rounded-[6px]">
       
-      {/* --- PHẦN 1: HEADER (Cố định) --- */}
-      <div className="flex-none pb-4">
-        <div className="flex bg-zinc-900/80 p-1.5 rounded-2xl border border-white/5">
+      {/* --- PHẦN 1: HEADER (Tab Switcher - Slate style) --- */}
+      <div className="flex-none p-4 pb-2">
+        <div className="flex bg-slate-50 p-1 rounded-[6px] border border-slate-200">
           {(['task', 'thought'] as const).map(t => (
             <button 
               key={t} 
               onClick={() => { triggerHaptic('light'); setEntryType(t); }} 
-              className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${entryType === t ? 'bg-white text-black' : 'opacity-30 hover:opacity-100'}`}
+              className={`flex-1 py-2 rounded-[4px] text-[10px] font-bold uppercase tracking-widest transition-all
+                ${entryType === t ? 'bg-white text-slate-900 border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
             >
               {t === 'task' ? 'Nhiệm vụ' : 'Suy nghĩ'}
             </button>
@@ -176,48 +179,48 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
         </div>
       </div>
 
-      {/* --- PHẦN 2: BODY (Cuộn nội dung) --- */}
-      <div className="flex-1 overflow-y-auto pr-1 space-y-8 custom-scrollbar pb-6">
+      {/* --- PHẦN 2: BODY (Content Scroll - Linear aesthetic) --- */}
+      <div className="flex-1 overflow-y-auto px-4 space-y-8 custom-scrollbar pb-6">
         
-        {/* Textarea nhập liệu */}
+        {/* Textarea: Chữ Slate-900 đậm nét trên nền trắng */}
         <textarea
           ref={textareaRef}
           value={content}
           onChange={(e) => setContent(e.target.value)}
           placeholder={entryType === 'task' ? "Hành động cụ thể là gì?" : "Bạn đang trăn trở điều gì?"}
-          className="w-full bg-transparent border-none text-xl focus:outline-none min-h-[100px] placeholder:opacity-20 resize-none leading-relaxed text-white/90"
+          className="w-full bg-transparent border-none text-xl font-medium focus:outline-none min-h-[120px] placeholder:text-slate-300 resize-none leading-relaxed text-slate-900"
         />
 
         {entryType === 'task' ? (
-          <div className="space-y-8 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="space-y-8 animate-in fade-in slide-in-from-top-1 duration-200">
             
-            {/* HÀNG ĐỊNH LƯỢNG (Metrics) */}
-            <div className="flex items-center gap-4 bg-white/5 p-4 rounded-2xl border border-white/5">
+            {/* HÀNG ĐỊNH LƯỢNG (Metrics - Flat style) */}
+            <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-[6px] border border-slate-200">
               <div className="flex-1">
-                <label className="text-[8px] font-black uppercase opacity-20 block mb-1">Mục tiêu số</label>
+                <label className="text-[9px] font-bold uppercase text-slate-400 block mb-1">Mục tiêu số</label>
                 <input 
                   type="number" 
                   value={targetCount} 
                   onChange={(e) => setTargetCount(Number(e.target.value))} 
-                  className="bg-transparent w-full text-lg font-bold outline-none text-white" 
+                  className="bg-transparent w-full text-lg font-semibold outline-none text-slate-900" 
                 />
               </div>
-              <div className="w-[1px] h-8 bg-white/10" />
+              <div className="w-[1px] h-8 bg-slate-200" />
               <div className="flex-1">
-                <label className="text-[8px] font-black uppercase opacity-20 block mb-1">Đơn vị tính</label>
+                <label className="text-[9px] font-bold uppercase text-slate-400 block mb-1">Đơn vị tính</label>
                 <input 
                   type="text" 
                   value={unit} 
                   onChange={(e) => setUnit(e.target.value)} 
                   placeholder="ly, trang, km..." 
-                  className="bg-transparent w-full text-lg font-bold outline-none placeholder:opacity-20 text-white" 
+                  className="bg-transparent w-full text-lg font-semibold outline-none placeholder:text-slate-300 text-slate-900" 
                 />
               </div>
             </div>
 
             {/* TẦN SUẤT THÍCH ỨNG (Adaptive Frequency) */}
             <div className="space-y-4">
-              <label className="text-[8px] font-black uppercase tracking-widest opacity-20">Chu kỳ lặp lại</label>
+              <label className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Chu kỳ lặp lại</label>
               <div className="grid grid-cols-2 gap-2">
                 {[
                   { id: 'once', label: 'Làm một lần' },
@@ -228,21 +231,23 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
                   <button 
                     key={f.id} 
                     onClick={() => { triggerHaptic('light'); setFreq(f.id as any); }} 
-                    className={`py-3 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${freq === f.id ? 'bg-white/10 border-white/20 text-white' : 'border-transparent opacity-30 hover:opacity-100'}`}
+                    className={`py-2.5 rounded-[6px] text-[10px] font-bold uppercase border transition-all
+                      ${freq === f.id ? 'bg-slate-100 border-slate-300 text-slate-900' : 'border-slate-200 text-slate-400 hover:border-slate-300'}`}
                   >
                     {f.label}
                   </button>
                 ))}
               </div>
 
-              {/* Sub-Selector: Thứ trong tuần */}
+              {/* Sub-Selector: Ngày trong tuần (Xanh đậm làm nhấn) */}
               {freq === 'days-week' && (
-                <div className="flex justify-between gap-1 py-2 animate-in zoom-in-95 duration-300">
+                <div className="flex justify-between gap-1 py-2 animate-in zoom-in-95 duration-200">
                   {[1,2,3,4,5,6,7].map(d => (
                     <button 
                       key={d} 
                       onClick={() => toggleWeekDay(d)} 
-                      className={`w-9 h-9 rounded-full text-[9px] font-black flex items-center justify-center transition-all ${selectedWeekDays.includes(d) ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/20' : 'bg-white/5 opacity-20 hover:opacity-50'}`}
+                      className={`w-9 h-9 rounded-[6px] text-[10px] font-bold flex items-center justify-center transition-all
+                        ${selectedWeekDays.includes(d) ? 'bg-[#2563EB] text-white' : 'bg-slate-50 border border-slate-200 text-slate-400'}`}
                     >
                       {d === 7 ? 'CN' : `T${d+1}`}
                     </button>
@@ -252,12 +257,13 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
 
               {/* Sub-Selector: Ngày trong tháng */}
               {freq === 'days-month' && (
-                <div className="grid grid-cols-7 gap-1 py-2 animate-in zoom-in-95 duration-300">
+                <div className="grid grid-cols-7 gap-1 py-2 animate-in zoom-in-95 duration-200">
                   {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
                     <button 
                       key={d} 
                       onClick={() => toggleMonthDay(d)} 
-                      className={`h-8 rounded-lg text-[9px] font-bold flex items-center justify-center transition-all ${selectedMonthDays.includes(d) ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/20' : 'bg-white/5 opacity-20 hover:opacity-50'}`}
+                      className={`h-8 rounded-[4px] text-[10px] font-bold flex items-center justify-center transition-all
+                        ${selectedMonthDays.includes(d) ? 'bg-[#2563EB] text-white' : 'bg-slate-50 border border-slate-200 text-slate-400'}`}
                     >
                       {d}
                     </button>
@@ -266,57 +272,59 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
               )}
             </div>
 
-            {/* EISENHOWER MATRIX */}
+            {/* EISENHOWER MATRIX (Slate tints) */}
             <div className="flex gap-3">
               <button 
                 onClick={() => { triggerHaptic('light'); setIsUrgent(!isUrgent); }} 
-                className={`flex-1 py-4 rounded-2xl text-[9px] font-black uppercase tracking-widest border transition-all ${isUrgent ? 'bg-red-500/10 border-red-500/50 text-red-500' : 'bg-zinc-900 border-white/5 opacity-20 hover:opacity-50'}`}
+                className={`flex-1 py-4 rounded-[6px] text-[10px] font-bold uppercase border transition-all
+                  ${isUrgent ? 'bg-red-50 border-red-200 text-red-600' : 'bg-slate-50 border-slate-200 text-slate-400'}`}
               >
                 Khẩn cấp
               </button>
               <button 
                 onClick={() => { triggerHaptic('light'); setIsImportant(!isImportant); }} 
-                className={`flex-1 py-4 rounded-2xl text-[9px] font-black uppercase tracking-widest border transition-all ${isImportant ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-500' : 'bg-zinc-900 border-white/5 opacity-20 hover:opacity-50'}`}
+                className={`flex-1 py-4 rounded-[6px] text-[10px] font-bold uppercase border transition-all
+                  ${isImportant ? 'bg-amber-50 border-amber-200 text-amber-600' : 'bg-slate-50 border-slate-200 text-slate-400'}`}
               >
                 Quan trọng
               </button>
             </div>
           </div>
         ) : (
-          /* PHẦN SUY NGHĨ: Mood Selector */
-          <div className="space-y-8 pt-10 animate-in fade-in slide-in-from-bottom-2">
+          /* PHẦN SUY NGHĨ: Mood Selector (Slate/Monochrome focus) */
+          <div className="space-y-8 pt-10 animate-in fade-in duration-300">
             <div className="flex justify-between items-center px-4">
               {[1, 2, 3, 4, 5].map((v) => (
                 <button 
                   key={v} 
                   onClick={() => { triggerHaptic('light'); setMoodLevel(v); }} 
-                  className={`transition-all duration-500 outline-none ${moodLevel === v ? 'scale-150 grayscale-0' : 'scale-100 grayscale opacity-20 hover:opacity-50'}`}
+                  className={`transition-all duration-300 ${moodLevel === v ? 'scale-125 grayscale-0' : 'scale-100 grayscale opacity-30 hover:opacity-50'}`}
                 >
                   <span className="text-4xl">{['😫', '😕', '😐', '😊', '🤩'][v-1]}</span>
                 </button>
               ))}
             </div>
-            <p className="text-center text-[10px] font-black uppercase tracking-[0.3em] text-white/40">
+            <p className="text-center text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
               {['Rất khó chịu', 'Khó chịu', 'Bình thường', 'Vui', 'Rất vui'][moodLevel-1]}
             </p>
           </div>
         )}
       </div>
 
-      {/* --- PHẦN 3: FOOTER (Cố định - Sticky) --- */}
-      <div className="flex-none space-y-2 pt-4 border-t border-white/5 bg-black z-10">
+      {/* --- PHẦN 3: FOOTER (Sticky Footer - Linear style) --- */}
+      <div className="flex-none p-4 border-t border-slate-200 bg-white">
         <button 
           onClick={handleSave} 
           disabled={!content.trim()} 
-          className="w-full py-5 bg-white text-black rounded-3xl text-[11px] font-black uppercase tracking-[0.4em] shadow-2xl active:scale-[0.98] transition-all disabled:opacity-10"
+          className="w-full py-4 bg-[#2563EB] text-white rounded-[6px] text-[11px] font-bold uppercase tracking-widest active:scale-[0.98] transition-all disabled:opacity-30 disabled:grayscale shadow-none"
         >
-          {initialData ? 'Cập nhật thay đổi' : 'Gieo mầm vào Mind Cap'}
+          {initialData ? 'Cập nhật thay đổi' : 'Lưu vào Mind Cap'}
         </button>
         <button 
           onClick={() => { triggerHaptic('light'); onCancel(); }} 
-          className="w-full py-3 rounded-xl text-[10px] font-bold uppercase opacity-30 hover:opacity-100 tracking-widest transition-opacity"
+          className="w-full py-3 mt-1 text-[10px] font-bold uppercase text-slate-400 hover:text-slate-600 tracking-widest transition-colors"
         >
-          Hủy bỏ thao tác
+          Hủy bỏ
         </button>
       </div>
     </div>

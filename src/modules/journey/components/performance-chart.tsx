@@ -2,7 +2,13 @@ import React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../../database/db';
 
+/**
+ * [MOD_JOURNEY_UI]: Biểu đồ hiệu suất 7 ngày trục kép.
+ * Giai đoạn 4: Thẩm mỹ Linear.app (White base, Slate borders, 6px radius).
+ * Đặc điểm: Chuyển đổi màu nhấn sang Blue #2563EB và Slate monochrome.
+ */
 export const PerformanceChart: React.FC = () => {
+  // BẢO TỒN 100% LOGIC TRUY VẤN DỮ LIỆU
   const stats = useLiveQuery(async () => {
     const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
     const tasks = await db.tasks.where('createdAt').above(sevenDaysAgo).toArray();
@@ -25,26 +31,66 @@ export const PerformanceChart: React.FC = () => {
   if (!stats) return null;
 
   return (
-    <div className="bg-zinc-900/20 border border-white/5 rounded-[2rem] p-6 mb-6">
-      <div className="flex justify-between items-center mb-6 px-2">
-        <h4 className="text-[10px] font-black tracking-widest opacity-20 uppercase">Hiệu suất 7 ngày</h4>
-        <div className="flex gap-4 text-[9px] font-bold uppercase tracking-tighter opacity-40">
-          <span className="text-blue-500">■ Số việc</span>
-          <span className="text-orange-400">● Tỷ lệ</span>
+    /* CONTAINER: Nền trắng, Border Slate-200 mảnh, bo góc 6px */
+    <div className="bg-white border border-slate-200 rounded-[6px] p-6 mb-6 transition-all hover:border-slate-300 shadow-none">
+      
+      {/* HEADER: Chuyển sang font Inter, màu Slate-400 và Slate-900 */}
+      <div className="flex justify-between items-center mb-8 px-1">
+        <h4 className="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase">
+          Hiệu suất 7 ngày
+        </h4>
+        
+        {/* LEGEND: Tối giản màu sắc sang Blue #2563EB và Slate-300 */}
+        <div className="flex gap-4 text-[9px] font-bold uppercase tracking-widest">
+          <div className="flex items-center gap-1.5 text-slate-400">
+            <span className="w-2 h-2 bg-slate-100 rounded-[2px]" /> Việc xong
+          </div>
+          <div className="flex items-center gap-1.5 text-[#2563EB]">
+            <span className="w-2 h-2 bg-[#2563EB] rounded-full" /> Tỷ lệ %
+          </div>
         </div>
       </div>
 
       <div className="relative h-32 w-full">
+        {/* Biểu đồ SVG: Loại bỏ các grid lines rườm rà */}
         <svg viewBox="0 0 100 40" className="w-full h-full overflow-visible">
+          {/* Baseline chuẩn Linear */}
+          <line x1="0" y1="35" x2="100" y2="35" stroke="#F1F5F9" strokeWidth="0.5" />
+          
           {stats.map((d, i) => {
-            const x = i * 15 + 5;
+            const x = i * 14 + 8;
             const barH = (d.completed / 10) * 30; // Giả định max 10 việc/ngày
             const lineY = 35 - (d.rate / 100) * 30;
+            
             return (
-              <g key={i}>
-                <rect x={x} y={35 - barH} width="6" height={barH} className="fill-blue-500/20 rx-1" />
-                <circle cx={x + 3} cy={lineY} r="1" className="fill-orange-400 shadow-glow" />
-                <text x={x + 3} y="45" textAnchor="middle" className="fill-white/10 text-[3px] uppercase">{d.label}</text>
+              <g key={i} className="transition-all duration-500">
+                {/* CỘT VIỆC XONG: Slate-100 tạo cảm giác nền tảng, bo góc 2px */}
+                <rect 
+                  x={x} 
+                  y={35 - barH} 
+                  width="5" 
+                  height={barH} 
+                  className="fill-slate-100" 
+                  rx="1" 
+                />
+                
+                {/* ĐƯỜNG TỶ LỆ (CHẤM): Xanh đậm #2563EB, loại bỏ shadow-glow */}
+                <circle 
+                  cx={x + 2.5} 
+                  cy={lineY} 
+                  r="0.8" 
+                  className="fill-[#2563EB]" 
+                />
+                
+                {/* NHÃN THỨ: Màu Slate-400 nhạt */}
+                <text 
+                  x={x + 2.5} 
+                  y="43" 
+                  textAnchor="middle" 
+                  className="fill-slate-400 text-[3.5px] font-bold uppercase tracking-tighter"
+                >
+                  {d.label}
+                </text>
               </g>
             );
           })}

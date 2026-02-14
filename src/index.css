@@ -2,6 +2,45 @@
 @tailwind components;
 @tailwind utilities;
 
+/**
+ * [PHASE 1: FOUNDATION] - Linear.app DNA Setup
+ * Chuyển đổi hệ thống màu sang Slate/Zinc và nền trắng tuyệt đối.
+ */
+
+@layer base {
+  body {
+    /* [FIX]: Chuyển sang nền trắng tuyệt đối và font Inter chuẩn Linear */
+    background-color: #ffffff; 
+    color: #0f172a; /* slate-900 */
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    @apply tracking-tight antialiased;
+    
+    /* Bảo tồn logic Mobile cũ */
+    overscroll-behavior-y: none; /* Chặn kéo trang trên mobile */
+    -webkit-tap-highlight-color: transparent; /* Bỏ highlight xanh khi tap trên mobile */
+    @apply select-none;
+  }
+}
+
+@layer components {
+  /** * [NEW]: Các thành phần chuẩn Linear dùng cho các giai đoạn tiếp theo. 
+   * Bo góc đồng nhất 6px, border mảnh 1px.
+   */
+  .linear-card {
+    @apply bg-white border border-slate-200 rounded-[6px] transition-all;
+  }
+
+  .btn-primary {
+    @apply bg-[#2563EB] text-white font-bold py-2 px-4 rounded-[6px] active:scale-[0.98] transition-all shadow-none;
+  }
+
+  .btn-secondary {
+    @apply bg-slate-50 border border-slate-200 text-slate-600 font-bold py-2 px-4 rounded-[6px] hover:bg-slate-100 transition-all shadow-none;
+  }
+}
+
+/* --- BẢO TỒN 100% CÁC TÍNH NĂNG CŨ --- */
+
 /* Ẩn thanh cuộn nhưng vẫn cho phép cuộn */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
@@ -11,14 +50,7 @@
   scrollbar-width: none;  /* Firefox */
 }
 
-/* Hiệu ứng mượt mà cho toàn bộ app */
-body {
-  background-color: #f1f5f9; /* Slate-100 */
-  overscroll-behavior-y: none; /* Chặn kéo trang trên mobile */
-  -webkit-tap-highlight-color: transparent; /* Bỏ highlight xanh khi tap trên mobile */
-}
-
-/* Animation tùy chỉnh cho Identity Card */
+/* Animation tùy chỉnh cho Identity Card (Bảo tồn) */
 @keyframes pulse-glow {
   0%, 100% { box-shadow: 0 0 10px rgba(59, 130, 246, 0.5); }
   50% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.8); }
@@ -28,7 +60,7 @@ body {
   animation: pulse-glow 3s infinite;
 }
 
-
+/* Animation nhịp thở Bio-Pulse cho Identity (Bảo tồn) */
 @keyframes pulse-custom {
   0%, 100% { opacity: 0.2; transform: scale(0.95); }
   50% { opacity: 1; transform: scale(1.1); }
@@ -46,10 +78,12 @@ body {
   filter: drop-shadow(0 0 15px rgba(234, 179, 8, 0.6));
 }
 
+/* Tùy chỉnh thanh cuộn mảnh (Cập nhật màu sang Slate để khớp nền trắng) */
 .custom-scrollbar::-webkit-scrollbar {
   width: 3px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  /* Thay đổi từ white/0.1 sang slate/0.2 để hiển thị rõ trên nền trắng */
+  background: rgba(15, 23, 42, 0.1); 
   border-radius: 10px;
 }

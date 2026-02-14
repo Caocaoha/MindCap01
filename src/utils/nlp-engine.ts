@@ -1,8 +1,16 @@
 /**
  * [ENGINE]: Bộ máy xử lý ngôn ngữ tinh gọn cho Mind Cap.
- * Giai đoạn 4.5: Chuẩn hóa tiếng Việt và Fuzzy Search logic.
+ * Giai đoạn 4.6: [HOTFIX] Khôi phục INlpResult để sửa lỗi build Cloudflare.
  * Tối ưu hóa cho tốc độ xử lý trên thiết bị di động.
  */
+
+// [FIX]: Khôi phục Interface cho Reactive Engine sử dụng
+export interface INlpResult {
+  original: string;
+  normalized: string;
+  keywords: string[];
+  sentiment?: number; // Giữ lại optional để tương thích ngược
+}
 
 /**
  * Loại bỏ dấu tiếng Việt và chuyển về chữ thường.
@@ -50,12 +58,21 @@ const taskTagCleanup = (tag: string): string => {
 };
 
 /**
- * [DÀNH CHO TƯƠNG LAI]: Trích xuất từ khóa quan trọng (Keywords Extraction).
- * Hiện tại hỗ trợ cơ bản việc tách từ để chuẩn bị cho hệ thống Echo/NLP Listener.
+ * Trích xuất từ khóa quan trọng (Keywords Extraction).
  */
 export const extractKeywords = (text: string): string[] => {
   const normalized = normalizeText(text);
   return normalized
     .split(/\s+/)
     .filter(word => word.length > 2); // Chỉ lấy các từ có nghĩa từ 3 ký tự trở lên
+};
+
+// [FIX]: Hàm phân tích tổng hợp (dành cho Reactive Engine nếu cần gọi)
+export const analyze = (text: string): INlpResult => {
+  return {
+    original: text,
+    normalized: normalizeText(text),
+    keywords: extractKeywords(text),
+    sentiment: 0 // Default neutral sentiment
+  };
 };

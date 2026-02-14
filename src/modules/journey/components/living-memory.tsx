@@ -116,16 +116,20 @@ export const LivingMemory: React.FC = () => {
                 </svg>
               </button>
 
-              {/* [FIX]: Nút Tạo Liên kết (Context Link). 
-                  Đã thêm logic cuộn lên đầu trang (Auto-scroll) để người dùng thấy InputBar.
-              */}
+              {/* [FIX CRITICAL]: SỬ DỤNG TIMEOUT ĐỂ TRÁNH XUNG ĐỘT FOCUS */}
               <button 
                 onClick={() => { 
                   if (item.id) {
-                    triggerHaptic('medium'); // Nâng cấp rung để phản hồi mạnh hơn
+                    triggerHaptic('medium'); 
                     setLinkingItem({ id: item.id, type: isTask ? 'task' : 'thought' }); 
-                    setInputFocused(true); 
-                    window.scrollTo({ top: 0, behavior: 'smooth' }); // Cuộn lên InputBar
+                    
+                    // 1. Cuộn lên đỉnh trước
+                    window.scrollTo({ top: 0, behavior: 'smooth' }); 
+
+                    // 2. Chờ 350ms cho việc cuộn hoàn tất rồi mới gọi bàn phím
+                    setTimeout(() => {
+                      setInputFocused(true); 
+                    }, 350);
                   }
                 }}
                 className="text-slate-400 hover:text-[#2563EB] active:scale-90 transition-all"

@@ -1,15 +1,17 @@
 /**
  * [ENGINE]: Bộ máy xử lý ngôn ngữ tinh gọn cho Mind Cap.
- * Giai đoạn 4.6: [HOTFIX] Khôi phục INlpResult để sửa lỗi build Cloudflare.
- * Tối ưu hóa cho tốc độ xử lý trên thiết bị di động.
+ * Giai đoạn 4.6: [HOTFIX V2] Bổ sung 'tokens' và 'tags' vào INlpResult.
+ * Sửa lỗi build Cloudflare TS2339 cho Reactive Engine.
  */
 
-// [FIX]: Khôi phục Interface cho Reactive Engine sử dụng
+// [FIX]: Bổ sung đầy đủ các trường dữ liệu mà Reactive Engine yêu cầu
 export interface INlpResult {
   original: string;
   normalized: string;
   keywords: string[];
-  sentiment?: number; // Giữ lại optional để tương thích ngược
+  tokens: string[]; // [NEW]: Danh sách các từ đơn
+  tags: string[];   // [NEW]: Danh sách hashtag tìm thấy trong văn bản
+  sentiment?: number;
 }
 
 /**
@@ -67,12 +69,21 @@ export const extractKeywords = (text: string): string[] => {
     .filter(word => word.length > 2); // Chỉ lấy các từ có nghĩa từ 3 ký tự trở lên
 };
 
-// [FIX]: Hàm phân tích tổng hợp (dành cho Reactive Engine nếu cần gọi)
+// [FIX]: Cập nhật hàm analyze để trả về tokens và tags
 export const analyze = (text: string): INlpResult => {
+  const normalized = normalizeText(text);
+  
+  // Trích xuất tags (các từ bắt đầu bằng #, ví dụ #idea)
+  // Regex bắt các ký tự chữ, số và gạch dưới sau dấu #
+  const rawTags = text.match(/#[a-zA-Z0-9_]+/g) || [];
+  const tags = rawTags.map(t => t.replace('#', '')); // Loại bỏ dấu # để lưu trữ
+
   return {
     original: text,
-    normalized: normalizeText(text),
+    normalized: normalized,
     keywords: extractKeywords(text),
+    tokens: normalized.split(/\s+/), // Tách chuỗi thành mảng các token
+    tags: tags,
     sentiment: 0 // Default neutral sentiment
   };
 };

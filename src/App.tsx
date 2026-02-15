@@ -13,20 +13,21 @@ import { IdentityCheckin } from './modules/identity/identity-checkin';
 import { IdentityDashboard } from './modules/identity/identity-dashboard'; 
 import { EntryModal } from './modules/input/components/entry-modal';
 // [UNFREEZE]: Kích hoạt module Spark Notification 
+// FIX: Điều chỉnh đường dẫn để khớp với vị trí tệp chuẩn trong Master Doc v3.2
 import { SparkNotification } from './modules/spark/components/spark-notification';
 
 /**
  * [APP]: Main Layout Controller - Linear.app Aesthetic Update. 
- * Giai đoạn 5.2: Tích hợp Deep Linking Handler và Spotlight Watcher cho Spark. [cite: 18]
+ * Giai đoạn 5.2: Tích hợp Deep Linking Handler và Spotlight Watcher cho Spark.
  */
 export const App: React.FC = () => {
-  // Bổ sung openEditModal để phục vụ Deep Linking [cite: 16]
+  // Bổ sung openEditModal để phục vụ Deep Linking
   const { activeTab, setActiveTab, isInputFocused, setInputFocused, setTyping, openEditModal } = useUiStore();
   const { setTasks } = useJourneyStore(); 
   const { progress, openAudit, getPulseFrequency } = useIdentityStore();
   const frequency = getPulseFrequency();
 
-  // Khởi tạo dữ liệu (Bảo tồn 100%) [cite: 4]
+  // Khởi tạo dữ liệu (Bảo tồn 100%)
   useEffect(() => {
     const initializeData = async () => {
       try {
@@ -63,7 +64,7 @@ export const App: React.FC = () => {
         if (isNaN(entryId)) return;
 
         try {
-          // 2. Truy vấn bản ghi từ Database cục bộ [cite: 4]
+          // 2. Truy vấn bản ghi từ Database cục bộ
           const table = type === 'task' ? db.tasks : db.thoughts;
           const entry = await table.get(entryId);
 
@@ -106,10 +107,10 @@ export const App: React.FC = () => {
   }, [activeTab, isInputFocused, setInputFocused, setTyping]);
 
   return (
-    /* GIAO DIỆN CHÍNH: Nền trắng tuyệt đối, chữ Slate-900, Font Inter (font-sans) [cite: 54, 57] */
+    /* GIAO DIỆN CHÍNH: Nền trắng tuyệt đối, chữ Slate-900, Font Inter (font-sans) */
     <div className="h-screen w-full bg-white text-slate-900 overflow-hidden flex flex-col font-sans select-none">
       
-      {/* HEADER: Border mảnh 1px #E2E8F0, không đổ bóng [cite: 55, 56] */}
+      {/* HEADER: Border mảnh 1px #E2E8F0, không đổ bóng */}
       <header className="h-16 flex items-center justify-center px-6 relative z-[60] border-b border-slate-200 bg-white/80 backdrop-blur-md">
         <button 
           onClick={() => { 
@@ -132,13 +133,13 @@ export const App: React.FC = () => {
           className={`absolute right-6 transition-colors ${activeTab === 'setup' ? 'text-[#2563EB]' : 'text-slate-300 hover:text-slate-500'}`}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1-1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>
           </svg>
         </button>
       </header>
 
       {/* MAIN CONTENT Area */}
-      <main className="flex-1 relative px-4 overflow-hidden bg-white [cite: 52]">
+      <main className="flex-1 relative px-4 overflow-hidden bg-white">
         {activeTab === 'saban' && <SabanBoard />}
         {activeTab === 'journey' && <JourneyList />}
         {activeTab === 'setup' && <SetupPanel />}
@@ -150,7 +151,7 @@ export const App: React.FC = () => {
               <FocusSession />
             </div>
             
-            {/* Lớp phủ khi nhập liệu: Chuyển sang White-overlay để khớp với Linear style [cite: 54] */}
+            {/* Lớp phủ khi nhập liệu: Chuyển sang White-overlay */}
             <div className={`absolute left-0 right-0 z-50 transition-all duration-500 ease-out ${isInputFocused ? 'top-0 h-screen bg-white/90 backdrop-blur-sm' : 'bottom-10 sm:bottom-6 h-auto'} pointer-events-none`}>
               <div className="pointer-events-auto">
                 <InputBar onFocus={() => { triggerHaptic('light'); setInputFocused(true); }} onBlur={() => setInputFocused(false)} />
@@ -160,7 +161,7 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      {/* FOOTER: Đã thay đổi Label hiển thị theo triết lý Reflection [cite: 51] */}
+      {/* FOOTER: Đã thay đổi Label hiển thị */}
       <footer className={`h-20 flex items-center justify-between px-10 relative z-30 border-t border-slate-200 bg-white transition-transform duration-500 ${isInputFocused ? 'translate-y-24' : 'translate-y-0'}`}>
         <button 
           onClick={() => { triggerHaptic('light'); setActiveTab('saban'); }} 
@@ -169,7 +170,7 @@ export const App: React.FC = () => {
           Todo
         </button>
 
-        {/* Nút TODAY: Nhãn đã đổi từ Mind sang Today  */}
+        {/* Nút TODAY: Nhãn đã đổi từ Mind sang Today */}
         <button 
           onClick={() => { triggerHaptic('medium'); setActiveTab('mind'); }} 
           className={`px-8 py-2 rounded-[6px] font-bold uppercase text-[10px] tracking-widest transition-all
@@ -189,7 +190,7 @@ export const App: React.FC = () => {
       {/* GLOBAL OVERLAYS & WATCHERS */}
       <IdentityCheckin />
       <EntryModal />
-      {/* [NEW]: Kích hoạt Spotlight Watcher hiển thị thông báo khơi gợi ký ức  */}
+      {/* [NEW]: Spotlight Watcher */}
       <SparkNotification />
     </div>
   );

@@ -9,7 +9,7 @@ import { WidgetMemorySpark } from '../spark/components/widget-memory-spark';
 
 /**
  * [MOD_JOURNEY]: Thành phần cha điều phối dòng thời gian và phân tích.
- * Giai đoạn 6.8: Nâng cấp Trident Layout (Nhật ký | Chỉ số | Spark).
+ * Giai đoạn 6.9: Hỗ trợ Vertical Spark Flow và Footer Guard.
  */
 export const JourneyList: React.FC = () => {
   // BẢO TỒN 100% STATE VÀ ACTION TỪ STORE (với kiểu dữ liệu viewMode mới)
@@ -74,8 +74,10 @@ export const JourneyList: React.FC = () => {
         </div>
       </header>
 
-      {/* MAIN CONTENT Area: Cuộn mượt với whitespace lớn, phân tách 3 không gian view */}
-      <main className="flex-1 overflow-y-auto px-2 custom-scrollbar">
+      {/* MAIN CONTENT Area: Cuộn mượt với whitespace lớn.
+          Bổ sung pb-32 (Footer Guard) để đảm bảo các thẻ Spark dài không bị Footer che khuất.
+      */}
+      <main className="flex-1 overflow-y-auto px-2 pb-32 custom-scrollbar">
         {viewMode === 'diary' && (
           <div className="animate-in fade-in duration-500">
             {/* Chế độ Diary: Danh sách nhật ký, logic Entropy & Hạt giống */}
@@ -92,7 +94,7 @@ export const JourneyList: React.FC = () => {
 
         {viewMode === 'spark' && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-            {/* Chế độ Spark: Không gian phản tư ký ức độc lập */}
+            {/* Chế độ Spark: Không gian phản tư ký ức độc lập, hiển thị hàng dọc co giãn. */}
             <WidgetMemorySpark data={sparkData} />
           </div>
         )}

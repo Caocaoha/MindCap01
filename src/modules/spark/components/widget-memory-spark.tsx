@@ -9,8 +9,8 @@ interface WidgetSlotProps {
 }
 
 /**
- * [SUB-COMPONENT]: Thẻ hiển thị từng mảnh ký ức.
- * Triển khai Tương tác V2.1: Double Click & Long Press.
+ * [SUB-COMPONENT]: Thẻ hiển thị từng mảnh ký ức phiên bản v4.7.
+ * Thiết kế co giãn linh hoạt: Hiển thị trọn vẹn nội dung không giới hạn dòng.
  */
 const WidgetSlotCard: React.FC<WidgetSlotProps> = ({ label, content, type, id }) => {
   // Timer để nhận diện Long Press (Nhấn giữ)
@@ -58,8 +58,11 @@ const WidgetSlotCard: React.FC<WidgetSlotProps> = ({ label, content, type, id })
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp} // Hủy nếu tay trượt ra ngoài vùng card
-      className="flex flex-col gap-2 p-3 bg-white border border-slate-200 rounded-[8px] 
-                 active:scale-[0.98] active:bg-slate-50 transition-all cursor-pointer group select-none"
+      /* LAYOUT: Sử dụng h-auto để thẻ tự giãn nở theo độ dài văn bản.
+         Thêm p-4 để tạo không gian thoáng đãng cho context dài. 
+      */
+      className="flex flex-col gap-2 p-4 bg-white border border-slate-200 rounded-[8px] 
+                 active:scale-[0.98] active:bg-slate-50 transition-all cursor-pointer group select-none h-auto"
     >
       <div className="flex items-center justify-between">
         <span className="text-[9px] font-bold uppercase tracking-tighter text-slate-400 group-hover:text-blue-500 transition-colors">
@@ -67,7 +70,11 @@ const WidgetSlotCard: React.FC<WidgetSlotProps> = ({ label, content, type, id })
         </span>
         <div className="h-1 w-1 rounded-full bg-slate-200 group-hover:bg-blue-400" />
       </div>
-      <p className="text-[12px] leading-relaxed text-slate-700 font-medium line-clamp-3 italic">
+
+      {/* CONTENT: Loại bỏ line-clamp-3 để hiển thị toàn bộ thông tin.
+          Sử dụng whitespace-pre-wrap và break-words để giữ định dạng xuống dòng của người dùng.
+      */}
+      <p className="text-[13px] leading-relaxed text-slate-700 font-medium whitespace-pre-wrap break-words italic">
         "{content}"
       </p>
     </div>
@@ -75,8 +82,8 @@ const WidgetSlotCard: React.FC<WidgetSlotProps> = ({ label, content, type, id })
 };
 
 /**
- * [COMPONENT]: Widget Memory Spark (4-Slot Layout).
- * Cửa sổ hiển thị dòng chảy ký ức theo phong cách Linear.app.
+ * [COMPONENT]: Widget Memory Spark (Vertical Stack Layout).
+ * Cửa sổ hiển thị dòng chảy ký ức phiên bản v4.7.
  */
 export const WidgetMemorySpark: React.FC<{ data: any }> = ({ data }) => {
   if (!data || !data.slots) return null;
@@ -84,7 +91,10 @@ export const WidgetMemorySpark: React.FC<{ data: any }> = ({ data }) => {
   const { slot1, slot2, slot3, slot4 } = data.slots;
 
   return (
-    <section className="w-full max-w-md mx-auto p-4 flex flex-col gap-4 select-none">
+    /* CONTAINER: Chuyển đổi sang flex-col để xếp chồng 4 slots theo hàng dọc.
+       Bổ sung pb-32 (Footer Guard) để đảm bảo không bị thanh điều hướng che mất nội dung khi cuộn.
+    */
+    <section className="w-full max-w-md mx-auto p-4 flex flex-col gap-4 select-none pb-32">
       <div className="flex items-center gap-2 px-1">
         <div className="h-3 w-3 bg-blue-600 rounded-sm" />
         <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-900">
@@ -92,7 +102,9 @@ export const WidgetMemorySpark: React.FC<{ data: any }> = ({ data }) => {
         </h2>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      {/* VERTICAL STACK: Xếp chồng các thẻ ký ức với khoảng cách gap-4 đồng nhất.
+      */}
+      <div className="flex flex-col gap-4">
         {slot1 && <WidgetSlotCard label="Heritage" content={slot1.content} type={slot1.type || 'task'} id={slot1.id} />}
         {slot3 && <WidgetSlotCard label="Trending" content={slot3.content} type={slot3.type || 'task'} id={slot3.id} />}
         {slot4 && <WidgetSlotCard label="Isolated" content={slot4.content} type={slot4.type || 'task'} id={slot4.id} />}

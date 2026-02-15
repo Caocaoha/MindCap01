@@ -48,6 +48,7 @@ export interface IThought {
   id?: number;
   content: string;
   type: 'note' | 'thought' | 'insight';
+  archiveStatus?: 'active' | 'archived'; // [FIX]: Bổ sung để đồng bộ với ITask
   wordCount: number;
   createdAt: number;
   recordStatus: 'pending' | 'processing' | 'success';

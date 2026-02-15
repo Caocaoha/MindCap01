@@ -10,15 +10,13 @@ import { matchesSearch } from '../../../utils/nlp-engine';
 
 /**
  * [MOD_JOURNEY]: Thành phần hiển thị danh sách nhật ký sống động.
- * Giai đoạn 4.6: Nâng cấp hiệu ứng Entropy/Bookmark.
- * [FIX]: Sử dụng EntryModal thay vì InputBar cho tính năng Link Context để tránh lỗi giao diện iPhone.
+ * Giai đoạn 6.9: Sửa lỗi Ghost Records bằng cơ chế Single Source of Truth & Database Archiving.
  */
 export const LivingMemory: React.FC = () => {
   // --- STORE ACTIONS & STATES (Bảo tồn 100%) ---
   const { 
     calculateOpacity, 
     hiddenIds, 
-    toggleHide, 
     setLinkingItem, 
     isDiaryEntry 
   } = useJourneyStore(); 
@@ -30,8 +28,8 @@ export const LivingMemory: React.FC = () => {
   const [bookmarkTarget, setBookmarkTarget] = useState<any | null>(null);
 
   /**
-   * Truy vấn dữ liệu từ IndexedDB (Bảo tồn 100% logic trộn Task/Thought)
-   * Đã tích hợp logic lọc tìm kiếm Worker-side.
+   * [CORE QUERY]: Truy vấn dữ liệu từ IndexedDB.
+   * Cập nhật bộ lọc: Loại bỏ triệt để các bản ghi có archiveStatus === 'archived'.
    */
   const entries = useLiveQuery(async () => {
     const tasks = await db.tasks.toArray();
@@ -39,13 +37,15 @@ export const LivingMemory: React.FC = () => {
     
     return [...tasks, ...thoughts]
       .filter(item => {
-        // Kiểm tra điều kiện hiển thị cơ bản (Diary & Hidden)
-        const isValidEntry = isDiaryEntry(item) && !hiddenIds.includes(item.id as number);
+        // Kiểm tra điều kiện hiển thị: Thuộc Diary & KHÔNG bị lưu trữ (archived) & KHÔNG nằm trong hiddenIds
+        const isValidEntry = isDiaryEntry(item) && 
+                             item.archiveStatus !== 'archived' && 
+                             !hiddenIds.includes(item.id as number);
+        
         if (!isValidEntry) return false;
 
         /**
-         * [FIX]: Truy cập 'tags' một cách an toàn. 
-         * Vì IThought không có tags trong types.ts, chúng ta truyền undefined nếu không tồn tại.
+         * [FIX]: Truy cập 'tags' một cách an toàn cho IThought.
          */
         const itemTags = 'tags' in item ? item.tags : undefined;
 
@@ -54,6 +54,25 @@ export const LivingMemory: React.FC = () => {
       }) 
       .sort((a, b) => b.createdAt - a.createdAt); 
   }, [hiddenIds, searchQuery]);
+
+  /**
+   * [ACTION]: Xử lý xóa/lưu trữ bản ghi.
+   * Sử dụng 'await' để đảm bảo dữ liệu được ghi xuống đĩa trước khi UI phản hồi.
+   */
+  const handleArchive = async (item: any) => {
+    if (!item.id) return;
+    
+    triggerHaptic('medium');
+    
+    // Xác định bảng dữ liệu tương ứng
+    const table = 'status' in item ? db.tasks : db.thoughts;
+    
+    // Cập nhật trạng thái 'archived' vĩnh viễn trong Database v7
+    await table.update(item.id, { 
+      archiveStatus: 'archived',
+      updatedAt: Date.now() 
+    });
+  };
 
   /**
    * Xử lý xác nhận Gieo hạt ký ức (Bookmark)
@@ -79,19 +98,11 @@ export const LivingMemory: React.FC = () => {
       </div>
 
       {entries?.map((item: any) => {
-        /**
-         * NÂNG CẤP ENTROPY & BOOKMARK LOGIC
-         * calculateOpacity trả về giá trị từ 0.2 đến 1 tùy thuộc vào thời gian và bookmark.
-         */
         const entropyOpacity = calculateOpacity(item.createdAt, item.isBookmarked); 
         const isTask = 'status' in item;
         const isBookmarked = item.isBookmarked;
 
         return (
-          /* CARD CONTAINER: Tối ưu iPhone (Vertical Expansion).
-             [NEW]: Thêm hiệu ứng Border-left Blue và Background Blue-50 cho Bookmark.
-             [NEW]: Thêm Scale-down nhẹ cho các ký ức mờ dần theo Entropy.
-          */
           <div 
             key={`${isTask ? 'task' : 'thought'}-${item.id}`}
             style={{ 
@@ -107,7 +118,6 @@ export const LivingMemory: React.FC = () => {
             
             {/* --- 1. CỤM TRÁI: INCEPTION --- */}
             <div className="flex-shrink-0 flex flex-col gap-5 pt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-              {/* Nút Bookmark: Chuyển màu Blue đậm khi đã bookmark */}
               <button 
                 onClick={() => !isBookmarked && setBookmarkTarget(item)}
                 className={`transition-all active:scale-90 ${isBookmarked ? 'text-[#2563EB]' : 'text-slate-400 hover:text-slate-900'}`}
@@ -117,16 +127,11 @@ export const LivingMemory: React.FC = () => {
                 </svg>
               </button>
 
-              {/* [FIXED]: Nút Tạo Liên kết (Context Link). 
-                  Sử dụng openCreateModal thay vì InputBar để đảm bảo giao diện Modal hiển thị tốt trên iPhone.
-              */}
               <button 
                 onClick={() => { 
                   if (item.id) {
                     triggerHaptic('medium'); 
                     setLinkingItem({ id: item.id, type: isTask ? 'task' : 'thought' }); 
-                    
-                    // Gọi Action mở Modal tạo mới (thay vì setInputFocused)
                     openCreateModal(); 
                   }
                 }}
@@ -144,7 +149,6 @@ export const LivingMemory: React.FC = () => {
                 <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
                   {new Date(item.createdAt).toLocaleDateString()}
                 </span>
-                {/* BADGES: Tự động nhấn Blue nếu được Bookmark */}
                 <span className={`text-[8px] font-bold px-2 py-0.5 rounded-[4px] border ${
                   isBookmarked 
                     ? 'border-blue-200 text-[#2563EB] bg-blue-50' 
@@ -154,7 +158,6 @@ export const LivingMemory: React.FC = () => {
                 </span>
               </div>
               
-              {/* TEXT CONTENT: Cố định màu Slate-900 cho Bookmark để tăng độ tương phản. */}
               <p 
                 style={{ color: isBookmarked ? '#0f172a' : undefined }}
                 className={`text-sm leading-relaxed italic font-medium tracking-tight break-words whitespace-pre-wrap ${
@@ -164,7 +167,6 @@ export const LivingMemory: React.FC = () => {
                 {item.content}
               </p>
 
-              {/* Hiển thị lý do gieo hạt (Blue accent) */}
               {isBookmarked && item.bookmarkReason && (
                 <div className="mt-3 flex items-start gap-1.5 bg-blue-100/30 p-2 rounded-[4px] border border-blue-200/50">
                   <span className="text-[#2563EB] text-[10px] mt-0.5">✦</span>
@@ -188,12 +190,7 @@ export const LivingMemory: React.FC = () => {
               </button>
 
               <button 
-                onClick={() => { 
-                  if (item.id) {
-                    triggerHaptic('medium'); 
-                    toggleHide(item.id); 
-                  }
-                }} 
+                onClick={() => handleArchive(item)} // Sử dụng handleArchive thay vì toggleHide
                 className="text-slate-400 hover:text-red-500 active:scale-90 transition-all"
               >
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -206,14 +203,12 @@ export const LivingMemory: React.FC = () => {
         );
       })}
 
-      {/* MODAL NHẬP LÝ DO BOOKMARK */}
       <BookmarkReasonModal 
         isOpen={!!bookmarkTarget} 
         onClose={() => setBookmarkTarget(null)} 
         onConfirm={handleBookmarkConfirm} 
       />
       
-      {/* Empty State */}
       {entries?.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 border border-dashed border-slate-200 rounded-[6px] bg-slate-50/50">
           <p className="text-[10px] uppercase font-bold tracking-widest text-slate-300">

@@ -22,7 +22,7 @@ import { WidgetProvider } from './modules/spark/widget-provider';
 
 /**
  * [APP]: Main Layout Controller - Linear.app Aesthetic Update. 
- * Giai đoạn 6: Tích hợp Cửa sổ ý thức (Widget) vào luồng thực thi Today.
+ * Giai đoạn 6.1: Nâng cấp Deep Linking để xử lý tương tác V2.1 (Double Click & Long Press).
  */
 export const App: React.FC = () => {
   // Bổ sung openEditModal để phục vụ Deep Linking
@@ -74,36 +74,70 @@ export const App: React.FC = () => {
   }, [activeTab]);
 
   /**
-   * [DEEP LINKING HANDLER]: Lắng nghe "mảnh giấy chỉ đường" từ URL để mở đúng bản ghi.
-   * Ví dụ URL: /?open=task:123 hoặc /?open=thought:456 
+   * [DEEP LINKING HANDLER]: Lắng nghe các tham số điều hướng từ Widget.
+   * Hỗ trợ 2 luồng: 
+   * 1. /?open=... (Double Click - Mở xem bản ghi)
+   * 2. /?create-link-to=... (Long Press - Tạo bản ghi liên kết mới)
    */
   useEffect(() => {
     const handleDeepLink = async () => {
-      // 1. Phân tích tham số "open" từ URL thanh địa chỉ
       const params = new URLSearchParams(window.location.search);
+      
+      // LUỒNG 1: DOUBLE CLICK - MỞ BẢN GHI HIỆN TẠI
       const openTarget = params.get('open');
-
       if (openTarget && openTarget.includes(':')) {
         const [type, idStr] = openTarget.split(':');
         const entryId = parseInt(idStr, 10);
 
-        if (isNaN(entryId)) return;
+        if (!isNaN(entryId)) {
+          try {
+            const table = type === 'task' ? db.tasks : db.thoughts;
+            const entry = await table.get(entryId);
 
-        try {
-          // 2. Truy vấn bản ghi từ Database cục bộ
-          const table = type === 'task' ? db.tasks : db.thoughts;
-          const entry = await table.get(entryId);
-
-          if (entry) {
-            // 3. Kích hoạt Modal và phản hồi rung
-            triggerHaptic('medium');
-            openEditModal(entry);
-            
-            // 4. Xóa tham số trên URL để tránh lặp lại khi tải lại trang
-            window.history.replaceState({}, '', window.location.pathname);
+            if (entry) {
+              triggerHaptic('medium');
+              openEditModal(entry);
+              window.history.replaceState({}, '', window.location.pathname);
+            }
+          } catch (error) {
+            console.error("Deep Link Error:", error);
           }
-        } catch (error) {
-          console.error("Deep Link Error:", error);
+        }
+      }
+
+      // LUỒNG 2: LONG PRESS - TẠO BẢN GHI LIÊN KẾT MỚI
+      const createLinkTarget = params.get('create-link-to');
+      if (createLinkTarget && createLinkTarget.includes(':')) {
+        const [type, idStr] = createLinkTarget.split(':');
+        const entryId = parseInt(idStr, 10);
+
+        if (!isNaN(entryId)) {
+          try {
+            const table = type === 'task' ? db.tasks : db.thoughts;
+            const parentEntry = await table.get(entryId);
+
+            if (parentEntry) {
+              // Phản hồi rung mạnh cho hành động kiến tạo
+              triggerHaptic('heavy');
+              
+              /**
+               * FIX [TS2345]: Bổ sung đầy đủ các trường bắt buộc của IThought để thỏa mãn TypeCheck.
+               */
+              openEditModal({
+                content: '',
+                type: 'thought',
+                wordCount: 0,
+                createdAt: Date.now(),
+                recordStatus: 'pending',
+                parentId: parentEntry.id, // Truyền context liên kết
+                isLinkMode: true          // Cờ đánh dấu chế độ liên kết
+              });
+
+              window.history.replaceState({}, '', window.location.pathname);
+            }
+          } catch (error) {
+            console.error("Create Link Deep Link Error:", error);
+          }
         }
       }
     };
@@ -173,12 +207,8 @@ export const App: React.FC = () => {
         
         {activeTab === 'mind' && (
           <div className="h-full flex flex-col relative">
-            {/* CONTAINER TRỰC THI: Sẽ bị ẩn đi (opacity-0, scale-95) khi isInputFocused = true. 
-                Đảm bảo Widget và Focus biến mất cùng lúc để nhường chỗ cho Input.
-            */}
             <div className={`relative z-20 h-full overflow-y-auto pb-32 transition-all duration-700 ease-in-out ${isInputFocused ? 'opacity-0 -translate-y-10 scale-95 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
               
-              {/* VỊ TRÍ 1: Thực thi tập trung (Focus) */}
               <FocusSession />
 
               {/* [NEW] VỊ TRÍ 2: Widget đặt dưới vị trí của Focus */}
@@ -190,7 +220,6 @@ export const App: React.FC = () => {
               )}
             </div>
             
-            {/* Lớp phủ khi nhập liệu: Chuyển sang White-overlay */}
             <div className={`absolute left-0 right-0 z-50 transition-all duration-500 ease-out ${isInputFocused ? 'top-0 h-screen bg-white/90 backdrop-blur-sm' : 'bottom-10 sm:bottom-6 h-auto'} pointer-events-none`}>
               <div className="pointer-events-auto">
                 <InputBar onFocus={() => { triggerHaptic('light'); setInputFocused(true); }} onBlur={() => setInputFocused(false)} />
@@ -200,7 +229,6 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      {/* FOOTER: Đã thay đổi Label hiển thị */}
       <footer className={`h-20 flex items-center justify-between px-10 relative z-30 border-t border-slate-200 bg-white transition-transform duration-500 ${isInputFocused ? 'translate-y-24' : 'translate-y-0'}`}>
         <button 
           onClick={() => { triggerHaptic('light'); setActiveTab('saban'); }} 
@@ -209,7 +237,6 @@ export const App: React.FC = () => {
           Todo
         </button>
 
-        {/* Nút TODAY: Nhãn đã đổi từ Mind sang Today */}
         <button 
           onClick={() => { triggerHaptic('medium'); setActiveTab('mind'); }} 
           className={`px-8 py-2 rounded-[6px] font-bold uppercase text-[10px] tracking-widest transition-all
@@ -226,10 +253,8 @@ export const App: React.FC = () => {
         </button>
       </footer>
 
-      {/* GLOBAL OVERLAYS & WATCHERS */}
       <IdentityCheckin />
       <EntryModal />
-      {/* [NEW]: Spotlight Watcher */}
       <SparkNotification />
     </div>
   );

@@ -3,7 +3,7 @@ import type { ITask, IThought, IMood, IUserProfile } from './types';
 
 /**
  * [DATABASE]: MindCap Core Database Controller.
- * Quản lý phiên bản và chỉ mục dữ liệu để tối ưu hóa Candidate Pooling cho Widget. [cite: 10]
+ * Quản lý phiên bản và chỉ mục dữ liệu để tối ưu hóa Candidate Pooling cho Widget.
  */
 export class MindCapDatabase extends Dexie {
   tasks!: Table<ITask, number>;
@@ -14,7 +14,7 @@ export class MindCapDatabase extends Dexie {
   constructor() {
     super('MindCapDB');
 
-    // Version 3: Hỗ trợ Multi-Layer Answers (Giữ nguyên lịch sử)
+    // Version 3: Hỗ trợ Multi-Layer Answers
     this.version(3).stores({
       tasks: '++id, status, createdAt, isFocusMode, scheduledFor, *tags, doneCount, targetCount', 
       thoughts: '++id, type, createdAt',
@@ -34,20 +34,13 @@ export class MindCapDatabase extends Dexie {
       });
     });
 
-    /**
-     * [NEW] Version 5: Hệ thống Widget Memory (Memory Spark V2.0)
-     * Thêm index cho 'interactionScore' và 'echoLinkCount' để phục vụ lọc Pool nhanh. 
-     */
+    // Version 5: Hệ thống Widget Memory (Memory Spark V2.0)
     this.version(5).stores({
       tasks: '++id, status, createdAt, isFocusMode, scheduledFor, *tags, doneCount, targetCount, nextReviewAt, interactionScore, echoLinkCount', 
       thoughts: '++id, type, createdAt, nextReviewAt, interactionScore, echoLinkCount',
       moods: '++id, score, createdAt',
       userProfile: '++id'
     }).upgrade(trans => {
-      /**
-       * MIGRATION LOGIC: Khởi tạo giá trị mặc định cho các bản ghi cũ.
-       * Điều này đảm bảo các bản ghi Heritage (Pool 1) không bị lỗi khi thiếu chỉ số. [cite: 12]
-       */
       const initializeWidgetData = (record: any) => {
         if (record.interactionScore === undefined) record.interactionScore = 0;
         if (record.echoLinkCount === undefined) record.echoLinkCount = 0;
@@ -56,6 +49,27 @@ export class MindCapDatabase extends Dexie {
 
       trans.table('tasks').toCollection().modify(initializeWidgetData);
       return trans.table('thoughts').toCollection().modify(initializeWidgetData);
+    });
+
+    /**
+     * [NEW] Version 6: Hỗ trợ Semantic Echo & Hierarchical Linking (V2.1)
+     * Thêm chỉ mục 'parentId' để quản lý các liên kết từ Widget Long Press.
+     */
+    this.version(6).stores({
+      tasks: '++id, status, createdAt, isFocusMode, scheduledFor, *tags, doneCount, targetCount, nextReviewAt, interactionScore, echoLinkCount, parentId', 
+      thoughts: '++id, type, createdAt, nextReviewAt, interactionScore, echoLinkCount, parentId',
+      moods: '++id, score, createdAt',
+      userProfile: '++id'
+    }).upgrade(trans => {
+      /**
+       * Đảm bảo các bản ghi cũ có parentId mặc định là null để tránh lỗi tham chiếu.
+       */
+      const initializeParentData = (record: any) => {
+        if (record.parentId === undefined) record.parentId = null;
+      };
+
+      trans.table('tasks').toCollection().modify(initializeParentData);
+      return trans.table('thoughts').toCollection().modify(initializeParentData);
     });
   }
 }

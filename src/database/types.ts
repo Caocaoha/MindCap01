@@ -1,6 +1,6 @@
 /**
- * [CORE]: Định nghĩa interface và kiểu dữ liệu cho database (v3.4)
- * Giai đoạn 5: Tích hợp Spaced Repetition (Memory Spark)
+ * [CORE]: Định nghĩa interface và kiểu dữ liệu cho database (v3.5)
+ * Giai đoạn 6: Tích hợp Hệ thống Widget Memory "Memory Spark" (V2.0)
  */
 
 // --- MODULE: INPUT & SABAN & FOCUS (Giữ nguyên 100%) ---
@@ -22,10 +22,15 @@ export interface ITask {
   doneCount?: number;
   unit?: string;
 
-  // [NEW] Memory Spark Fields
+  // [NEW] Memory Spark Fields (Spaced Repetition)
   nextReviewAt?: number; // Thời điểm cần ôn tập tiếp theo (Timestamp)
   reviewStage?: number;  // Cấp độ hiện tại (0-5)
   lastReviewedAt?: number; // Thời điểm ôn tập gần nhất
+
+  // [V2.0] Widget Memory Scoring Fields (Denormalization) 
+  echoLinkCount?: number;     // Số lượng liên kết ngữ nghĩa đến bản ghi này [cite: 4]
+  interactionScore?: number;  // Tổng điểm "nóng" tích lũy (View/Action) [cite: 5]
+  lastInteractedAt?: number;  // Thời điểm cuối cùng phát sinh tương tác > 1 điểm [cite: 5]
 }
 
 // --- MODULE: JOURNEY & INPUT (Giữ nguyên 100%) ---
@@ -40,10 +45,15 @@ export interface IThought {
   isBookmarked?: boolean;
   bookmarkReason?: string;
 
-  // [NEW] Memory Spark Fields
+  // [NEW] Memory Spark Fields (Spaced Repetition)
   nextReviewAt?: number; // Thời điểm cần ôn tập tiếp theo (Timestamp)
   reviewStage?: number;  // Cấp độ hiện tại (0-5)
   lastReviewedAt?: number; // Thời điểm ôn tập gần nhất
+
+  // [V2.0] Widget Memory Scoring Fields (Denormalization) 
+  echoLinkCount?: number;     // Số lượng liên kết ngữ nghĩa đến bản ghi này [cite: 4]
+  interactionScore?: number;  // Tổng điểm "nóng" tích lũy [cite: 5]
+  lastInteractedAt?: number;  // Thời điểm cuối cùng phát sinh tương tác [cite: 5]
 }
 
 // --- MODULE: IDENTITY (Giữ nguyên 100%) ---

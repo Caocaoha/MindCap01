@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useUiStore } from './store/ui-store';
 import { triggerHaptic } from './utils/haptic';
 import { db } from './database/db'; 
@@ -16,9 +16,13 @@ import { EntryModal } from './modules/input/components/entry-modal';
 // FIX: Điều chỉnh đường dẫn để khớp với vị trí tệp chuẩn trong Master Doc v3.2
 import { SparkNotification } from './modules/spark/components/spark-notification';
 
+// [NEW]: Tích hợp hệ thống Widget Memory
+import { WidgetMemorySpark } from './modules/spark/components/widget-memory-spark';
+import { WidgetProvider } from './modules/spark/widget-provider';
+
 /**
  * [APP]: Main Layout Controller - Linear.app Aesthetic Update. 
- * Giai đoạn 5.2: Tích hợp Deep Linking Handler và Spotlight Watcher cho Spark.
+ * Giai đoạn 6: Tích hợp Cửa sổ ý thức (Widget) vào luồng thực thi Today.
  */
 export const App: React.FC = () => {
   // Bổ sung openEditModal để phục vụ Deep Linking
@@ -26,6 +30,9 @@ export const App: React.FC = () => {
   const { setTasks } = useJourneyStore(); 
   const { progress, openAudit, getPulseFrequency } = useIdentityStore();
   const frequency = getPulseFrequency();
+
+  // [NEW STATE]: Quản lý dữ liệu dòng chảy ký ức
+  const [widgetData, setWidgetData] = useState<any>(null);
 
   // Khởi tạo dữ liệu (Bảo tồn 100%)
   useEffect(() => {
@@ -46,6 +53,25 @@ export const App: React.FC = () => {
     };
     initializeData();
   }, [setTasks]);
+
+  /**
+   * [WIDGET LOADER]: Nạp dữ liệu khi tab Today (Mind) được kích hoạt.
+   */
+  useEffect(() => {
+    if (activeTab === 'mind') {
+      const loadWidget = async () => {
+        try {
+          const timeline = await WidgetProvider.GetWidgetTimeline();
+          if (timeline && timeline.length > 0) {
+            setWidgetData(timeline[0]);
+          }
+        } catch (error) {
+          console.error("Widget loading error:", error);
+        }
+      };
+      loadWidget();
+    }
+  }, [activeTab]);
 
   /**
    * [DEEP LINKING HANDLER]: Lắng nghe "mảnh giấy chỉ đường" từ URL để mở đúng bản ghi.
@@ -147,8 +173,21 @@ export const App: React.FC = () => {
         
         {activeTab === 'mind' && (
           <div className="h-full flex flex-col relative">
+            {/* CONTAINER TRỰC THI: Sẽ bị ẩn đi (opacity-0, scale-95) khi isInputFocused = true. 
+                Đảm bảo Widget và Focus biến mất cùng lúc để nhường chỗ cho Input.
+            */}
             <div className={`relative z-20 h-full overflow-y-auto pb-32 transition-all duration-700 ease-in-out ${isInputFocused ? 'opacity-0 -translate-y-10 scale-95 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
+              
+              {/* VỊ TRÍ 1: Thực thi tập trung (Focus) */}
               <FocusSession />
+
+              {/* [NEW] VỊ TRÍ 2: Widget đặt dưới vị trí của Focus */}
+              {widgetData && (
+                <div className="mt-8 animate-in fade-in duration-1000">
+                  <div className="mx-4 border-t border-slate-100 mb-6" />
+                  <WidgetMemorySpark data={widgetData} />
+                </div>
+              )}
             </div>
             
             {/* Lớp phủ khi nhập liệu: Chuyển sang White-overlay */}

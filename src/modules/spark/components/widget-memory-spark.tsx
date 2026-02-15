@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { triggerHaptic } from '../../../utils/haptic';
 
 interface WidgetSlotProps {
@@ -9,22 +9,57 @@ interface WidgetSlotProps {
 }
 
 /**
- * [SUB-COMPONENT]: Thẻ hiển thị từng Slot trong Widget.
+ * [SUB-COMPONENT]: Thẻ hiển thị từng mảnh ký ức.
+ * Triển khai Tương tác V2.1: Double Click & Long Press.
  */
 const WidgetSlotCard: React.FC<WidgetSlotProps> = ({ label, content, type, id }) => {
-  const handleDeepLink = () => {
+  // Timer để nhận diện Long Press (Nhấn giữ)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * [DOUBLE CLICK]: Mở bản ghi hiện tại qua Deep Link.
+   */
+  const handleDoubleClick = () => {
     triggerHaptic('medium');
-    /**
-     * [DEEP LINKING]: Điều hướng thẳng tới bản ghi để "hâm nóng" tri thức.
-     * Cấu trúc URL: /?open=type:id
-     */
     window.location.href = `/?open=${type}:${id}`;
+  };
+
+  /**
+   * [LONG PRESS]: Bắt đầu đếm ngược khi người dùng chạm vào.
+   */
+  const handlePointerDown = () => {
+    // Nếu có timer cũ thì xóa đi
+    if (timerRef.current) clearTimeout(timerRef.current);
+
+    // Bắt đầu đếm ngược 800ms cho hành động Long Press
+    timerRef.current = setTimeout(() => {
+      triggerHaptic('heavy');
+      /**
+       * ĐIỀU HƯỚNG KIẾN TẠO: Mở Modal ở chế độ tạo liên kết mới.
+       */
+      window.location.href = `/?create-link-to=${type}:${id}`;
+      timerRef.current = null;
+    }, 800);
+  };
+
+  /**
+   * [CANCEL]: Hủy đếm ngược nếu người dùng nhấc tay sớm.
+   */
+  const handlePointerUp = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
   };
 
   return (
     <div 
-      onClick={handleDeepLink}
-      className="flex flex-col gap-2 p-3 bg-white border border-slate-200 rounded-[8px] hover:border-blue-400 active:scale-[0.97] transition-all cursor-pointer group"
+      onDoubleClick={handleDoubleClick}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerUp} // Hủy nếu tay trượt ra ngoài vùng card
+      className="flex flex-col gap-2 p-3 bg-white border border-slate-200 rounded-[8px] 
+                 active:scale-[0.98] active:bg-slate-50 transition-all cursor-pointer group select-none"
     >
       <div className="flex items-center justify-between">
         <span className="text-[9px] font-bold uppercase tracking-tighter text-slate-400 group-hover:text-blue-500 transition-colors">
@@ -49,8 +84,7 @@ export const WidgetMemorySpark: React.FC<{ data: any }> = ({ data }) => {
   const { slot1, slot2, slot3, slot4 } = data.slots;
 
   return (
-    <section className="w-full max-w-md mx-auto p-4 flex flex-col gap-4">
-      {/* Header Widget */}
+    <section className="w-full max-w-md mx-auto p-4 flex flex-col gap-4 select-none">
       <div className="flex items-center gap-2 px-1">
         <div className="h-3 w-3 bg-blue-600 rounded-sm" />
         <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-900">
@@ -58,44 +92,16 @@ export const WidgetMemorySpark: React.FC<{ data: any }> = ({ data }) => {
         </h2>
       </div>
 
-      {/* Grid Layout: 2 cột x 2 hàng */}
       <div className="grid grid-cols-2 gap-3">
-        {slot1 && (
-          <WidgetSlotCard 
-            label="Heritage" 
-            content={slot1.content} 
-            type={slot1.type || 'task'} 
-            id={slot1.id} 
-          />
-        )}
-        {slot3 && (
-          <WidgetSlotCard 
-            label="Trending" 
-            content={slot3.content} 
-            type={slot3.type || 'task'} 
-            id={slot3.id} 
-          />
-        )}
-        {slot4 && (
-          <WidgetSlotCard 
-            label="Isolated" 
-            content={slot4.content} 
-            type={slot4.type || 'task'} 
-            id={slot4.id} 
-          />
-        )}
-        {slot2 && (
-          <WidgetSlotCard 
-            label="Universe" 
-            content={slot2.content} 
-            type={slot2.type || 'task'} 
-            id={slot2.id} 
-          />
-        )}
+        {slot1 && <WidgetSlotCard label="Heritage" content={slot1.content} type={slot1.type || 'task'} id={slot1.id} />}
+        {slot3 && <WidgetSlotCard label="Trending" content={slot3.content} type={slot3.type || 'task'} id={slot3.id} />}
+        {slot4 && <WidgetSlotCard label="Isolated" content={slot4.content} type={slot4.type || 'task'} id={slot4.id} />}
+        {slot2 && <WidgetSlotCard label="Universe" content={slot2.content} type={slot2.type || 'task'} id={slot2.id} />}
       </div>
 
-      <p className="text-[9px] text-center text-slate-400 mt-2 font-medium">
-        Tự động làm mới sau mỗi 3 giờ • Mind Cap Memory System
+      {/* Gợi ý tương tác mới cho người dùng */}
+      <p className="text-[8px] text-center text-slate-400 mt-2 font-bold uppercase tracking-widest">
+        Chạm kép để mở • Nhấn giữ để liên kết
       </p>
     </section>
   );

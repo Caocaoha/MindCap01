@@ -17,8 +17,8 @@ interface EntryFormProps {
 }
 
 /**
- * [MOD_INPUT]: Form nhập liệu v4.2 - Thẩm mỹ Linear.app.
- * Giai đoạn 6.3: Tích hợp Spark Notification Waterfall (Giai đoạn 1: Kích hoạt tức thì).
+ * [MOD_INPUT]: Form nhập liệu v4.3.1 - Thẩm mỹ Linear.app.
+ * Giai đoạn 6.5: Fix lỗi TS2322 (Null vs Undefined) & Đảm bảo hiển thị Saban.
  * Bảo tồn 100%: Định lượng, Tần suất, Eisenhower, Mood và Sticky Footer.
  */
 export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, onCancel }) => {
@@ -129,7 +129,18 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
           parentId: initialData?.parentId || undefined,
           interactionScore: (initialData?.interactionScore || 0) + creativeBonus,
           echoLinkCount: (initialData?.echoLinkCount || 0) + initialEchoCount,
-          lastInteractedAt: now
+          lastInteractedAt: now,
+          // Bổ sung trạng thái 'active' để hiện trên Saban
+          archiveStatus: (initialData && 'archiveStatus' in initialData) ? initialData.archiveStatus : 'active',
+          // Khởi tạo các trường v4.1 cho Habit Tracking
+          completionLog: (initialData && 'completionLog' in initialData) ? initialData.completionLog : [],
+          
+          /**
+           * [FIX TS2322]: Sử dụng undefined thay vì null để khớp với kiểu dữ liệu ITask.
+           * Kiểu 'parentGroupId' là string | number | undefined.
+           */
+          parentGroupId: (initialData && 'parentGroupId' in initialData) ? initialData.parentGroupId : undefined,
+          sequenceOrder: (initialData && 'sequenceOrder' in initialData) ? initialData.sequenceOrder : 0,
         };
 
         if (initialData?.id) {
@@ -170,12 +181,9 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
 
       /**
        * [FIX TS2339]: Cập nhật ngược lại cho bản ghi mẹ (Parent).
-       * Kiểm tra cả hai bảng để đảm bảo tính nhất quán của dữ liệu.
        */
       if (isNewLinkedEntry && initialData?.parentId) {
         const parentId = initialData.parentId;
-        
-        // 1. Kiểm tra và cập nhật nếu mẹ nằm trong bảng Tasks
         const parentTask = await db.tasks.get(parentId);
         if (parentTask) {
           await db.tasks.update(parentId, {
@@ -184,7 +192,6 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
             lastInteractedAt: now
           });
         } else {
-          // 2. Kiểm tra và cập nhật nếu mẹ nằm trong bảng Thoughts
           const parentThought = await db.thoughts.get(parentId);
           if (parentThought) {
             await db.thoughts.update(parentId, {

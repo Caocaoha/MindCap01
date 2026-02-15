@@ -3,6 +3,8 @@ import { db } from '../../../database/db';
 import { triggerHaptic } from '../../../utils/haptic';
 import { useUiStore } from '../../../store/ui-store';
 import { ITask, IThought } from '../../../database/types';
+// [NEW]: Import trình quản lý thông báo để "nối mạch" Spark Waterfall
+import { NotificationManager } from '../../spark/notification-manager';
 
 /**
  * [PROPS]: Hỗ trợ đầy đủ cho cả chế độ Thêm mới và Chỉnh sửa (Edit Mode).
@@ -15,8 +17,8 @@ interface EntryFormProps {
 }
 
 /**
- * [MOD_INPUT]: Form nhập liệu v4.1 - Thẩm mỹ Linear.app.
- * Giai đoạn 6.2: Thực thi Creative Action (+10 điểm) và ghi nhận ParentID.
+ * [MOD_INPUT]: Form nhập liệu v4.2 - Thẩm mỹ Linear.app.
+ * Giai đoạn 6.3: Tích hợp Spark Notification Waterfall (Giai đoạn 1: Kích hoạt tức thì).
  * Bảo tồn 100%: Định lượng, Tần suất, Eisenhower, Mood và Sticky Footer.
  */
 export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, onCancel }) => {
@@ -80,6 +82,9 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
   const handleSave = async () => {
     if (!content.trim()) return;
     const now = Date.now();
+    
+    // Tính toán độ dài từ để kiểm tra điều kiện Spark
+    const wordCount = content.trim().split(/\s+/).length;
 
     /**
      * [LOGIC SPARK V2.1]: Kiểm tra trạng thái Creative Action.
@@ -130,13 +135,17 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
         if (initialData?.id) {
           await db.tasks.update(initialData.id, taskPayload);
         } else {
-          await db.tasks.add(taskPayload);
+          // Lưu mới và kích hoạt Waterfall nếu đủ điều kiện
+          const newId = await db.tasks.add(taskPayload);
+          if (wordCount > 16) {
+            NotificationManager.scheduleWaterfall(Number(newId), 'task', content.trim());
+          }
         }
       } else {
         const thoughtPayload: IThought = {
           content: content.trim(),
           type: 'thought',
-          wordCount: content.trim().split(/\s+/).length,
+          wordCount: wordCount,
           createdAt: initialData?.createdAt || now,
           updatedAt: now,
           recordStatus: 'success',
@@ -149,8 +158,13 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
         if (initialData?.id) {
           await db.thoughts.update(initialData.id, thoughtPayload);
         } else {
-          await db.thoughts.add(thoughtPayload);
+          // Lưu mới và kích hoạt Waterfall nếu đủ điều kiện
+          const newId = await db.thoughts.add(thoughtPayload);
           await db.moods.add({ score: moodLevel, label: 'entry_reflection', createdAt: now });
+          
+          if (wordCount > 16) {
+            NotificationManager.scheduleWaterfall(Number(newId), 'thought', content.trim());
+          }
         }
       }
 
@@ -202,7 +216,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
   return (
     <div className="flex flex-col h-[75vh] sm:h-auto max-h-[680px] overflow-hidden bg-white rounded-[6px]">
       
-      {/* HEADER */}
+      {/* HEADER: Tab Switcher (Linear style) */}
       <div className="flex-none p-4 pb-2">
         <div className="flex bg-slate-50 p-1 rounded-[6px] border border-slate-200">
           {(['task', 'thought'] as const).map(t => (
@@ -218,7 +232,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
         </div>
       </div>
 
-      {/* BODY */}
+      {/* BODY: Content area */}
       <div className="flex-1 overflow-y-auto px-4 space-y-8 custom-scrollbar pb-6">
         <textarea
           ref={textareaRef}
@@ -230,6 +244,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
 
         {entryType === 'task' ? (
           <div className="space-y-8 animate-in fade-in slide-in-from-top-1 duration-200">
+            {/* ĐỊNH LƯỢNG */}
             <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-[6px] border border-slate-200">
               <div className="flex-1">
                 <label className="text-[9px] font-bold uppercase text-slate-400 block mb-1">Mục tiêu số</label>
@@ -253,6 +268,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
               </div>
             </div>
 
+            {/* CHU KỲ LẶP LẠI */}
             <div className="space-y-4">
               <label className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Chu kỳ lặp lại</label>
               <div className="grid grid-cols-2 gap-2">
@@ -273,6 +289,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
                 ))}
               </div>
 
+              {/* Weekly Picker */}
               {freq === 'days-week' && (
                 <div className="flex justify-between gap-1 py-2 animate-in zoom-in-95 duration-200">
                   {[1,2,3,4,5,6,7].map(d => (
@@ -288,6 +305,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
                 </div>
               )}
 
+              {/* Monthly Picker */}
               {freq === 'days-month' && (
                 <div className="grid grid-cols-7 gap-1 py-2 animate-in zoom-in-95 duration-200">
                   {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
@@ -304,6 +322,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
               )}
             </div>
 
+            {/* CHIẾN LƯỢC EISENHOWER */}
             <div className="flex gap-3">
               <button 
                 onClick={() => { triggerHaptic('light'); setIsUrgent(!isUrgent); }} 
@@ -322,6 +341,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
             </div>
           </div>
         ) : (
+          /* SUY NGHĨ: Mood Selector */
           <div className="space-y-8 pt-10 animate-in fade-in duration-300">
             <div className="flex justify-between items-center px-4">
               {[1, 2, 3, 4, 5].map((v) => (
@@ -341,7 +361,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
         )}
       </div>
 
-      {/* FOOTER */}
+      {/* FOOTER: Save and Cancel buttons */}
       <div className="flex-none p-4 border-t border-slate-200 bg-white">
         <button 
           onClick={handleSave} 

@@ -12,19 +12,21 @@ import { SetupPanel } from './modules/setup/setup-panel';
 import { IdentityCheckin } from './modules/identity/identity-checkin';
 import { IdentityDashboard } from './modules/identity/identity-dashboard'; 
 import { EntryModal } from './modules/input/components/entry-modal';
+// [UNFREEZE]: Kích hoạt module Spark Notification 
+import { SparkNotification } from './modules/spark/components/spark-notification';
 
 /**
  * [APP]: Main Layout Controller - Linear.app Aesthetic Update. 
- * Giai đoạn 4.7: Cập nhật hệ thống nhãn (Label) theo triết lý Reflection.
- * [MOD]: Saban -> Todo, Mind -> Today, Journey -> Tomorrow.
+ * Giai đoạn 5.2: Tích hợp Deep Linking Handler và Spotlight Watcher cho Spark. [cite: 18]
  */
 export const App: React.FC = () => {
-  const { activeTab, setActiveTab, isInputFocused, setInputFocused, setTyping } = useUiStore();
+  // Bổ sung openEditModal để phục vụ Deep Linking [cite: 16]
+  const { activeTab, setActiveTab, isInputFocused, setInputFocused, setTyping, openEditModal } = useUiStore();
   const { setTasks } = useJourneyStore(); 
   const { progress, openAudit, getPulseFrequency } = useIdentityStore();
   const frequency = getPulseFrequency();
 
-  // Khởi tạo dữ liệu (Bảo tồn 100%)
+  // Khởi tạo dữ liệu (Bảo tồn 100%) [cite: 4]
   useEffect(() => {
     const initializeData = async () => {
       try {
@@ -43,6 +45,44 @@ export const App: React.FC = () => {
     };
     initializeData();
   }, [setTasks]);
+
+  /**
+   * [DEEP LINKING HANDLER]: Lắng nghe "mảnh giấy chỉ đường" từ URL để mở đúng bản ghi.
+   * Ví dụ URL: /?open=task:123 hoặc /?open=thought:456 
+   */
+  useEffect(() => {
+    const handleDeepLink = async () => {
+      // 1. Phân tích tham số "open" từ URL thanh địa chỉ
+      const params = new URLSearchParams(window.location.search);
+      const openTarget = params.get('open');
+
+      if (openTarget && openTarget.includes(':')) {
+        const [type, idStr] = openTarget.split(':');
+        const entryId = parseInt(idStr, 10);
+
+        if (isNaN(entryId)) return;
+
+        try {
+          // 2. Truy vấn bản ghi từ Database cục bộ [cite: 4]
+          const table = type === 'task' ? db.tasks : db.thoughts;
+          const entry = await table.get(entryId);
+
+          if (entry) {
+            // 3. Kích hoạt Modal và phản hồi rung
+            triggerHaptic('medium');
+            openEditModal(entry);
+            
+            // 4. Xóa tham số trên URL để tránh lặp lại khi tải lại trang
+            window.history.replaceState({}, '', window.location.pathname);
+          }
+        } catch (error) {
+          console.error("Deep Link Error:", error);
+        }
+      }
+    };
+
+    handleDeepLink();
+  }, [openEditModal]);
 
   // Xử lý phím tắt (Bảo tồn 100%)
   useEffect(() => {
@@ -66,10 +106,10 @@ export const App: React.FC = () => {
   }, [activeTab, isInputFocused, setInputFocused, setTyping]);
 
   return (
-    /* GIAO DIỆN CHÍNH: Nền trắng tuyệt đối, chữ Slate-900, Font Inter (font-sans)  */
+    /* GIAO DIỆN CHÍNH: Nền trắng tuyệt đối, chữ Slate-900, Font Inter (font-sans) [cite: 54, 57] */
     <div className="h-screen w-full bg-white text-slate-900 overflow-hidden flex flex-col font-sans select-none">
       
-      {/* HEADER: Border mảnh 1px #E2E8F0, không đổ bóng  */}
+      {/* HEADER: Border mảnh 1px #E2E8F0, không đổ bóng [cite: 55, 56] */}
       <header className="h-16 flex items-center justify-center px-6 relative z-[60] border-b border-slate-200 bg-white/80 backdrop-blur-md">
         <button 
           onClick={() => { 
@@ -98,7 +138,7 @@ export const App: React.FC = () => {
       </header>
 
       {/* MAIN CONTENT Area */}
-      <main className="flex-1 relative px-4 overflow-hidden bg-white">
+      <main className="flex-1 relative px-4 overflow-hidden bg-white [cite: 52]">
         {activeTab === 'saban' && <SabanBoard />}
         {activeTab === 'journey' && <JourneyList />}
         {activeTab === 'setup' && <SetupPanel />}
@@ -110,7 +150,7 @@ export const App: React.FC = () => {
               <FocusSession />
             </div>
             
-            {/* Lớp phủ khi nhập liệu: Chuyển sang White-overlay để khớp với Linear style  */}
+            {/* Lớp phủ khi nhập liệu: Chuyển sang White-overlay để khớp với Linear style [cite: 54] */}
             <div className={`absolute left-0 right-0 z-50 transition-all duration-500 ease-out ${isInputFocused ? 'top-0 h-screen bg-white/90 backdrop-blur-sm' : 'bottom-10 sm:bottom-6 h-auto'} pointer-events-none`}>
               <div className="pointer-events-auto">
                 <InputBar onFocus={() => { triggerHaptic('light'); setInputFocused(true); }} onBlur={() => setInputFocused(false)} />
@@ -120,7 +160,7 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      {/* FOOTER: Đã thay đổi Label hiển thị */}
+      {/* FOOTER: Đã thay đổi Label hiển thị theo triết lý Reflection [cite: 51] */}
       <footer className={`h-20 flex items-center justify-between px-10 relative z-30 border-t border-slate-200 bg-white transition-transform duration-500 ${isInputFocused ? 'translate-y-24' : 'translate-y-0'}`}>
         <button 
           onClick={() => { triggerHaptic('light'); setActiveTab('saban'); }} 
@@ -129,7 +169,7 @@ export const App: React.FC = () => {
           Todo
         </button>
 
-        {/* Nút TODAY: Nhãn đã đổi từ Mind sang Today */}
+        {/* Nút TODAY: Nhãn đã đổi từ Mind sang Today  */}
         <button 
           onClick={() => { triggerHaptic('medium'); setActiveTab('mind'); }} 
           className={`px-8 py-2 rounded-[6px] font-bold uppercase text-[10px] tracking-widest transition-all
@@ -146,8 +186,11 @@ export const App: React.FC = () => {
         </button>
       </footer>
 
+      {/* GLOBAL OVERLAYS & WATCHERS */}
       <IdentityCheckin />
       <EntryModal />
+      {/* [NEW]: Kích hoạt Spotlight Watcher hiển thị thông báo khơi gợi ký ức  */}
+      <SparkNotification />
     </div>
   );
 };

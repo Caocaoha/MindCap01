@@ -1,51 +1,54 @@
 import React from 'react';
 import { ITask } from '../../../database/types';
-import { db } from '../../../database/db';
 import { useUiStore } from '../../../store/ui-store';
 import { triggerHaptic } from '../../../utils/haptic';
 
-/**
- * [MOD_SABAN_UI]: Thẻ hiển thị nhiệm vụ cá nhân.
- * Giai đoạn 4: Thẩm mỹ Linear.app & Tối ưu hóa iPhone (Vertical Expansion).
- * Đảm bảo hiển thị 100% nội dung và giữ vững vị trí nút bấm hai bên.
- */
-export const TaskCard: React.FC<{ task: ITask }> = ({ task }) => {
+interface TaskCardProps {
+  task: ITask;
+  isGrouped?: boolean;
+  onToggleFocus?: () => void;
+  onArchive?: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  onDetach?: () => void;
+  isFirst?: boolean;
+  isLast?: boolean;
+}
+
+export const TaskCard: React.FC<TaskCardProps> = ({ 
+  task, 
+  isGrouped, 
+  onToggleFocus, 
+  onArchive, 
+  onMoveUp, 
+  onMoveDown, 
+  onDetach,
+  isFirst,
+  isLast
+}) => {
   const { openEditModal } = useUiStore();
   const isDone = task.status === 'done';
   const isMultiTarget = (task.targetCount ?? 0) > 1;
 
-  /**
-   * Chuyển tác vụ vào chế độ thực thi (Focus Mode)
-   */
-  const moveToFocus = async () => {
-    triggerHaptic('success');
-    // Cập nhật trạng thái sang Boolean true
-    await db.tasks.update(task.id!, { isFocusMode: true }); 
+  const handleFocusClick = () => {
+    if (onToggleFocus) {
+      onToggleFocus();
+    }
   };
 
   return (
-    /* CONTAINER: Chuyển từ items-center sang items-start để các nút bấm luôn neo ở đỉnh thẻ khi text dài.
-       Giữ nguyên DNA Linear: Nền trắng, Border Slate mảnh, Bo góc 6px.
-    */
     <div className={`group flex items-start gap-4 p-4 rounded-[6px] border transition-all duration-200 ${
-      isDone 
-        ? 'bg-slate-50/50 border-slate-100 opacity-60' 
-        : 'bg-white border-slate-200 hover:border-slate-300'
+      isDone ? 'bg-slate-50/50 border-slate-100 opacity-60' : 'bg-white border-slate-200 hover:border-slate-300'
     }`}>
       
-      {/* NỘI DUNG CHÍNH: Loại bỏ min-w-0 và truncate để văn bản tự do giãn nở. */}
       <div className="flex-1 min-w-0">
         <div className="flex flex-col gap-1 mb-2">
-          {/* TEXT: Gỡ bỏ 'truncate'. Thêm 'break-words' và 'whitespace-pre-wrap' 
-              để hiển thị trọn vẹn nội dung textarea bao gồm cả xuống dòng.
-          */}
           <p className={`text-sm font-medium tracking-tight break-words whitespace-pre-wrap leading-relaxed ${
             isDone ? 'line-through text-slate-400' : 'text-slate-900'
           }`}>
             {task.content}
           </p>
           
-          {/* TIẾN ĐỘ: Màu nhấn Xanh đậm #2563EB trên nền Slate nhạt */}
           {isMultiTarget && (
             <div className="flex items-center gap-2 mt-1">
               <span className="text-[9px] bg-slate-50 text-[#2563EB] border border-slate-200 px-2 py-0.5 rounded-[4px] font-mono font-bold">
@@ -55,7 +58,6 @@ export const TaskCard: React.FC<{ task: ITask }> = ({ task }) => {
           )}
         </div>
 
-        {/* Tags phân loại: Tối giản hóa màu sắc */}
         <div className="flex flex-wrap gap-2">
           {task.tags?.filter(t => !t.startsWith('d:') && !t.startsWith('m:') && !t.startsWith('freq:')).map(tag => (
             <span key={tag} className="text-[8px] uppercase tracking-[0.15em] text-slate-400 font-bold">
@@ -65,22 +67,57 @@ export const TaskCard: React.FC<{ task: ITask }> = ({ task }) => {
         </div>
       </div>
 
-      {/* ACTION GROUP: Sử dụng flex-shrink-0 để đảm bảo cột nút bấm không bị văn bản đè bẹp trên iPhone.
-          Trên Mobile (touch), nút luôn hiển thị (opacity-100), trên Desktop ẩn và hiện khi hover.
-      */}
-      <div className="flex-shrink-0 flex items-start gap-1 pt-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-        <button 
-          onClick={() => { triggerHaptic('light'); openEditModal(task); }}
-          className="px-2 py-1.5 text-[9px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-900 transition-colors"
-        >
-          Sửa
-        </button>
+      <div className="flex-shrink-0 flex flex-col items-end gap-2 pt-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-1">
+          <button 
+            onClick={() => { triggerHaptic('light'); openEditModal(task); }}
+            className="px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-900 transition-colors"
+          >
+            Sửa
+          </button>
+          
+          <button 
+            onClick={() => { if (onArchive) onArchive(); }}
+            className="px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-red-300 hover:text-red-600 transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        {isGrouped && (
+          <div className="flex flex-col items-end gap-1 border-t border-slate-100 pt-2 w-full">
+            <div className="flex items-center gap-1">
+              <button 
+                disabled={isFirst}
+                onClick={() => { triggerHaptic('light'); if (onMoveUp) onMoveUp(); }}
+                className={`w-6 h-6 flex items-center justify-center rounded-full border border-slate-200 text-[10px] transition-all
+                  ${isFirst ? 'opacity-20 grayscale cursor-not-allowed' : 'bg-white text-slate-600 hover:bg-slate-100 active:scale-90'}`}
+              >
+                ↑
+              </button>
+              <button 
+                disabled={isLast}
+                onClick={() => { triggerHaptic('light'); if (onMoveDown) onMoveDown(); }}
+                className={`w-6 h-6 flex items-center justify-center rounded-full border border-slate-200 text-[10px] transition-all
+                  ${isLast ? 'opacity-20 grayscale cursor-not-allowed' : 'bg-white text-slate-600 hover:bg-slate-100 active:scale-90'}`}
+              >
+                ↓
+              </button>
+            </div>
+            
+            <button 
+              onClick={() => { if (onDetach) onDetach(); }}
+              className="text-[8px] font-black uppercase tracking-widest text-blue-400 hover:text-blue-600 pr-1 pt-1"
+            >
+              Tách nhóm
+            </button>
+          </div>
+        )}
         
         {!isDone && (
-          /* NÚT THỰC THI: Chuyển sang màu Xanh nhấn chuẩn Linear #2563EB */
           <button 
-            onClick={moveToFocus}
-            className="bg-[#2563EB] text-white px-3 py-1.5 rounded-[6px] text-[9px] font-bold uppercase tracking-widest active:scale-95 transition-all shadow-none"
+            onClick={handleFocusClick}
+            className="mt-1 bg-[#2563EB] text-white px-3 py-1.5 rounded-[6px] text-[9px] font-bold uppercase tracking-widest active:scale-95 transition-all shadow-sm shadow-blue-500/10"
           >
             Thực thi
           </button>

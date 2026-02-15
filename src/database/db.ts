@@ -51,25 +51,40 @@ export class MindCapDatabase extends Dexie {
       return trans.table('thoughts').toCollection().modify(initializeWidgetData);
     });
 
-    /**
-     * [NEW] Version 6: Hỗ trợ Semantic Echo & Hierarchical Linking (V2.1)
-     * Thêm chỉ mục 'parentId' để quản lý các liên kết từ Widget Long Press.
-     */
+    // Version 6: Hỗ trợ Semantic Echo & Hierarchical Linking (V2.1)
     this.version(6).stores({
       tasks: '++id, status, createdAt, isFocusMode, scheduledFor, *tags, doneCount, targetCount, nextReviewAt, interactionScore, echoLinkCount, parentId', 
       thoughts: '++id, type, createdAt, nextReviewAt, interactionScore, echoLinkCount, parentId',
       moods: '++id, score, createdAt',
       userProfile: '++id'
     }).upgrade(trans => {
-      /**
-       * Đảm bảo các bản ghi cũ có parentId mặc định là null để tránh lỗi tham chiếu.
-       */
       const initializeParentData = (record: any) => {
         if (record.parentId === undefined) record.parentId = null;
       };
 
       trans.table('tasks').toCollection().modify(initializeParentData);
       return trans.table('thoughts').toCollection().modify(initializeParentData);
+    });
+
+    /**
+     * [NEW] Version 7: Tích hợp Mod-Saban v4.1 (Task Chains & Archive)
+     * Thêm chỉ mục cho parentGroupId để truy vấn nhóm và archiveStatus để lọc danh sách Saban.
+     */
+    this.version(7).stores({
+      tasks: '++id, status, createdAt, isFocusMode, scheduledFor, *tags, doneCount, targetCount, nextReviewAt, interactionScore, echoLinkCount, parentId, parentGroupId, archiveStatus', 
+      thoughts: '++id, type, createdAt, nextReviewAt, interactionScore, echoLinkCount, parentId',
+      moods: '++id, score, createdAt',
+      userProfile: '++id'
+    }).upgrade(trans => {
+      /**
+       * MIGRATION LOGIC: Khởi tạo giá trị mặc định cho hệ thống chuỗi và lưu trữ.
+       */
+      return trans.table('tasks').toCollection().modify(task => {
+        if (task.parentGroupId === undefined) task.parentGroupId = null;
+        if (task.sequenceOrder === undefined) task.sequenceOrder = 0;
+        if (task.archiveStatus === undefined) task.archiveStatus = 'active';
+        if (task.completionLog === undefined) task.completionLog = [];
+      });
     });
   }
 }

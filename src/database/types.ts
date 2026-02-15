@@ -1,9 +1,9 @@
 /**
- * [CORE]: Định nghĩa interface và kiểu dữ liệu cho database (v3.6)
- * Giai đoạn 6.1: Tích hợp thuộc tính liên kết phân cấp (Parent-Child Relationship).
+ * [CORE]: Định nghĩa interface và kiểu dữ liệu cho database (v3.7)
+ * Giai đoạn 6.5: Tích hợp cấu trúc Chuỗi nhiệm vụ (Task Sequences) và Archive System.
  */
 
-// --- MODULE: INPUT & SABAN & FOCUS (Bảo tồn 100%) ---
+// --- MODULE: INPUT & SABAN & FOCUS (Nâng cấp v4.1) ---
 export interface ITask {
   id?: number;
   content: string;
@@ -35,6 +35,12 @@ export interface ITask {
   // [V2.1] Link System Fields
   parentId?: number;          // ID của bản ghi gốc mà bản ghi này liên kết tới
   isLinkMode?: boolean;       // Cờ UI đánh dấu đang trong trạng thái tạo liên kết
+
+  // [V4.1] Saban Task Chains & Habit Tracking
+  parentGroupId?: number | string;   // ID của nhóm việc (Sequence)
+  sequenceOrder?: number;            // Thứ tự thực hiện bên trong nhóm (1, 2, 3...)
+  archiveStatus?: 'active' | 'archived'; // Trạng thái hiển thị (Hủy việc nhưng giữ data)
+  completionLog?: number[];          // Lịch sử các mốc thời gian hoàn thành (Phục vụ Streak/Habit)
 }
 
 // --- MODULE: JOURNEY & INPUT (Bảo tồn 100%) ---

@@ -16,13 +16,11 @@ import { EntryModal } from './modules/input/components/entry-modal';
 // FIX: Điều chỉnh đường dẫn để khớp với vị trí tệp chuẩn trong Master Doc v3.2
 import { SparkNotification } from './modules/spark/components/spark-notification';
 
-// [NEW]: Tích hợp hệ thống Widget Memory
-import { WidgetMemorySpark } from './modules/spark/components/widget-memory-spark';
-import { WidgetProvider } from './modules/spark/widget-provider';
+// [REMOVED]: WidgetMemorySpark đã được chuyển sang tab Journey để tránh nhiễu tab Today
 
 /**
  * [APP]: Main Layout Controller - Linear.app Aesthetic Update. 
- * Giai đoạn 6.1: Nâng cấp Deep Linking để xử lý tương tác V2.1 (Double Click & Long Press).
+ * Giai đoạn 6.9: Loại bỏ Spark Widget khỏi tab Today để tập trung vào thực thi (Deep Work).
  */
 export const App: React.FC = () => {
   // Bổ sung openEditModal để phục vụ Deep Linking
@@ -30,9 +28,6 @@ export const App: React.FC = () => {
   const { setTasks } = useJourneyStore(); 
   const { progress, openAudit, getPulseFrequency } = useIdentityStore();
   const frequency = getPulseFrequency();
-
-  // [NEW STATE]: Quản lý dữ liệu dòng chảy ký ức
-  const [widgetData, setWidgetData] = useState<any>(null);
 
   // Khởi tạo dữ liệu (Bảo tồn 100%)
   useEffect(() => {
@@ -55,29 +50,8 @@ export const App: React.FC = () => {
   }, [setTasks]);
 
   /**
-   * [WIDGET LOADER]: Nạp dữ liệu khi tab Today (Mind) được kích hoạt.
-   */
-  useEffect(() => {
-    if (activeTab === 'mind') {
-      const loadWidget = async () => {
-        try {
-          const timeline = await WidgetProvider.GetWidgetTimeline();
-          if (timeline && timeline.length > 0) {
-            setWidgetData(timeline[0]);
-          }
-        } catch (error) {
-          console.error("Widget loading error:", error);
-        }
-      };
-      loadWidget();
-    }
-  }, [activeTab]);
-
-  /**
-   * [DEEP LINKING HANDLER]: Lắng nghe các tham số điều hướng từ Widget.
-   * Hỗ trợ 2 luồng: 
-   * 1. /?open=... (Double Click - Mở xem bản ghi)
-   * 2. /?create-link-to=... (Long Press - Tạo bản ghi liên kết mới)
+   * [DEEP LINKING HANDLER]: Lắng nghe các tham số điều hướng từ Widget/Spark.
+   * Hỗ trợ 2 luồng tương tác sâu (V2.1).
    */
   useEffect(() => {
     const handleDeepLink = async () => {
@@ -167,7 +141,7 @@ export const App: React.FC = () => {
   }, [activeTab, isInputFocused, setInputFocused, setTyping]);
 
   return (
-    /* GIAO DIỆN CHÍNH: Nền trắng tuyệt đối, chữ Slate-900, Font Inter (font-sans) */
+    /* GIAO DIỆN CHÍNH: Nền trắng tuyệt đối, font Inter (font-sans) */
     <div className="h-screen w-full bg-white text-slate-900 overflow-hidden flex flex-col font-sans select-none">
       
       {/* HEADER: Border mảnh 1px #E2E8F0, không đổ bóng */}
@@ -209,15 +183,9 @@ export const App: React.FC = () => {
           <div className="h-full flex flex-col relative">
             <div className={`relative z-20 h-full overflow-y-auto pb-32 transition-all duration-700 ease-in-out ${isInputFocused ? 'opacity-0 -translate-y-10 scale-95 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
               
+              {/* CHỈ GIỮ LẠI FOCUS SESSION: Tab Today giờ đây chỉ tập trung vào việc thực thi hiện tại. */}
               <FocusSession />
 
-              {/* [NEW] VỊ TRÍ 2: Widget đặt dưới vị trí của Focus */}
-              {widgetData && (
-                <div className="mt-8 animate-in fade-in duration-1000">
-                  <div className="mx-4 border-t border-slate-100 mb-6" />
-                  <WidgetMemorySpark data={widgetData} />
-                </div>
-              )}
             </div>
             
             <div className={`absolute left-0 right-0 z-50 transition-all duration-500 ease-out ${isInputFocused ? 'top-0 h-screen bg-white/90 backdrop-blur-sm' : 'bottom-10 sm:bottom-6 h-auto'} pointer-events-none`}>
@@ -229,6 +197,7 @@ export const App: React.FC = () => {
         )}
       </main>
 
+      {/* FOOTER: Thanh điều hướng 3 vùng chiến lược */}
       <footer className={`h-20 flex items-center justify-between px-10 relative z-30 border-t border-slate-200 bg-white transition-transform duration-500 ${isInputFocused ? 'translate-y-24' : 'translate-y-0'}`}>
         <button 
           onClick={() => { triggerHaptic('light'); setActiveTab('saban'); }} 
@@ -253,6 +222,7 @@ export const App: React.FC = () => {
         </button>
       </footer>
 
+      {/* GLOBAL OVERLAYS */}
       <IdentityCheckin />
       <EntryModal />
       <SparkNotification />

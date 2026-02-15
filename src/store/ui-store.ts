@@ -25,6 +25,12 @@ interface UiState {
   searchQuery: string;
   searchContext: ActiveTab | null;
 
+  // --- [NEW]: States cho NLP Parser Auto-fill ---
+  // Lưu trữ dữ liệu định lượng bóc tách được để tự động điền vào Form nhập liệu.
+  parsedQuantity: number | null;
+  parsedUnit: string | null;
+  parsedFrequency: string | null;
+
   // --- Actions từ User (BẢO TỒN 100%) ---
   toggleSidebar: () => void;
   setFocusMode: (isActive: boolean) => void;
@@ -50,6 +56,10 @@ interface UiState {
    */
   setSearchQuery: (query: string, context?: ActiveTab) => void;
   clearSearch: () => void;
+
+  // --- [NEW]: Action cập nhật dữ liệu NLP bóc tách ---
+  // Nhận dữ liệu từ Ninja NLP Listener để cập nhật vào Form.
+  setParsedData: (data: { quantity?: number; unit?: string; frequency?: string } | null) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -67,6 +77,11 @@ export const useUiStore = create<UiState>((set) => ({
   // [NEW PHASE 4.5]: Khởi tạo trạng thái tìm kiếm
   searchQuery: '',
   searchContext: null,
+
+  // [NEW]: Khởi tạo mặc định cho dữ liệu NLP
+  parsedQuantity: null,
+  parsedUnit: null,
+  parsedFrequency: null,
 
   // Triển khai Actions bảo tồn logic của User
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
@@ -90,14 +105,21 @@ export const useUiStore = create<UiState>((set) => ({
     activeTab: tab, 
     isTyping: false, 
     isInputFocused: false,
-    // Nếu tab mới khác với ngữ cảnh đang tìm kiếm, thực hiện Reset Scoped
+    // [FIX]: Nếu tab mới khác với ngữ cảnh đang tìm kiếm, thực hiện Reset Scoped
     searchQuery: state.searchContext !== tab ? '' : state.searchQuery,
-    searchContext: state.searchContext !== tab ? null : state.searchContext
+    searchContext: state.searchContext !== tab ? null : state.searchContext,
+    // Reset dữ liệu NLP khi chuyển tab để tránh nhầm lẫn dữ liệu
+    parsedQuantity: null,
+    parsedUnit: null,
+    parsedFrequency: null
   })),
 
   // Triển khai Actions mới cho Edit Modal
   openEditModal: (entry) => set({ isModalOpen: true, editingEntry: entry }),
+  
+  // [ADD]: Triển khai action mở modal tạo mới (editingEntry = null)
   openCreateModal: () => set({ isModalOpen: true, editingEntry: null }),
+  
   closeModal: () => set({ isModalOpen: false, editingEntry: null }),
 
   /**
@@ -111,6 +133,17 @@ export const useUiStore = create<UiState>((set) => ({
 
   clearSearch: () => set({ 
     searchQuery: '', 
-    searchContext: null 
+    searchContext: null,
+    // Reset dữ liệu NLP khi xóa tìm kiếm
+    parsedQuantity: null,
+    parsedUnit: null,
+    parsedFrequency: null
+  }),
+
+  // [NEW]: Triển khai cập nhật dữ liệu từ kết quả bóc tách NLP
+  setParsedData: (data) => set({
+    parsedQuantity: data?.quantity ?? null,
+    parsedUnit: data?.unit ?? null,
+    parsedFrequency: data?.frequency ?? null
   }),
 }));

@@ -8,7 +8,6 @@ import { NotificationManager } from '../../spark/notification-manager';
 
 /**
  * [PROPS]: Hỗ trợ đầy đủ cho cả chế độ Thêm mới và Chỉnh sửa (Edit Mode).
- * initialData được truyền từ EntryModal để xử lý lỗi TS2322.
  */
 interface EntryFormProps {
   initialData?: ITask | IThought | null;
@@ -18,11 +17,19 @@ interface EntryFormProps {
 
 /**
  * [MOD_INPUT]: Form nhập liệu v4.3.1 - Thẩm mỹ Linear.app.
- * Giai đoạn 6.5: Fix lỗi TS2322 (Null vs Undefined) & Đảm bảo hiển thị Saban.
+ * Giai đoạn 6.20: Tích hợp Auto-fill từ Ninja NLP Parser thông qua Store Sync.
  * Bảo tồn 100%: Định lượng, Tần suất, Eisenhower, Mood và Sticky Footer.
  */
 export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, onCancel }) => {
-  const { setInputFocused } = useUiStore();
+  // [MOD]: Lấy thêm các trường dữ liệu bóc tách từ Store để thực hiện Auto-fill
+  const { 
+    setInputFocused, 
+    searchQuery, 
+    setSearchQuery, 
+    parsedQuantity, 
+    parsedUnit, 
+    parsedFrequency 
+  } = useUiStore();
   
   // --- 1. STATES CHUNG ---
   const [entryType, setEntryType] = useState<'task' | 'thought'>('task');
@@ -45,13 +52,13 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   /**
-   * [LIFE-CYCLE]: Khởi tạo và Đổ dữ liệu (nếu là chế độ Chỉnh sửa)
+   * [LIFE-CYCLE]: Khởi tạo dữ liệu.
+   * Đồng bộ content với searchQuery nếu là bản ghi mới để kích hoạt NLP Shadow Sync.
    */
   useEffect(() => {
     if (initialData) {
       setContent(initialData.content);
       
-      // Phân tích dữ liệu nếu là Task (Kiểm tra thuộc tính status)
       if ('status' in initialData) {
         setEntryType('task');
         setTargetCount(initialData.targetCount || 1);
@@ -59,44 +66,75 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
         setIsUrgent(initialData.tags?.includes('p:urgent') || false);
         setIsImportant(initialData.tags?.includes('p:important') || false);
         
-        // Trích xuất Freq từ tags
         const freqTag = initialData.tags?.find(t => t.startsWith('freq:'));
         if (freqTag) setFreq(freqTag.split(':')[1] as any);
         
-        // Trích xuất Ngày trong tuần (d:1-7) và Ngày trong tháng (m:1-31)
         const dTags = initialData.tags?.filter(t => t.startsWith('d:')).map(t => parseInt(t.split(':')[1]));
         const mTags = initialData.tags?.filter(t => t.startsWith('m:')).map(t => parseInt(t.split(':')[1]));
         if (dTags) setSelectedWeekDays(dTags);
         if (mTags) setSelectedMonthDays(mTags);
       } else {
-        // Nếu là Thought (Có thuộc tính type)
         setEntryType('thought');
       }
+    } else if (searchQuery) {
+      // Nếu có sẵn nội dung từ InputBar bên ngoài, đổ vào Form ngay
+      setContent(searchQuery);
     }
     textareaRef.current?.focus();
   }, [initialData]);
 
   /**
-   * [ACTION]: Logic Lưu trữ (Add/Update) và Xử lý Tag thông minh
+   * [NLP AUTO-FILL]: Lắng nghe dữ liệu bóc tách từ Ninja NLP để tự động điền Form.
+   */
+  useEffect(() => {
+    // Chỉ tự động điền nếu không ở chế độ chỉnh sửa bản ghi cũ
+    if (initialData) return;
+
+    if (parsedQuantity !== null) {
+      setTargetCount(parsedQuantity);
+    }
+    if (parsedUnit !== null) {
+      setUnit(parsedUnit);
+    }
+    if (parsedFrequency !== null) {
+      // Map các chuỗi tần suất NLP sang trạng thái của Form
+      const f = parsedFrequency.toLowerCase();
+      if (f.includes('ngay')) {
+        setFreq('weekly');
+        setSelectedWeekDays([1, 2, 3, 4, 5, 6, 7]); // Tự động chọn cả tuần cho "hàng ngày"
+      } else if (f.includes('tuan')) {
+        setFreq('weekly');
+      } else if (f.includes('thang')) {
+        setFreq('days-month');
+      }
+    }
+  }, [parsedQuantity, parsedUnit, parsedFrequency, initialData]);
+
+  /**
+   * [SYNC]: Đồng bộ nội dung với Store để Ninja NLP Listener có thể bắt được thay đổi.
+   */
+  const handleContentChange = (val: string) => {
+    setContent(val);
+    // Cập nhật Store để kích hoạt Shadow Lane (Debounce 500ms)
+    if (!initialData) {
+      setSearchQuery(val, 'mind'); 
+    }
+  };
+
+  /**
+   * [ACTION]: Logic Lưu trữ (Add/Update)
    */
   const handleSave = async () => {
     if (!content.trim()) return;
     const now = Date.now();
-    
-    // Tính toán độ dài từ để kiểm tra điều kiện Spark
     const wordCount = content.trim().split(/\s+/).length;
 
-    /**
-     * [LOGIC SPARK V2.1]: Kiểm tra trạng thái Creative Action.
-     * Nếu có parentId và là bản ghi mới (không có id), chuẩn bị cộng điểm.
-     */
     const isNewLinkedEntry = initialData?.parentId && !initialData?.id;
     const creativeBonus = isNewLinkedEntry ? 10 : 0;
     const initialEchoCount = isNewLinkedEntry ? 1 : 0;
 
     try {
       if (entryType === 'task') {
-        // --- Logic Mặc định Thông minh cho Tần suất ---
         let finalWeekDays = selectedWeekDays;
         if (freq === 'days-week' && selectedWeekDays.length === 0) {
           const today = new Date().getDay();
@@ -130,15 +168,8 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
           interactionScore: (initialData?.interactionScore || 0) + creativeBonus,
           echoLinkCount: (initialData?.echoLinkCount || 0) + initialEchoCount,
           lastInteractedAt: now,
-          // Bổ sung trạng thái 'active' để hiện trên Saban
           archiveStatus: (initialData && 'archiveStatus' in initialData) ? initialData.archiveStatus : 'active',
-          // Khởi tạo các trường v4.1 cho Habit Tracking
           completionLog: (initialData && 'completionLog' in initialData) ? initialData.completionLog : [],
-          
-          /**
-           * [FIX TS2322]: Sử dụng undefined thay vì null để khớp với kiểu dữ liệu ITask.
-           * Kiểu 'parentGroupId' là string | number | undefined.
-           */
           parentGroupId: (initialData && 'parentGroupId' in initialData) ? initialData.parentGroupId : undefined,
           sequenceOrder: (initialData && 'sequenceOrder' in initialData) ? initialData.sequenceOrder : 0,
         };
@@ -146,7 +177,6 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
         if (initialData?.id) {
           await db.tasks.update(initialData.id, taskPayload);
         } else {
-          // Lưu mới và kích hoạt Waterfall nếu đủ điều kiện
           const newId = await db.tasks.add(taskPayload);
           if (wordCount > 16) {
             NotificationManager.scheduleWaterfall(Number(newId), 'task', content.trim());
@@ -169,7 +199,6 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
         if (initialData?.id) {
           await db.thoughts.update(initialData.id, thoughtPayload);
         } else {
-          // Lưu mới và kích hoạt Waterfall nếu đủ điều kiện
           const newId = await db.thoughts.add(thoughtPayload);
           await db.moods.add({ score: moodLevel, label: 'entry_reflection', createdAt: now });
           
@@ -179,9 +208,6 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
         }
       }
 
-      /**
-       * [FIX TS2339]: Cập nhật ngược lại cho bản ghi mẹ (Parent).
-       */
       if (isNewLinkedEntry && initialData?.parentId) {
         const parentId = initialData.parentId;
         const parentTask = await db.tasks.get(parentId);
@@ -201,6 +227,11 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
             });
           }
         }
+      }
+
+      // Xóa trắng dữ liệu tìm kiếm/nhập liệu trong Store sau khi lưu thành công
+      if (!initialData) {
+        setSearchQuery('', 'mind');
       }
 
       triggerHaptic('success');
@@ -223,7 +254,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
   return (
     <div className="flex flex-col h-[75vh] sm:h-auto max-h-[680px] overflow-hidden bg-white rounded-[6px]">
       
-      {/* HEADER: Tab Switcher (Linear style) */}
+      {/* HEADER: Tab Switcher */}
       <div className="flex-none p-4 pb-2">
         <div className="flex bg-slate-50 p-1 rounded-[6px] border border-slate-200">
           {(['task', 'thought'] as const).map(t => (
@@ -244,7 +275,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
         <textarea
           ref={textareaRef}
           value={content}
-          onChange={(e) => setContent(e.target.value)}
+          onChange={(e) => handleContentChange(e.target.value)} // Đồng bộ với Store
           placeholder={entryType === 'task' ? "Hành động cụ thể là gì?" : "Bạn đang trăn trở điều gì?"}
           className="w-full bg-transparent border-none text-xl font-medium focus:outline-none min-h-[120px] placeholder:text-slate-300 resize-none leading-relaxed text-slate-900"
         />

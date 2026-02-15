@@ -1,6 +1,5 @@
 // src/store/middleware/nlp-listener.ts
 import { analyze } from '../../utils/nlp-engine';
-import { db } from '../../database/db';
 
 /**
  * [STATE VARIABLES]: Quản lý bộ nhớ đệm cho Shadow Sync.
@@ -47,6 +46,10 @@ export const nlpListener = (f: any, name?: string): any => (set: any, get: any, 
       debounceTimer = setTimeout(async () => {
         if (!currentContent) {
           lastProcessedContent = '';
+          // Nếu nội dung trống, xóa dữ liệu parsed trong Store
+          if (state.setParsedData) {
+            state.setParsedData(null);
+          }
           return;
         }
 
@@ -60,18 +63,29 @@ export const nlpListener = (f: any, name?: string): any => (set: any, get: any, 
         const nlpResult = analyze(currentContent);
 
         /**
-         * Bước B: Semantic Linking (Echo Engine).
-         * Nếu tìm thấy thực thể định lượng, chuẩn bị cập nhật Database ngầm.
-         * terminal_action: Ghi dữ liệu cuối cùng vào database/db.ts.
+         * Bước B: Auto-fill Sync (Hệ thần kinh dữ liệu).
+         * Chuyển kết quả bóc tách vào UI Store để Form tự động cập nhật.
+         */
+        if (state.setParsedData) {
+          state.setParsedData({
+            quantity: nlpResult.quantity,
+            unit: nlpResult.unit,
+            frequency: nlpResult.frequency
+          });
+        }
+
+        /**
+         * Bước C: Semantic Linking (Echo Engine).
+         * Nếu tìm thấy thực thể định lượng, ghi log phục vụ kiểm tra hệ thống.
          */
         if (nlpResult.quantity || nlpResult.tags.length > 0) {
-          // Placeholder cho việc tự động gợi ý liên kết hoặc điền Form dựa trên kết quả NLP.
           if (name) {
-            console.log(`[NLP_SHADOW_SYNC] Entity Detected in ${name}:`, {
+            console.log(`[NLP_SHADOW_SYNC] Entity Parsed & Injected from ${name}:`, {
               content: nlpResult.content,
               quantity: nlpResult.quantity,
               unit: nlpResult.unit,
-              tags: nlpResult.tags
+              tags: nlpResult.tags,
+              frequency: nlpResult.frequency
             });
           }
         }

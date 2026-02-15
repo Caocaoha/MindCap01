@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ITask } from '../../../database/types';
 import { useUiStore } from '../../../store/ui-store';
 import { triggerHaptic } from '../../../utils/haptic';
@@ -11,6 +11,7 @@ interface TaskCardProps {
   onMoveUp?: () => void;
   onMoveDown?: () => void;
   onDetach?: () => void;
+  onJoinGroup?: (draggedId: number, targetId: number) => void; // [NEW]: Cảm biến hợp nhất
   isFirst?: boolean;
   isLast?: boolean;
 }
@@ -23,23 +24,60 @@ export const TaskCard: React.FC<TaskCardProps> = ({
   onMoveUp, 
   onMoveDown, 
   onDetach,
+  onJoinGroup,
   isFirst,
   isLast
 }) => {
   const { openEditModal } = useUiStore();
+  const [isDragOver, setIsDragOver] = useState(false); // [NEW]: Hiệu ứng thị giác khi va chạm
+  
   const isDone = task.status === 'done';
   const isMultiTarget = (task.targetCount ?? 0) > 1;
 
-  const handleFocusClick = () => {
-    if (onToggleFocus) {
-      onToggleFocus();
+  /**
+   * [DRAG HANDLERS]: Kích hoạt hệ thần kinh cảm biến Native API.
+   */
+  const handleDragStart = (e: React.DragEvent) => {
+    triggerHaptic('light');
+    e.dataTransfer.setData("draggedTaskId", String(task.id));
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault(); // Bắt buộc để cho phép thả
+    if (!isDragOver) setIsDragOver(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const draggedId = Number(e.dataTransfer.getData("draggedTaskId"));
+    if (onJoinGroup && draggedId) {
+      onJoinGroup(draggedId, task.id!);
     }
   };
 
   return (
-    <div className={`group flex items-start gap-4 p-4 rounded-[6px] border transition-all duration-200 ${
-      isDone ? 'bg-slate-50/50 border-slate-100 opacity-60' : 'bg-white border-slate-200 hover:border-slate-300'
-    }`}>
+    <div 
+      draggable={!isDone} // Chỉ cho phép kéo các việc chưa xong
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`group flex items-start gap-4 p-4 rounded-[6px] border transition-all duration-300 relative ${
+        isDragOver ? 'border-[#2563EB] bg-blue-50/30 scale-[1.02] z-10' : ''
+      } ${
+        isDone ? 'bg-slate-50/50 border-slate-100 opacity-60' : 'bg-white border-slate-200 hover:border-slate-300'
+      } cursor-grab active:cursor-grabbing`}
+    >
+      {/* Chỉ báo đang kéo (Visual cue cho iPhone) */}
+      {isDragOver && (
+        <div className="absolute inset-0 border-2 border-dashed border-[#2563EB] rounded-[6px] pointer-events-none animate-pulse" />
+      )}
       
       <div className="flex-1 min-w-0">
         <div className="flex flex-col gap-1 mb-2">
@@ -70,6 +108,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
       <div className="flex-shrink-0 flex flex-col items-end gap-2 pt-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
         <div className="flex items-center gap-1">
           <button 
+            onPointerDown={(e) => e.stopPropagation()} // Ngăn chặn drag khi bấm nút
             onClick={() => { triggerHaptic('light'); openEditModal(task); }}
             className="px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-900 transition-colors"
           >
@@ -77,6 +116,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
           </button>
           
           <button 
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={() => { if (onArchive) onArchive(); }}
             className="px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-red-300 hover:text-red-600 transition-colors"
           >
@@ -89,6 +129,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
             <div className="flex items-center gap-1">
               <button 
                 disabled={isFirst}
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={() => { triggerHaptic('light'); if (onMoveUp) onMoveUp(); }}
                 className={`w-6 h-6 flex items-center justify-center rounded-full border border-slate-200 text-[10px] transition-all
                   ${isFirst ? 'opacity-20 grayscale cursor-not-allowed' : 'bg-white text-slate-600 hover:bg-slate-100 active:scale-90'}`}
@@ -97,6 +138,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
               </button>
               <button 
                 disabled={isLast}
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={() => { triggerHaptic('light'); if (onMoveDown) onMoveDown(); }}
                 className={`w-6 h-6 flex items-center justify-center rounded-full border border-slate-200 text-[10px] transition-all
                   ${isLast ? 'opacity-20 grayscale cursor-not-allowed' : 'bg-white text-slate-600 hover:bg-slate-100 active:scale-90'}`}
@@ -106,6 +148,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
             </div>
             
             <button 
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={() => { if (onDetach) onDetach(); }}
               className="text-[8px] font-black uppercase tracking-widest text-blue-400 hover:text-blue-600 pr-1 pt-1"
             >
@@ -116,7 +159,8 @@ export const TaskCard: React.FC<TaskCardProps> = ({
         
         {!isDone && (
           <button 
-            onClick={handleFocusClick}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => { if (onToggleFocus) onToggleFocus(); }}
             className="mt-1 bg-[#2563EB] text-white px-3 py-1.5 rounded-[6px] text-[9px] font-bold uppercase tracking-widest active:scale-95 transition-all shadow-sm shadow-blue-500/10"
           >
             Thực thi

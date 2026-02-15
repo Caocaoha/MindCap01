@@ -5,7 +5,6 @@ import { TaskCard } from './ui/task-card';
 import { triggerHaptic } from '../../utils/haptic';
 import { ITask } from '../../database/types';
 
-// Định nghĩa interface cho dữ liệu đã xử lý để Fix lỗi TS2339
 interface SabanData {
   groups: Record<string | number, ITask[]>;
   standalones: ITask[];
@@ -27,7 +26,6 @@ export const SabanBoard: React.FC = () => {
     return groupIds.size + singleTasks.length;
   }, [allTasks]);
 
-  // Khai báo kiểu trả về cho useMemo để Fix lỗi never[]
   const processedSaban = useMemo<SabanData>(() => {
     if (!allTasks) return { groups: {}, standalones: [] };
     const todayStart = new Date().setHours(0, 0, 0, 0);
@@ -71,6 +69,41 @@ export const SabanBoard: React.FC = () => {
 
     return { groups, standalones };
   }, [allTasks, filter, search]);
+
+  /**
+   * [GROUPING ENGINE]: Logic hợp nhất nhiệm vụ khi kéo thả.
+   */
+  const handleJoinGroup = async (draggedId: number, targetId: number) => {
+    if (draggedId === targetId) return;
+
+    const draggedTask = allTasks?.find(t => t.id === draggedId);
+    const targetTask = allTasks?.find(t => t.id === targetId);
+
+    if (!draggedTask || !targetTask) return;
+
+    triggerHaptic('medium');
+
+    // Trường hợp 1: Thả vào một Task đã có nhóm -> Gia nhập nhóm đó
+    if (targetTask.parentGroupId) {
+      const groupSize = allTasks?.filter(t => t.parentGroupId === targetTask.parentGroupId).length || 0;
+      await db.tasks.update(draggedId, {
+        parentGroupId: targetTask.parentGroupId,
+        sequenceOrder: groupSize + 1
+      });
+    } 
+    // Trường hợp 2: Thả vào một Task đơn -> Tạo nhóm mới
+    else {
+      const newGroupId = `group_${Date.now()}`;
+      await db.tasks.update(targetId, {
+        parentGroupId: newGroupId,
+        sequenceOrder: 1
+      });
+      await db.tasks.update(draggedId, {
+        parentGroupId: newGroupId,
+        sequenceOrder: 2
+      });
+    }
+  };
 
   const handleToggleFocus = async (task: ITask) => {
     if (task.isFocusMode) {
@@ -158,7 +191,6 @@ export const SabanBoard: React.FC = () => {
       </header>
 
       <main className="flex-1 overflow-y-auto flex flex-col items-stretch space-y-4 pb-24 custom-scrollbar">
-        {/* Fix lỗi TS18046 bằng cách ép kiểu ITask[] cho groupTasks */}
         {Object.entries(processedSaban.groups).map(([groupId, groupTasks]) => (
           <div key={groupId} className="p-2 border border-slate-100 bg-slate-50/30 rounded-[8px] space-y-2">
             <div className="flex items-center justify-between px-2">
@@ -175,6 +207,7 @@ export const SabanBoard: React.FC = () => {
                 onMoveUp={() => handleMoveOrder(task, 'up')}
                 onMoveDown={() => handleMoveOrder(task, 'down')}
                 onDetach={() => handleDetach(task)}
+                onJoinGroup={handleJoinGroup} // [NEW]: Truyền handler kéo thả
                 isFirst={index === 0}
                 isLast={index === (groupTasks as ITask[]).length - 1}
               />
@@ -188,6 +221,7 @@ export const SabanBoard: React.FC = () => {
             task={task} 
             onToggleFocus={() => handleToggleFocus(task)}
             onArchive={() => handleArchive(task.id!)}
+            onJoinGroup={handleJoinGroup} // [NEW]: Truyền handler kéo thả
           />
         ))}
         

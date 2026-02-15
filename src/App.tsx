@@ -15,7 +15,8 @@ import { EntryModal } from './modules/input/components/entry-modal';
 
 /**
  * [APP]: Main Layout Controller - Linear.app Aesthetic Update. 
- * Bảng màu: Slate/Zinc | Nền: White (#FFFFFF) | Border: 1px #E2E8F0. 
+ * Giai đoạn 4.7: Cập nhật hệ thống nhãn (Label) theo triết lý Reflection.
+ * [MOD]: Saban -> Todo, Mind -> Today, Journey -> Tomorrow.
  */
 export const App: React.FC = () => {
   const { activeTab, setActiveTab, isInputFocused, setInputFocused, setTyping } = useUiStore();
@@ -23,7 +24,7 @@ export const App: React.FC = () => {
   const { progress, openAudit, getPulseFrequency } = useIdentityStore();
   const frequency = getPulseFrequency();
 
-  // Khởi tạo dữ liệu (Bảo tồn 100%) [cite: 3, 13]
+  // Khởi tạo dữ liệu (Bảo tồn 100%)
   useEffect(() => {
     const initializeData = async () => {
       try {
@@ -43,7 +44,7 @@ export const App: React.FC = () => {
     initializeData();
   }, [setTasks]);
 
-  // Xử lý phím tắt (Bảo tồn 100%) [cite: 18]
+  // Xử lý phím tắt (Bảo tồn 100%)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -119,29 +120,29 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      {/* FOOTER: Border mảnh, bo góc 6px cho nút trung tâm  */}
+      {/* FOOTER: Đã thay đổi Label hiển thị */}
       <footer className={`h-20 flex items-center justify-between px-10 relative z-30 border-t border-slate-200 bg-white transition-transform duration-500 ${isInputFocused ? 'translate-y-24' : 'translate-y-0'}`}>
         <button 
           onClick={() => { triggerHaptic('light'); setActiveTab('saban'); }} 
           className={`text-[11px] font-bold transition-colors ${activeTab === 'saban' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
         >
-          Saban
+          Todo
         </button>
 
-        {/* Nút MIND: Bo góc 6px, Màu xanh đậm #2563EB khi active  */}
+        {/* Nút TODAY: Nhãn đã đổi từ Mind sang Today */}
         <button 
           onClick={() => { triggerHaptic('medium'); setActiveTab('mind'); }} 
           className={`px-8 py-2 rounded-[6px] font-bold uppercase text-[10px] tracking-widest transition-all
             ${activeTab === 'mind' ? 'bg-[#2563EB] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
         >
-          Mind
+          Today
         </button>
 
         <button 
           onClick={() => { triggerHaptic('light'); setActiveTab('journey'); }} 
           className={`text-[11px] font-bold transition-colors ${activeTab === 'journey' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
         >
-          Journey
+          To.Morrow
         </button>
       </footer>
 

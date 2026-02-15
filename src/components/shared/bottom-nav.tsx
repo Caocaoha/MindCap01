@@ -13,7 +13,7 @@ export const BottomNav: React.FC = () => {
   const navItems = [
     { id: 'saban', label: 'Todo', icon: 'list' },
     { id: 'mind', label: 'Today', icon: 'focus' },
-    { id: 'journey', label: 'To>morrow', icon: 'compass' }, // Icon Compass đại diện cho định hướng
+    { id: 'journey', label: 'To.Morrow', icon: 'compass' }, // Icon Compass đại diện cho định hướng
     { id: 'setup', label: 'Setup', icon: 'settings' }
   ] as const;
 

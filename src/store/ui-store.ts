@@ -1,8 +1,11 @@
 import { create } from 'zustand';
 import { ITask, IThought } from '../database/types';
 
-// Định nghĩa các phân vùng tab chính trong Project Structure
-type ActiveTab = 'saban' | 'mind' | 'journey' | 'setup' | 'identity';
+/**
+ * [STATE]: Quản lý trạng thái giao diện hợp nhất (v4.7).
+ * Định nghĩa các phân vùng tab chính dựa trên PROJECT STRUCTURE.
+ */
+export type ActiveTab = 'saban' | 'mind' | 'journey' | 'setup' | 'identity';
 
 interface UiState {
   // --- States từ User (BẢO TỒN 100%) ---
@@ -26,18 +29,26 @@ interface UiState {
   toggleSidebar: () => void;
   setFocusMode: (isActive: boolean) => void;
   setTyping: (isTyping: boolean) => void;
-  setInputFocused: (isFocused: boolean) => void;
+
+  /**
+   * [FIX]: Chuẩn hóa Interface để nhận diện Context.
+   * Thêm dấu '?' để biến context thành tham số tùy chọn, giải quyết lỗi TS2554.
+   */
+  setInputFocused: (isFocused: boolean, context?: ActiveTab) => void;
 
   // --- Actions điều phối Tab ---
   setActiveTab: (tab: ActiveTab) => void;
 
   // --- [NEW] Actions cho Universal Edit Modal ---
   openEditModal: (entry: ITask | IThought) => void;
-  openCreateModal: () => void; // [ADD]: Action mở modal tạo mới để fix lỗi InputBar
+  openCreateModal: () => void; 
   closeModal: () => void;
 
-  // --- [NEW PHASE 4.5]: Actions cho Unified Search ---
-  setSearchQuery: (query: string, context: ActiveTab) => void;
+  /**
+   * [FIX]: Chuẩn hóa Interface cho Unified Search.
+   * Chuyển context thành tùy chọn để tương thích với các lệnh gọi xóa query nhanh.
+   */
+  setSearchQuery: (query: string, context?: ActiveTab) => void;
   clearSearch: () => void;
 }
 
@@ -61,7 +72,15 @@ export const useUiStore = create<UiState>((set) => ({
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
   setFocusMode: (isActive) => set({ isFocusModeActive: isActive }),
   setTyping: (isTyping) => set({ isTyping }),
-  setInputFocused: (isFocused) => set({ isInputFocused: isFocused }),
+
+  /**
+   * Triển khai setInputFocused với khả năng lưu trữ ngữ cảnh.
+   * Nếu context được cung cấp, nó sẽ cập nhật searchContext để Ninja NLP nhận diện.
+   */
+  setInputFocused: (isFocused, context) => set((state) => ({ 
+    isInputFocused: isFocused,
+    searchContext: context ? context : state.searchContext
+  })),
 
   /**
    * Triển khai Action điều hướng Tab
@@ -71,27 +90,24 @@ export const useUiStore = create<UiState>((set) => ({
     activeTab: tab, 
     isTyping: false, 
     isInputFocused: false,
-    // [FIX]: Nếu tab mới khác với ngữ cảnh đang tìm kiếm, thực hiện Reset Scoped
+    // Nếu tab mới khác với ngữ cảnh đang tìm kiếm, thực hiện Reset Scoped
     searchQuery: state.searchContext !== tab ? '' : state.searchQuery,
     searchContext: state.searchContext !== tab ? null : state.searchContext
   })),
 
   // Triển khai Actions mới cho Edit Modal
   openEditModal: (entry) => set({ isModalOpen: true, editingEntry: entry }),
-  
-  // [ADD]: Triển khai action mở modal tạo mới (editingEntry = null)
   openCreateModal: () => set({ isModalOpen: true, editingEntry: null }),
-  
   closeModal: () => set({ isModalOpen: false, editingEntry: null }),
 
   /**
-   * [NEW PHASE 4.5]: Triển khai hệ thống tìm kiếm hợp nhất
-   * Gắn chặt Query với Context để phục vụ logic lọc chính xác.
+   * [NEW PHASE 4.5]: Triển khai hệ thống tìm kiếm hợp nhất.
+   * Cho phép cập nhật Query có hoặc không có Context (mặc định giữ nguyên context cũ nếu không truyền).
    */
-  setSearchQuery: (query, context) => set({ 
+  setSearchQuery: (query, context) => set((state) => ({ 
     searchQuery: query, 
-    searchContext: context 
-  }),
+    searchContext: context ? context : state.searchContext 
+  })),
 
   clearSearch: () => set({ 
     searchQuery: '', 

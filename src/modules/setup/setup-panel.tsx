@@ -1,10 +1,50 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { db } from '../../database/db';
 import { triggerHaptic } from '../../utils/haptic';
 
 export const SetupPanel: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const legacyInputRef = useRef<HTMLInputElement>(null);
+  
+  // Trạng thái hiển thị quyền thông báo hiện tại
+  const [permissionStatus, setPermissionStatus] = useState<NotificationPermission>('default');
+
+  useEffect(() => {
+    if ("Notification" in window) {
+      setPermissionStatus(Notification.permission);
+    }
+  }, []);
+
+  // --- 0. KÍCH HOẠT SPARK NOTIFICATION (NEW) ---
+  const handleEnableNotifications = async () => {
+    triggerHaptic('medium');
+
+    if (!("Notification" in window)) {
+      alert("Trình duyệt này không hỗ trợ thông báo hệ thống.");
+      return;
+    }
+
+    try {
+      // Bắt buộc gọi trong scope của hàm click để iOS chấp nhận 
+      const permission = await Notification.requestPermission();
+      setPermissionStatus(permission);
+
+      if (permission === 'granted') {
+        alert("Kích hoạt thành công! Hệ thống Spark Messenger đã sẵn sàng.");
+        
+        // Gửi thử một thông báo kiểm tra (Spotlight) 
+        new Notification("Mind Cap Spark", {
+          body: "Hệ thống thông báo đã kết nối thành công với thiết bị của bạn.",
+          icon: "/icon-192x192.png"
+        });
+      } else if (permission === 'denied') {
+        alert("Quyền thông báo bị từ chối. Bạn cần vào Cài đặt > Mind Cap để bật lại.");
+      }
+    } catch (err) {
+      console.error("Lỗi yêu cầu quyền:", err);
+      alert("Không thể yêu cầu quyền thông báo. Hãy đảm bảo bạn đã Add to Home Screen.");
+    }
+  };
 
   // --- 1. EXPORT JSON CHUẨN ---
   const handleExport = async () => {
@@ -106,6 +146,35 @@ export const SetupPanel: React.FC = () => {
         <h2 className="text-2xl font-black tracking-tighter">SETUP</h2>
         <p className="text-[9px] uppercase tracking-widest opacity-30 font-bold">Quản trị dữ liệu & Hệ thống</p>
       </header>
+
+      {/* [NEW]: HỆ THỐNG SPARK NOTIFICATION [cite: 18, 19] */}
+      <section className="space-y-4">
+        <h3 className="text-[10px] font-black uppercase tracking-widest text-blue-500/50">Spark Engine</h3>
+        <button 
+          onClick={handleEnableNotifications}
+          disabled={permissionStatus === 'granted'}
+          className={`w-full p-5 border rounded-2xl flex items-center justify-between group active:scale-95 transition-all
+            ${permissionStatus === 'granted' 
+              ? 'bg-blue-500/5 border-blue-500/10 opacity-60 cursor-default' 
+              : 'bg-blue-500/10 border-blue-500/20 hover:bg-blue-500/20'}`}
+        >
+          <div className="text-left">
+            <p className={`text-[11px] font-bold ${permissionStatus === 'granted' ? 'text-blue-400' : 'text-blue-500'}`}>
+              {permissionStatus === 'granted' ? 'Hệ thống thông báo: Đã bật' : 'Kích hoạt Spark Notification'}
+            </p>
+            <p className="text-[8px] opacity-40 uppercase mt-0.5">
+              {permissionStatus === 'granted' 
+                ? 'Đang lắng nghe mốc Thác đổ (Waterfall) ' 
+                : 'Cần thiết để nhắc nhở ký ức Spotlight '}
+            </p>
+          </div>
+          <div className={`p-2 rounded-full ${permissionStatus === 'granted' ? 'bg-blue-500/20' : 'bg-blue-500/40 animate-pulse'}`}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-blue-500">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/>
+            </svg>
+          </div>
+        </button>
+      </section>
 
       {/* Cụm nút Import/Export */}
       <section className="space-y-4">

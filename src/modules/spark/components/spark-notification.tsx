@@ -6,7 +6,7 @@ import { triggerHaptic } from '../../../utils/haptic';
 /** * FIX: Điều chỉnh đường dẫn từ ../../../services/spark/... 
  * thành ../notification-manager để khớp với vị trí file thực tế của bạn.
  */
-import { SparkNotificationManager } from '../notification-manager';
+import { NotificationManager } from '../notification-manager';
 
 /**
  * [MODULE]: Spark Notification - Spotlight Watcher.
@@ -53,7 +53,7 @@ export const SparkNotification: React.FC = () => {
     e.stopPropagation();
     triggerHaptic('light');
     // Gọi logic Snooze 30 phút
-    SparkNotificationManager.snooze(spotlightEntry, 30); 
+    NotificationManager.snooze,30; 
     setIsDismissed(true);
   };
 

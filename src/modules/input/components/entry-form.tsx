@@ -15,8 +15,8 @@ interface EntryFormProps {
 }
 
 /**
- * [MOD_INPUT]: Form nhập liệu v4.0 - Thẩm mỹ Linear.app.
- * Đặc điểm: Nền trắng, Slate Border 1px, Bo góc 6px, Nhấn Blue #2563EB.
+ * [MOD_INPUT]: Form nhập liệu v4.1 - Thẩm mỹ Linear.app.
+ * Giai đoạn 6.2: Thực thi Creative Action (+10 điểm) và ghi nhận ParentID.
  * Bảo tồn 100%: Định lượng, Tần suất, Eisenhower, Mood và Sticky Footer.
  */
 export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, onCancel }) => {
@@ -49,7 +49,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
     if (initialData) {
       setContent(initialData.content);
       
-      // Phân tích dữ liệu nếu là Task
+      // Phân tích dữ liệu nếu là Task (Kiểm tra thuộc tính status)
       if ('status' in initialData) {
         setEntryType('task');
         setTargetCount(initialData.targetCount || 1);
@@ -67,7 +67,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
         if (dTags) setSelectedWeekDays(dTags);
         if (mTags) setSelectedMonthDays(mTags);
       } else {
-        // Nếu là Thought
+        // Nếu là Thought (Có thuộc tính type)
         setEntryType('thought');
       }
     }
@@ -80,6 +80,14 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
   const handleSave = async () => {
     if (!content.trim()) return;
     const now = Date.now();
+
+    /**
+     * [LOGIC SPARK V2.1]: Kiểm tra trạng thái Creative Action.
+     * Nếu có parentId và là bản ghi mới (không có id), chuẩn bị cộng điểm.
+     */
+    const isNewLinkedEntry = initialData?.parentId && !initialData?.id;
+    const creativeBonus = isNewLinkedEntry ? 10 : 0;
+    const initialEchoCount = isNewLinkedEntry ? 1 : 0;
 
     try {
       if (entryType === 'task') {
@@ -95,7 +103,6 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
           finalMonthDays = [new Date().getDate()];
         }
 
-        // Tạo mảng Tags chuẩn hóa
         const tags = [
           `freq:${freq}`,
           isUrgent ? 'p:urgent' : '',
@@ -106,39 +113,72 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
 
         const taskPayload: ITask = {
           content: content.trim(),
-          status: (initialData as ITask)?.status || 'todo',
+          status: (initialData && 'status' in initialData) ? initialData.status : 'todo',
           createdAt: initialData?.createdAt || now,
           updatedAt: now,
-          isFocusMode: (initialData as ITask)?.isFocusMode || false,
+          isFocusMode: (initialData && 'status' in initialData) ? initialData.isFocusMode : false,
           targetCount: Number(targetCount),
           unit: unit.trim(),
-          doneCount: (initialData as ITask)?.doneCount || 0,
-          tags
+          doneCount: (initialData && 'status' in initialData) ? initialData.doneCount || 0 : 0,
+          tags,
+          parentId: initialData?.parentId || undefined,
+          interactionScore: (initialData?.interactionScore || 0) + creativeBonus,
+          echoLinkCount: (initialData?.echoLinkCount || 0) + initialEchoCount,
+          lastInteractedAt: now
         };
 
-        // Thực thi vào Database
         if (initialData?.id) {
           await db.tasks.update(initialData.id, taskPayload);
         } else {
           await db.tasks.add(taskPayload);
         }
       } else {
-        // Xử lý lưu Thought và Mood
         const thoughtPayload: IThought = {
           content: content.trim(),
           type: 'thought',
           wordCount: content.trim().split(/\s+/).length,
           createdAt: initialData?.createdAt || now,
           updatedAt: now,
-          recordStatus: 'success'
+          recordStatus: 'success',
+          parentId: initialData?.parentId || undefined,
+          interactionScore: (initialData?.interactionScore || 0) + creativeBonus,
+          echoLinkCount: (initialData?.echoLinkCount || 0) + initialEchoCount,
+          lastInteractedAt: now
         };
 
         if (initialData?.id) {
           await db.thoughts.update(initialData.id, thoughtPayload);
         } else {
           await db.thoughts.add(thoughtPayload);
-          // Ghi nhận cảm xúc vào bảng moods
           await db.moods.add({ score: moodLevel, label: 'entry_reflection', createdAt: now });
+        }
+      }
+
+      /**
+       * [FIX TS2339]: Cập nhật ngược lại cho bản ghi mẹ (Parent).
+       * Kiểm tra cả hai bảng để đảm bảo tính nhất quán của dữ liệu.
+       */
+      if (isNewLinkedEntry && initialData?.parentId) {
+        const parentId = initialData.parentId;
+        
+        // 1. Kiểm tra và cập nhật nếu mẹ nằm trong bảng Tasks
+        const parentTask = await db.tasks.get(parentId);
+        if (parentTask) {
+          await db.tasks.update(parentId, {
+            echoLinkCount: (parentTask.echoLinkCount || 0) + 1,
+            interactionScore: (parentTask.interactionScore || 0) + 10,
+            lastInteractedAt: now
+          });
+        } else {
+          // 2. Kiểm tra và cập nhật nếu mẹ nằm trong bảng Thoughts
+          const parentThought = await db.thoughts.get(parentId);
+          if (parentThought) {
+            await db.thoughts.update(parentId, {
+              echoLinkCount: (parentThought.echoLinkCount || 0) + 1,
+              interactionScore: (parentThought.interactionScore || 0) + 10,
+              lastInteractedAt: now
+            });
+          }
         }
       }
 
@@ -160,10 +200,9 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
   };
 
   return (
-    /* CONTAINER: Nền trắng tuyệt đối, Bo góc 6px, Không bóng đổ */
     <div className="flex flex-col h-[75vh] sm:h-auto max-h-[680px] overflow-hidden bg-white rounded-[6px]">
       
-      {/* --- PHẦN 1: HEADER (Tab Switcher - Slate style) --- */}
+      {/* HEADER */}
       <div className="flex-none p-4 pb-2">
         <div className="flex bg-slate-50 p-1 rounded-[6px] border border-slate-200">
           {(['task', 'thought'] as const).map(t => (
@@ -179,10 +218,8 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
         </div>
       </div>
 
-      {/* --- PHẦN 2: BODY (Content Scroll - Linear aesthetic) --- */}
+      {/* BODY */}
       <div className="flex-1 overflow-y-auto px-4 space-y-8 custom-scrollbar pb-6">
-        
-        {/* Textarea: Chữ Slate-900 đậm nét trên nền trắng */}
         <textarea
           ref={textareaRef}
           value={content}
@@ -193,8 +230,6 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
 
         {entryType === 'task' ? (
           <div className="space-y-8 animate-in fade-in slide-in-from-top-1 duration-200">
-            
-            {/* HÀNG ĐỊNH LƯỢNG (Metrics - Flat style) */}
             <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-[6px] border border-slate-200">
               <div className="flex-1">
                 <label className="text-[9px] font-bold uppercase text-slate-400 block mb-1">Mục tiêu số</label>
@@ -218,7 +253,6 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
               </div>
             </div>
 
-            {/* TẦN SUẤT THÍCH ỨNG (Adaptive Frequency) */}
             <div className="space-y-4">
               <label className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Chu kỳ lặp lại</label>
               <div className="grid grid-cols-2 gap-2">
@@ -239,7 +273,6 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
                 ))}
               </div>
 
-              {/* Sub-Selector: Ngày trong tuần (Xanh đậm làm nhấn) */}
               {freq === 'days-week' && (
                 <div className="flex justify-between gap-1 py-2 animate-in zoom-in-95 duration-200">
                   {[1,2,3,4,5,6,7].map(d => (
@@ -255,7 +288,6 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
                 </div>
               )}
 
-              {/* Sub-Selector: Ngày trong tháng */}
               {freq === 'days-month' && (
                 <div className="grid grid-cols-7 gap-1 py-2 animate-in zoom-in-95 duration-200">
                   {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
@@ -272,7 +304,6 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
               )}
             </div>
 
-            {/* EISENHOWER MATRIX (Slate tints) */}
             <div className="flex gap-3">
               <button 
                 onClick={() => { triggerHaptic('light'); setIsUrgent(!isUrgent); }} 
@@ -291,7 +322,6 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
             </div>
           </div>
         ) : (
-          /* PHẦN SUY NGHĨ: Mood Selector (Slate/Monochrome focus) */
           <div className="space-y-8 pt-10 animate-in fade-in duration-300">
             <div className="flex justify-between items-center px-4">
               {[1, 2, 3, 4, 5].map((v) => (
@@ -311,14 +341,14 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
         )}
       </div>
 
-      {/* --- PHẦN 3: FOOTER (Sticky Footer - Linear style) --- */}
+      {/* FOOTER */}
       <div className="flex-none p-4 border-t border-slate-200 bg-white">
         <button 
           onClick={handleSave} 
           disabled={!content.trim()} 
           className="w-full py-4 bg-[#2563EB] text-white rounded-[6px] text-[11px] font-bold uppercase tracking-widest active:scale-[0.98] transition-all disabled:opacity-30 disabled:grayscale shadow-none"
         >
-          {initialData ? 'Cập nhật thay đổi' : 'Lưu vào Mind Cap'}
+          {initialData?.id ? 'Cập nhật thay đổi' : 'Lưu vào Mind Cap'}
         </button>
         <button 
           onClick={() => { triggerHaptic('light'); onCancel(); }} 

@@ -1,5 +1,6 @@
 /**
- * [CORE]: Định nghĩa interface và kiểu dữ liệu cho database (v3.3)
+ * [CORE]: Định nghĩa interface và kiểu dữ liệu cho database (v3.4)
+ * Giai đoạn 5: Tích hợp Spaced Repetition (Memory Spark)
  */
 
 // --- MODULE: INPUT & SABAN & FOCUS (Giữ nguyên 100%) ---
@@ -7,9 +8,9 @@ export interface ITask {
   id?: number;
   content: string;
   status: 'todo' | 'done' | 'backlog'; 
-  frequency?: string;       // [BỔ SUNG]
-  streakCurrent?: number;   // [BỔ SUNG]
-  streakRecoveryCount?: number; // [BỔ SUNG]
+  frequency?: string;       
+  streakCurrent?: number;   
+  streakRecoveryCount?: number; 
   createdAt: number;
   updatedAt?: number;
   isFocusMode: boolean; 
@@ -20,6 +21,11 @@ export interface ITask {
   targetCount?: number;
   doneCount?: number;
   unit?: string;
+
+  // [NEW] Memory Spark Fields
+  nextReviewAt?: number; // Thời điểm cần ôn tập tiếp theo (Timestamp)
+  reviewStage?: number;  // Cấp độ hiện tại (0-5)
+  lastReviewedAt?: number; // Thời điểm ôn tập gần nhất
 }
 
 // --- MODULE: JOURNEY & INPUT (Giữ nguyên 100%) ---
@@ -33,6 +39,11 @@ export interface IThought {
   updatedAt?: number; 
   isBookmarked?: boolean;
   bookmarkReason?: string;
+
+  // [NEW] Memory Spark Fields
+  nextReviewAt?: number; // Thời điểm cần ôn tập tiếp theo (Timestamp)
+  reviewStage?: number;  // Cấp độ hiện tại (0-5)
+  lastReviewedAt?: number; // Thời điểm ôn tập gần nhất
 }
 
 // --- MODULE: IDENTITY (Giữ nguyên 100%) ---

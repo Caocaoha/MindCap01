@@ -10,8 +10,8 @@ interface FocusItemProps {
 
 /**
  * [MOD_FOCUS_UI]: Thành phần hiển thị tác vụ trong chế độ thực thi.
- * Giai đoạn 6.27: Loại bỏ Swipe, Chuyển sang Layout 3 vùng (Trái/Giữa/Phải).
- * Khắc phục triệt để vấn đề xung đột cảm ứng trên iPhone.
+ * Giai đoạn 6.28: Tối ưu hóa phản hồi trên iOS (iPhone).
+ * Tích hợp select-none và active-state để khắc phục triệt để lỗi liệt cảm ứng Zone B.
  */
 export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
   const { updateTask, incrementDoneCount } = useJourneyStore();
@@ -86,12 +86,12 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
 
   return (
     <div 
-      className={`relative w-full flex items-start gap-3 p-4 mb-3 rounded-[6px] border transition-all duration-300 ${
+      onClick={handleIncrement} // Vùng B (Giữa): Chạm vào body để tăng số
+      className={`relative w-full flex items-start gap-3 p-4 mb-3 rounded-[6px] border transition-all duration-200 select-none ${
         isActive 
-          ? 'bg-white border-slate-300 shadow-none scale-[1.01]' 
+          ? 'bg-white border-slate-300 shadow-none scale-[1.01] active:scale-[0.98] active:bg-slate-50' 
           : 'bg-slate-50 border-slate-200 opacity-50'
       } ${isCompleted ? 'opacity-40' : 'cursor-pointer'}`}
-      onClick={handleIncrement} // Vùng B (Giữa): Chạm vào body để tăng số
     >
       {/* --- ZONE A: TRÁI (Check Button) --- */}
       <div 
@@ -104,7 +104,7 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
       </div>
 
       {/* --- ZONE B: GIỮA (Nội dung & Tiến độ) --- */}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 pointer-events-none">
         <h3 className={`text-base font-bold tracking-tight break-words whitespace-pre-wrap leading-snug ${
           isCompleted ? 'line-through text-slate-400' : 'text-slate-900'
         }`}>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useUiStore } from './store/ui-store';
 import { triggerHaptic } from './utils/haptic';
 import { db } from './database/db'; 
@@ -15,13 +15,17 @@ import { EntryModal } from './modules/input/components/entry-modal';
 import { SparkNotification } from './modules/spark/components/spark-notification';
 import { UniversalEditModal } from './modules/input/components/universal-edit-modal';
 
+/**
+ * [APP]: Main Layout Controller - Linear.app Aesthetic Update. 
+ * Giai đoạn 6.32: Tối ưu Layout Sandwich (InputBar neo trong Main, Footer tách biệt).
+ */
 export const App: React.FC = () => {
   const { activeTab, setActiveTab, isInputFocused, setInputFocused, setTyping, openEditModal } = useUiStore();
   const { setTasks } = useJourneyStore(); 
-  const { progress, openAudit, getPulseFrequency } = useIdentityStore();
+  const { openAudit, getPulseFrequency } = useIdentityStore();
   const frequency = getPulseFrequency();
 
-  // [NEW]: Đăng ký Service Worker để xử lý click thông báo và chạy ngầm
+  // [NEW]: Đăng ký Service Worker
   useEffect(() => {
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
@@ -34,7 +38,7 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Khởi tạo dữ liệu (Bảo tồn 100%)
+  // Khởi tạo dữ liệu
   useEffect(() => {
     const initializeData = async () => {
       try {
@@ -54,9 +58,7 @@ export const App: React.FC = () => {
     initializeData();
   }, [setTasks]);
 
-  /**
-   * [DEEP LINKING HANDLER]: Lắng nghe tham số điều hướng.
-   */
+  // Deep Linking Handler
   useEffect(() => {
     const handleDeepLink = async () => {
       const params = new URLSearchParams(window.location.search);
@@ -74,7 +76,6 @@ export const App: React.FC = () => {
             if (entry) {
               triggerHaptic('medium');
               openEditModal(entry);
-              // Xóa tham số trên URL sau khi đã xử lý để tránh reload lại modal
               window.history.replaceState({}, '', window.location.pathname);
             }
           } catch (error) {
@@ -115,11 +116,11 @@ export const App: React.FC = () => {
     handleDeepLink();
   }, [openEditModal]);
 
-  // Xử lý phím tắt (Bảo tồn 100%)
+  // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setInputFocused(false);
+        setInputFocused(false, 'mind');
         setTyping(false);
         return;
       }
@@ -128,7 +129,7 @@ export const App: React.FC = () => {
         if (e.ctrlKey || e.metaKey || e.altKey) return;
         if (e.key.length === 1 || e.key === 'Enter') {
           triggerHaptic('light');
-          setInputFocused(true);
+          setInputFocused(true, 'mind');
         }
       }
     };
@@ -138,7 +139,9 @@ export const App: React.FC = () => {
 
   return (
     <div className="h-screen w-full bg-white text-slate-900 overflow-hidden flex flex-col font-sans select-none">
-      <header className="h-16 flex items-center justify-center px-6 relative z-[60] border-b border-slate-200 bg-white/80 backdrop-blur-md">
+      
+      {/* HEADER: Top Bun (Cố định) */}
+      <header className="h-16 flex-none flex items-center justify-center px-6 relative z-[60] border-b border-slate-200 bg-white/80 backdrop-blur-md">
         <button 
           onClick={() => { 
             triggerHaptic('medium'); 
@@ -165,31 +168,50 @@ export const App: React.FC = () => {
         </button>
       </header>
 
-      <main className="flex-1 relative px-4 overflow-hidden bg-white">
+      {/* MAIN: Meat (Flex-1 co giãn) */}
+      <main className="flex-1 relative overflow-hidden bg-white">
         {activeTab === 'saban' && <SabanBoard />}
         {activeTab === 'journey' && <JourneyList />}
         {activeTab === 'setup' && <SetupPanel />}
         {activeTab === 'identity' && <IdentityDashboard />}
         
         {activeTab === 'mind' && (
-          <div className="h-full flex flex-col relative">
-            <div className={`relative z-20 h-full overflow-y-auto pb-32 transition-all duration-700 ease-in-out ${isInputFocused ? 'opacity-0 -translate-y-10 scale-95 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
+          // Container của Tab Mind cũng chiếm full Main
+          <div className="absolute inset-0 flex flex-col">
+            
+            {/* FOCUS SESSION: Nằm trong Main, có padding dưới để tránh bị InputBar che */}
+            <div className={`flex-1 overflow-y-auto pb-24 transition-opacity duration-300 ${
+              isInputFocused ? 'opacity-0 pointer-events-none' : 'opacity-100'
+            }`}>
               <FocusSession />
             </div>
             
-            <div className={`absolute left-0 right-0 z-50 transition-all duration-500 ease-out ${isInputFocused ? 'top-0 h-screen bg-white/90 backdrop-blur-sm' : 'bottom-10 sm:bottom-6 h-auto'} pointer-events-none`}>
-              <div className="pointer-events-auto">
-                <InputBar onFocus={() => { triggerHaptic('light'); setInputFocused(true); }} onBlur={() => setInputFocused(false)} />
-              </div>
+            {/* INPUT BAR: Neo vào đáy của MAIN (Trên đầu Footer) */}
+            {/* Khi Focus: Biến hình thành Top-0 để phủ kín Main */}
+            <div className={`absolute left-0 right-0 z-50 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+              isInputFocused 
+                ? 'top-0 bottom-0 h-full' // Focus Mode: Phủ kín Main
+                : 'bottom-0 h-auto'       // Normal Mode: Nằm đáy Main
+            }`}>
+              <InputBar 
+                onFocus={() => { 
+                  triggerHaptic('light'); 
+                  setInputFocused(true, 'mind'); 
+                }} 
+                onBlur={() => setInputFocused(false, 'mind')} 
+              />
             </div>
           </div>
         )}
       </main>
 
-      <footer className={`h-20 flex items-center justify-between px-10 relative z-30 border-t border-slate-200 bg-white transition-transform duration-500 ${isInputFocused ? 'translate-y-24' : 'translate-y-0'}`}>
+      {/* FOOTER: Bottom Bun (Flex-none, Cố định) */}
+      <footer className={`h-20 flex-none flex items-center justify-between px-10 relative z-40 border-t border-slate-200 bg-white transition-transform duration-500 ease-out ${
+        isInputFocused ? 'translate-y-full' : 'translate-y-0'
+      }`}>
         <button onClick={() => { triggerHaptic('light'); setActiveTab('saban'); }} className={`text-[11px] font-bold transition-colors ${activeTab === 'saban' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>Todo</button>
         <button onClick={() => { triggerHaptic('medium'); setActiveTab('mind'); }} className={`px-8 py-2 rounded-[6px] font-bold uppercase text-[10px] tracking-widest transition-all ${activeTab === 'mind' ? 'bg-[#2563EB] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>Today</button>
-        <button onClick={() => { triggerHaptic('light'); setActiveTab('journey'); }} className={`text-[11px] font-bold transition-colors ${activeTab === 'journey' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>To.Morrow</button>
+        <button onClick={() => { triggerHaptic('light'); setActiveTab('journey'); }} className={`text-[11px] font-bold transition-colors ${activeTab === 'journey' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>History</button>
       </footer>
 
       <IdentityCheckin />

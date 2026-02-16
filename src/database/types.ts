@@ -1,9 +1,9 @@
 /**
- * [CORE]: Định nghĩa interface và kiểu dữ liệu cho database (v3.7)
- * Giai đoạn 6.5: Tích hợp cấu trúc Chuỗi nhiệm vụ (Task Sequences) và Archive System.
+ * [CORE]: Định nghĩa interface và kiểu dữ liệu cho database (v3.8)
+ * Giai đoạn 6.21: Nâng cấp IThought để hỗ trợ tính năng T-Rail (Thought + Mood).
  */
 
-// --- MODULE: INPUT & SABAN & FOCUS (Nâng cấp v4.1) ---
+// --- MODULE: INPUT & SABAN & FOCUS ---
 export interface ITask {
   id?: number;
   content: string;
@@ -22,33 +22,31 @@ export interface ITask {
   doneCount?: number;
   unit?: string;
 
-  // [NEW] Memory Spark Fields (Spaced Repetition)
+  // Memory Spark & Widget Fields
   nextReviewAt?: number; 
   reviewStage?: number;  
   lastReviewedAt?: number; 
-
-  // [V2.0] Widget Memory Scoring Fields
   echoLinkCount?: number;     
   interactionScore?: number;  
   lastInteractedAt?: number;  
 
-  // [V2.1] Link System Fields
-  parentId?: number;          // ID của bản ghi gốc mà bản ghi này liên kết tới
-  isLinkMode?: boolean;       // Cờ UI đánh dấu đang trong trạng thái tạo liên kết
+  // Link System
+  parentId?: number;          
+  isLinkMode?: boolean;       
 
-  // [V4.1] Saban Task Chains & Habit Tracking
-  parentGroupId?: number | string;   // ID của nhóm việc (Sequence)
-  sequenceOrder?: number;            // Thứ tự thực hiện bên trong nhóm (1, 2, 3...)
-  archiveStatus?: 'active' | 'archived'; // Trạng thái hiển thị (Hủy việc nhưng giữ data)
-  completionLog?: number[];          // Lịch sử các mốc thời gian hoàn thành (Phục vụ Streak/Habit)
+  // Saban Task Chains
+  parentGroupId?: number | string;   
+  sequenceOrder?: number;            
+  archiveStatus?: 'active' | 'archived'; 
+  completionLog?: number[];          
 }
 
-// --- MODULE: JOURNEY & INPUT (Bảo tồn 100%) ---
+// --- MODULE: JOURNEY & INPUT ---
 export interface IThought {
   id?: number;
   content: string;
   type: 'note' | 'thought' | 'insight';
-  archiveStatus?: 'active' | 'archived'; // [FIX]: Bổ sung để đồng bộ với ITask
+  archiveStatus?: 'active' | 'archived';
   wordCount: number;
   createdAt: number;
   recordStatus: 'pending' | 'processing' | 'success';
@@ -56,22 +54,31 @@ export interface IThought {
   isBookmarked?: boolean;
   bookmarkReason?: string;
 
-  // [NEW] Memory Spark Fields (Spaced Repetition)
+  /**
+   * [NEW 6.21]: Trường mood (Tùy chọn).
+   * Trước đây Mood lưu ở bảng riêng (IMood). Giờ đây IThought có thể chứa mood trực tiếp
+   * để phục vụ tính năng T-Rail (vừa viết nhật ký vừa chấm điểm cảm xúc).
+   */
+  mood?: number; 
+  
+  /**
+   * [NEW 6.21]: Trường tags (Tùy chọn).
+   * Phục vụ việc lưu các nhãn được bóc tách từ NLP.
+   */
+  tags?: string[];
+
+  // Memory Spark & Link System Fields
   nextReviewAt?: number; 
   reviewStage?: number;  
   lastReviewedAt?: number; 
-
-  // [V2.0] Widget Memory Scoring Fields
   echoLinkCount?: number;     
   interactionScore?: number;  
   lastInteractedAt?: number;  
-
-  // [V2.1] Link System Fields
-  parentId?: number;          // ID của bản ghi gốc mà bản ghi này liên kết tới
-  isLinkMode?: boolean;       // Cờ UI đánh dấu đang trong trạng thái tạo liên kết
+  parentId?: number;          
+  isLinkMode?: boolean;       
 }
 
-// --- MODULE: IDENTITY (Giữ nguyên 100%) ---
+// --- MODULE: IDENTITY (Bảng Mood cũ - Vẫn giữ để tương thích dữ liệu cũ) ---
 export interface IMood {
   id?: number;
   score: number;
@@ -79,7 +86,7 @@ export interface IMood {
   createdAt: number;
 }
 
-// --- SERVICE: CME (Nâng cấp identityProgress) ---
+// --- SERVICE: CME ---
 export interface IUserProfile {
   id?: number;
   totalScore: number;

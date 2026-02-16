@@ -1,12 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useJourneyStore } from '../../../store/journey-store'; 
 import { ITask } from '../../../database/types';
 import { triggerHaptic } from '../../../utils/haptic';
 
-/**
- * [FIX TS2322]: Cập nhật Interface để nhận trực tiếp đối tượng Task.
- * Thay vì nhận 'taskId' (số), component giờ nhận 'task' (đối tượng ITask).
- */
 interface FocusItemProps {
   task: ITask; 
   isActive: boolean;
@@ -14,17 +10,13 @@ interface FocusItemProps {
 
 /**
  * [MOD_FOCUS_UI]: Thành phần hiển thị tác vụ trong chế độ thực thi.
- * Giai đoạn 6.26: Logic "Done = Exit" (Hoàn thành = Rời khỏi Focus).
- * Giải quyết triệt để vấn đề "Slot Ma" và hiển thị lại trên Saban.
+ * Giai đoạn 6.27: Loại bỏ Swipe, Chuyển sang Layout 3 vùng (Trái/Giữa/Phải).
+ * Khắc phục triệt để vấn đề xung đột cảm ứng trên iPhone.
  */
 export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
-  // [MOD]: Không cần tìm kiếm task trong Store nữa vì đã nhận trực tiếp từ cha.
   const { updateTask, incrementDoneCount } = useJourneyStore();
-
   const [localValue, setLocalValue] = useState<string>('');
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
-  // Đồng bộ số lượng vào ô nhập
   useEffect(() => {
     if (task) {
       setLocalValue(String(task.doneCount || 0));
@@ -35,61 +27,50 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
 
   const isCompleted = task.status === 'done';
 
+  // --- ACTION HANDLERS ---
+
   /**
-   * [ACTION]: Thoát khỏi chế độ Focus (Về Saban).
-   * Cập nhật isFocusMode = false và updatedAt = now để nhảy lên đầu Saban.
+   * [ZONE A - LEFT]: Hoàn thành nhiệm vụ (Check Button).
+   * Logic: Hoàn thành -> Thoát Focus -> Lên đỉnh Saban.
    */
-  const handleRemoveFromFocus = (e: React.PointerEvent) => {
-    e.stopPropagation();
-    triggerHaptic('light'); // Phản hồi nhẹ khi nhấn nút thoát
+  const handleComplete = (e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation(); // Chặn lan truyền để không kích hoạt +1 ở body
+    triggerHaptic('success');
     updateTask(task.id!, {
+      status: 'done',
+      doneCount: task.targetCount || 1,
       isFocusMode: false,
-      updatedAt: Date.now() // Đẩy lên đầu danh sách Saban
+      updatedAt: Date.now()
     });
   };
 
   /**
-   * [GESTURE LOGIC]: Bắt đầu ghi nhận tọa độ điểm chạm.
+   * [ZONE B - CENTER]: Tăng số lượng thực hiện (Body Tap).
+   * Logic: +1 tiến độ.
    */
-  const handlePointerDown = (e: React.PointerEvent) => {
+  const handleIncrement = () => {
     if (isCompleted || !isActive) return;
-    touchStartRef.current = { x: e.clientX, y: e.clientY };
+    triggerHaptic('light');
+    incrementDoneCount(task.id!);
   };
 
   /**
-   * [GESTURE LOGIC]: Phân tích vector di chuyển (Diagonal Swipe).
+   * [ZONE C - RIGHT]: Thoát khỏi chế độ Focus (X Button).
+   * Logic: Hủy Focus -> Về Saban -> Lên đỉnh.
    */
-  const handlePointerUp = (e: React.PointerEvent) => {
-    if (!touchStartRef.current || isCompleted || !isActive) return;
-
-    const endX = e.clientX;
-    const endY = e.clientY;
-    const startX = touchStartRef.current.x;
-    const startY = touchStartRef.current.y;
-
-    const dx = endX - startX;        
-    const dy = startY - endY;        
-
-    const isDiagonalSwipe = dx > 60 && dy > 60 && (dx / dy > 0.5 && dx / dy < 1.5);
-
-    if (isDiagonalSwipe) {
-      triggerHaptic('success'); 
-      // [FIX LOGIC]: Hoàn thành = Thoát Focus + Cập nhật Saban ngay lập tức
-      updateTask(task.id!, {
-        status: 'done',
-        doneCount: task.targetCount || 1,
-        isFocusMode: false,   // Giải phóng slot DB ngay lập tức
-        updatedAt: Date.now() // Đẩy lên đầu Saban
-      });
-    } else if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
-      triggerHaptic('light');
-      incrementDoneCount(task.id!);
-    }
-
-    touchStartRef.current = null;
+  const handleRemoveFromFocus = (e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+    triggerHaptic('light');
+    updateTask(task.id!, {
+      isFocusMode: false,
+      updatedAt: Date.now()
+    });
   };
 
-  const handleSave = (e: React.PointerEvent) => {
+  /**
+   * [ZONE C - RIGHT]: Lưu số lượng thủ công (Save Button).
+   */
+  const handleSave = (e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
     const val = Number(localValue);
     const target = task.targetCount || 1;
@@ -98,7 +79,6 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
     updateTask(task.id!, {
       doneCount: val,
       status: isFinished ? 'done' : task.status,
-      // [FIX LOGIC]: Nếu hoàn thành thủ công cũng thoát Focus luôn
       isFocusMode: isFinished ? false : task.isFocusMode,
       updatedAt: isFinished ? Date.now() : task.updatedAt
     });
@@ -106,31 +86,32 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
 
   return (
     <div 
-      onPointerDown={handlePointerDown}
-      onPointerUp={handlePointerUp}
-      className={`relative w-full flex items-start p-4 mb-3 rounded-[6px] border transition-all duration-300 ${
+      className={`relative w-full flex items-start gap-3 p-4 mb-3 rounded-[6px] border transition-all duration-300 ${
         isActive 
           ? 'bg-white border-slate-300 shadow-none scale-[1.01]' 
           : 'bg-slate-50 border-slate-200 opacity-50'
       } ${isCompleted ? 'opacity-40' : 'cursor-pointer'}`}
+      onClick={handleIncrement} // Vùng B (Giữa): Chạm vào body để tăng số
     >
-      {/* TRÁI: Trạng thái */}
+      {/* --- ZONE A: TRÁI (Check Button) --- */}
       <div 
-        className={`relative z-20 mt-1 mr-4 w-6 h-6 flex-shrink-0 rounded-full border-2 flex items-center justify-center transition-colors ${
+        onClick={handleComplete}
+        className={`relative z-20 mt-1 w-6 h-6 flex-shrink-0 rounded-full border-2 flex items-center justify-center transition-colors cursor-pointer hover:bg-slate-50 active:scale-90 ${
           isCompleted ? 'border-[#2563EB] bg-blue-50' : 'border-slate-300'
         }`}
       >
         {isCompleted && <span className="text-[#2563EB] text-xs font-bold">✓</span>}
       </div>
 
-      {/* GIỮA: Nội dung */}
-      <div className="flex-1 min-w-0 mr-4">
+      {/* --- ZONE B: GIỮA (Nội dung & Tiến độ) --- */}
+      <div className="flex-1 min-w-0">
         <h3 className={`text-base font-bold tracking-tight break-words whitespace-pre-wrap leading-snug ${
           isCompleted ? 'line-through text-slate-400' : 'text-slate-900'
         }`}>
           {task.content}
         </h3>
         
+        {/* Thanh tiến độ */}
         <div className="mt-3 h-1 bg-slate-100 rounded-full overflow-hidden w-full relative">
           <div 
             className="h-full bg-[#2563EB] transition-all duration-500 shadow-none"
@@ -139,39 +120,36 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
         </div>
       </div>
 
-      {/* PHẢI: Các nút điều khiển */}
-      <div className="flex flex-col items-end gap-2 relative z-30">
-        {/* Nút thoát Focus (X) */}
+      {/* --- ZONE C: PHẢI (Control Panel) --- */}
+      <div className="flex-shrink-0 flex flex-col items-end gap-3 z-30" onClick={(e) => e.stopPropagation()}>
+        
+        {/* Hàng 1: Nút Xóa (X) */}
         <button
-          onPointerDown={handleRemoveFromFocus}
-          className="w-5 h-5 flex items-center justify-center rounded-full bg-slate-100 text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+          onClick={handleRemoveFromFocus}
+          className="w-6 h-6 flex items-center justify-center rounded-full bg-slate-50 border border-slate-100 text-slate-400 hover:bg-red-50 hover:text-red-500 hover:border-red-100 transition-colors active:scale-90"
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>
         </button>
 
-        {/* Ô nhập số thủ công */}
+        {/* Hàng 2: Nhập liệu & Lưu */}
         {!isCompleted ? (
-          <div 
-            className="flex items-center gap-2 bg-slate-50 p-1 rounded-[4px] border border-slate-200 pointer-events-auto"
-            onClick={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
-            onPointerUp={(e) => e.stopPropagation()}
-          >
+          <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-[4px] border border-slate-200">
             <input 
               type="text" 
               inputMode="numeric"
               value={localValue}
+              onClick={(e) => e.stopPropagation()} // Chặn click để không kích hoạt +1
               onChange={(e) => setLocalValue(e.target.value.replace(/[^0-9]/g, ''))}
-              className="w-10 bg-transparent text-center text-slate-900 font-mono text-xs font-bold outline-none border-b border-slate-300 focus:border-[#2563EB]"
+              className="w-8 bg-transparent text-center text-slate-900 font-mono text-xs font-bold outline-none border-b border-slate-300 focus:border-[#2563EB]"
               placeholder="0"
             />
             
             <button
-              onPointerDown={handleSave}
-              className="px-3 py-1.5 bg-[#2563EB] hover:bg-blue-700 rounded-[4px] text-[10px] font-bold text-white uppercase tracking-widest transition-all active:scale-90"
+              onClick={handleSave}
+              className="px-2 py-1 bg-[#2563EB] hover:bg-blue-700 rounded-[3px] text-[9px] font-bold text-white uppercase tracking-wider transition-all active:scale-90"
             >
               Lưu
             </button>

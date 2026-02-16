@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { ITask, IThought } from '../database/types';
+// [NEW]: Import Middleware nlpListener để kích hoạt bộ não xử lý ngôn ngữ
+import { nlpListener } from './middleware/nlp-listener';
 
 /**
  * [STATE]: Quản lý trạng thái giao diện hợp nhất (v4.7).
@@ -62,88 +64,95 @@ interface UiState {
   setParsedData: (data: { quantity?: number; unit?: string; frequency?: string } | null) => void;
 }
 
-export const useUiStore = create<UiState>((set) => ({
-  // Khởi tạo giá trị mặc định (BẢO TỒN 100%)
-  isSidebarOpen: false,
-  isFocusModeActive: false,
-  isTyping: false,
-  isInputFocused: false,
-  activeTab: 'mind',
-
-  // Khởi tạo trạng thái cho Modal
-  isModalOpen: false,
-  editingEntry: null,
-
-  // [NEW PHASE 4.5]: Khởi tạo trạng thái tìm kiếm
-  searchQuery: '',
-  searchContext: null,
-
-  // [NEW]: Khởi tạo mặc định cho dữ liệu NLP
-  parsedQuantity: null,
-  parsedUnit: null,
-  parsedFrequency: null,
-
-  // Triển khai Actions bảo tồn logic của User
-  toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
-  setFocusMode: (isActive) => set({ isFocusModeActive: isActive }),
-  setTyping: (isTyping) => set({ isTyping }),
-
-  /**
-   * Triển khai setInputFocused với khả năng lưu trữ ngữ cảnh.
-   * Nếu context được cung cấp, nó sẽ cập nhật searchContext để Ninja NLP nhận diện.
-   */
-  setInputFocused: (isFocused, context) => set((state) => ({ 
-    isInputFocused: isFocused,
-    searchContext: context ? context : state.searchContext
-  })),
-
-  /**
-   * Triển khai Action điều hướng Tab
-   * Tích hợp kỹ thuật Scoped Reset: Tự động xóa tìm kiếm nếu chuyển sang Tab khác ngữ cảnh.
-   */
-  setActiveTab: (tab) => set((state) => ({ 
-    activeTab: tab, 
-    isTyping: false, 
+/**
+ * [CORE STORE]: Kích hoạt nlpListener middleware.
+ * [FIX FINAL]: Bọc nlpListener quanh hàm khởi tạo state.
+ * Nhờ Middleware đã được fix Generic, chúng ta KHÔNG CẦN ép kiểu thủ công ở đây nữa.
+ */
+export const useUiStore = create<UiState>(
+  nlpListener((set) => ({
+    // Khởi tạo giá trị mặc định (BẢO TỒN 100%)
+    isSidebarOpen: false,
+    isFocusModeActive: false,
+    isTyping: false,
     isInputFocused: false,
-    // [FIX]: Nếu tab mới khác với ngữ cảnh đang tìm kiếm, thực hiện Reset Scoped
-    searchQuery: state.searchContext !== tab ? '' : state.searchQuery,
-    searchContext: state.searchContext !== tab ? null : state.searchContext,
-    // Reset dữ liệu NLP khi chuyển tab để tránh nhầm lẫn dữ liệu
-    parsedQuantity: null,
-    parsedUnit: null,
-    parsedFrequency: null
-  })),
+    activeTab: 'mind',
 
-  // Triển khai Actions mới cho Edit Modal
-  openEditModal: (entry) => set({ isModalOpen: true, editingEntry: entry }),
-  
-  // [ADD]: Triển khai action mở modal tạo mới (editingEntry = null)
-  openCreateModal: () => set({ isModalOpen: true, editingEntry: null }),
-  
-  closeModal: () => set({ isModalOpen: false, editingEntry: null }),
+    // Khởi tạo trạng thái cho Modal
+    isModalOpen: false,
+    editingEntry: null,
 
-  /**
-   * [NEW PHASE 4.5]: Triển khai hệ thống tìm kiếm hợp nhất.
-   * Cho phép cập nhật Query có hoặc không có Context (mặc định giữ nguyên context cũ nếu không truyền).
-   */
-  setSearchQuery: (query, context) => set((state) => ({ 
-    searchQuery: query, 
-    searchContext: context ? context : state.searchContext 
-  })),
-
-  clearSearch: () => set({ 
-    searchQuery: '', 
+    // [NEW PHASE 4.5]: Khởi tạo trạng thái tìm kiếm
+    searchQuery: '',
     searchContext: null,
-    // Reset dữ liệu NLP khi xóa tìm kiếm
+
+    // [NEW]: Khởi tạo mặc định cho dữ liệu NLP
     parsedQuantity: null,
     parsedUnit: null,
-    parsedFrequency: null
-  }),
+    parsedFrequency: null,
 
-  // [NEW]: Triển khai cập nhật dữ liệu từ kết quả bóc tách NLP
-  setParsedData: (data) => set({
-    parsedQuantity: data?.quantity ?? null,
-    parsedUnit: data?.unit ?? null,
-    parsedFrequency: data?.frequency ?? null
-  }),
-}));
+    // Triển khai Actions bảo tồn logic của User
+    toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
+    setFocusMode: (isActive) => set({ isFocusModeActive: isActive }),
+    setTyping: (isTyping) => set({ isTyping }),
+
+    /**
+     * Triển khai setInputFocused với khả năng lưu trữ ngữ cảnh.
+     * Nếu context được cung cấp, nó sẽ cập nhật searchContext để Ninja NLP nhận diện.
+     */
+    setInputFocused: (isFocused, context) => set((state) => ({ 
+      isInputFocused: isFocused,
+      searchContext: context ? context : state.searchContext
+    })),
+
+    /**
+     * Triển khai Action điều hướng Tab
+     * Tích hợp kỹ thuật Scoped Reset: Tự động xóa tìm kiếm nếu chuyển sang Tab khác ngữ cảnh.
+     */
+    setActiveTab: (tab) => set((state) => ({ 
+      activeTab: tab, 
+      isTyping: false, 
+      isInputFocused: false,
+      // [FIX]: Nếu tab mới khác với ngữ cảnh đang tìm kiếm, thực hiện Reset Scoped
+      searchQuery: state.searchContext !== tab ? '' : state.searchQuery,
+      searchContext: state.searchContext !== tab ? null : state.searchContext,
+      // Reset dữ liệu NLP khi chuyển tab để tránh nhầm lẫn dữ liệu
+      parsedQuantity: null,
+      parsedUnit: null,
+      parsedFrequency: null
+    })),
+
+    // Triển khai Actions mới cho Edit Modal
+    openEditModal: (entry) => set({ isModalOpen: true, editingEntry: entry }),
+    
+    // [ADD]: Triển khai action mở modal tạo mới (editingEntry = null)
+    openCreateModal: () => set({ isModalOpen: true, editingEntry: null }),
+    
+    closeModal: () => set({ isModalOpen: false, editingEntry: null }),
+
+    /**
+     * [NEW PHASE 4.5]: Triển khai hệ thống tìm kiếm hợp nhất.
+     * Cho phép cập nhật Query có hoặc không có Context (mặc định giữ nguyên context cũ nếu không truyền).
+     */
+    setSearchQuery: (query, context) => set((state) => ({ 
+      searchQuery: query, 
+      searchContext: context ? context : state.searchContext 
+    })),
+
+    clearSearch: () => set({ 
+      searchQuery: '', 
+      searchContext: null,
+      // Reset dữ liệu NLP khi xóa tìm kiếm
+      parsedQuantity: null,
+      parsedUnit: null,
+      parsedFrequency: null
+    }),
+
+    // [NEW]: Triển khai cập nhật dữ liệu từ kết quả bóc tách NLP
+    setParsedData: (data) => set({
+      parsedQuantity: data?.quantity ?? null,
+      parsedUnit: data?.unit ?? null,
+      parsedFrequency: data?.frequency ?? null
+    }),
+  }), 'ui-store')
+);

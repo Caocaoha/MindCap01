@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../database/db';
 import { TaskCard } from './ui/task-card';
@@ -12,8 +12,8 @@ interface SabanData {
 }
 
 /**
- * [MOD_SABAN]: Quản lý backlog chiến lược v4.4.
- * Giai đoạn 6.6: Tối ưu hóa Sắp xếp (Unfinished > Finished) và Lọc thời gian thực.
+ * [MOD_SABAN]: Quản lý backlog chiến lược v4.5.
+ * Giai đoạn 6.27: Fix logic "Slot Sạch" - Loại bỏ task hoàn thành khỏi bộ đếm Focus.
  */
 export const SabanBoard: React.FC = () => {
   // --- 1. STATES BẢO TỒN (Lọc & Tìm kiếm) ---
@@ -27,13 +27,30 @@ export const SabanBoard: React.FC = () => {
 
   /**
    * [FOCUS GUARD]: Tính toán slot đang dùng (Giới hạn 4).
+   * [FIX]: Chỉ đếm những task đang Focus mà CHƯA hoàn thành.
    */
   const focusSlotsCount = useMemo(() => {
     if (!allTasks) return 0;
-    const focused = allTasks.filter(t => t.isFocusMode && t.archiveStatus === 'active');
+    // Lọc: Active + FocusMode + NOT Done
+    const focused = allTasks.filter(t => t.isFocusMode && t.archiveStatus === 'active' && t.status !== 'done');
     const groupIds = new Set(focused.map(t => t.parentGroupId).filter(id => id !== null && id !== undefined));
     const singleTasks = focused.filter(t => !t.parentGroupId);
     return groupIds.size + singleTasks.length;
+  }, [allTasks]);
+
+  /**
+   * [SELF-HEALING]: Tự động dọn dẹp "Slot Ma" khi component mount hoặc data thay đổi.
+   * Nếu thấy task nào Done mà vẫn Focus -> Set Focus = false ngay lập tức.
+   */
+  useEffect(() => {
+    if (allTasks) {
+      const ghostTasks = allTasks.filter(t => t.isFocusMode && t.status === 'done');
+      if (ghostTasks.length > 0) {
+        ghostTasks.forEach(t => {
+          db.tasks.update(t.id!, { isFocusMode: false });
+        });
+      }
+    }
   }, [allTasks]);
 
   /**
@@ -46,6 +63,7 @@ export const SabanBoard: React.FC = () => {
 
     // BƯỚC 1: Lọc trạng thái (Chưa vào Focus & Đang hoạt động & (Chưa xong HOẶC Xong hôm nay))
     let filtered = allTasks.filter(t => {
+      // [FIX]: Hiển thị cả những task vừa thoát Focus (isFocusMode: false)
       const isActive = t.isFocusMode === false && t.archiveStatus === 'active';
       if (!isActive) return false;
 
@@ -90,7 +108,6 @@ export const SabanBoard: React.FC = () => {
 
   /**
    * [SORTING HELPER]: Xác định thứ tự hiển thị toàn bảng.
-   * Một nhóm được coi là "Xong" nếu toàn bộ thành viên đều xong.
    */
   const sortSabanElements = (elements: { type: 'group' | 'standalone', id: string | number, data: any }[]) => {
     return elements.sort((a, b) => {
@@ -107,6 +124,7 @@ export const SabanBoard: React.FC = () => {
       if (isADone && !isBDone) return 1;
 
       // Nếu cùng trạng thái, sắp xếp theo thời gian cập nhật mới nhất
+      // [NOTE]: Nhờ logic cập nhật updatedAt khi Done ở FocusItem, task vừa xong sẽ nhảy lên đầu
       const timeA = a.type === 'group' ? Math.max(...a.data.map((t: ITask) => t.updatedAt || 0)) : (a.data as ITask).updatedAt || 0;
       const timeB = b.type === 'group' ? Math.max(...b.data.map((t: ITask) => t.updatedAt || 0)) : (b.data as ITask).updatedAt || 0;
       return timeB - timeA;
@@ -125,8 +143,9 @@ export const SabanBoard: React.FC = () => {
     return sortSabanElements(elements);
   }, [processedSaban]);
 
-  // --- HANDLERS BẢO TỒN 100% ---
+  // --- HANDLERS ---
   const handleJoinGroup = async (draggedId: number, targetId: number) => {
+    // (BẢO TỒN 100% logic join group)
     if (draggedId === targetId) return;
     const draggedTask = allTasks?.find(t => t.id === draggedId);
     const targetTask = allTasks?.find(t => t.id === targetId);
@@ -145,7 +164,10 @@ export const SabanBoard: React.FC = () => {
   const handleToggleFocus = async (task: ITask) => {
     const targetMode = !task.isFocusMode;
     if (targetMode) {
-      const isNewSlot = !task.parentGroupId || !allTasks?.find(t => t.isFocusMode && t.parentGroupId === task.parentGroupId);
+      // Logic kiểm tra Slot: Tính cả những task cùng Group đang Focus (không tốn thêm slot)
+      const isNewSlot = !task.parentGroupId || !allTasks?.find(t => t.isFocusMode && t.status !== 'done' && t.parentGroupId === task.parentGroupId);
+      
+      // [FIX]: Sử dụng biến focusSlotsCount đã được lọc sạch
       if (isNewSlot && focusSlotsCount >= 4) {
         triggerHaptic('heavy');
         alert("Sức chứa tập trung đã đầy (4/4). Hãy hoàn thành hoặc gỡ bỏ bớt việc.");

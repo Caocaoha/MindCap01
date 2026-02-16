@@ -10,7 +10,7 @@ import { matchesSearch } from '../../../utils/nlp-engine';
 
 /**
  * [MOD_JOURNEY]: Thành phần hiển thị danh sách nhật ký sống động.
- * Giai đoạn 6.9: Sửa lỗi Ghost Records bằng cơ chế Single Source of Truth & Database Archiving.
+ * Giai đoạn 6.30: Tích hợp Universal Edit Modal để sửa chữa & chuyển đổi dữ liệu.
  */
 export const LivingMemory: React.FC = () => {
   // --- STORE ACTIONS & STATES (Bảo tồn 100%) ---
@@ -21,7 +21,7 @@ export const LivingMemory: React.FC = () => {
     isDiaryEntry 
   } = useJourneyStore(); 
 
-  // [MOD]: Lấy action openCreateModal để thay thế setInputFocused
+  // [MOD]: Lấy action openCreateModal và openEditModal từ ui-store
   const { openEditModal, openCreateModal, searchQuery } = useUiStore(); 
 
   // --- LOCAL UI STATES ---
@@ -179,8 +179,12 @@ export const LivingMemory: React.FC = () => {
 
             {/* --- 3. CỤM PHẢI: CONTROL --- */}
             <div className="flex-shrink-0 flex flex-col gap-5 pt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+              {/* Nút Sửa: Kết nối với Universal Edit Modal */}
               <button 
-                onClick={() => { triggerHaptic('light'); openEditModal(item); }}
+                onClick={() => { 
+                  triggerHaptic('light'); 
+                  openEditModal(item); // [MOD]: Mở Modal Sửa Vạn Năng
+                }}
                 className="text-slate-400 hover:text-slate-900 active:scale-90 transition-all"
               >
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -190,7 +194,7 @@ export const LivingMemory: React.FC = () => {
               </button>
 
               <button 
-                onClick={() => handleArchive(item)} // Sử dụng handleArchive thay vì toggleHide
+                onClick={() => handleArchive(item)} 
                 className="text-slate-400 hover:text-red-500 active:scale-90 transition-all"
               >
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">

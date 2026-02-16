@@ -14,12 +14,11 @@ interface FocusItemProps {
 
 /**
  * [MOD_FOCUS_UI]: Thành phần hiển thị tác vụ trong chế độ thực thi.
- * Giai đoạn 6.25: Chuyển đổi kiến trúc sang Direct Prop Passing (Truyền dữ liệu trực tiếp).
- * Tích hợp Diagonal Swipe-to-Complete và Nút thoát Focus.
+ * Giai đoạn 6.26: Logic "Done = Exit" (Hoàn thành = Rời khỏi Focus).
+ * Giải quyết triệt để vấn đề "Slot Ma" và hiển thị lại trên Saban.
  */
 export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
   // [MOD]: Không cần tìm kiếm task trong Store nữa vì đã nhận trực tiếp từ cha.
-  // Điều này giúp hiển thị ngay lập tức dữ liệu từ Database (tránh lỗi Ghost Task trên iPhone).
   const { updateTask, incrementDoneCount } = useJourneyStore();
 
   const [localValue, setLocalValue] = useState<string>('');
@@ -75,10 +74,12 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
 
     if (isDiagonalSwipe) {
       triggerHaptic('success'); 
+      // [FIX LOGIC]: Hoàn thành = Thoát Focus + Cập nhật Saban ngay lập tức
       updateTask(task.id!, {
         status: 'done',
         doneCount: task.targetCount || 1,
-        // Không cập nhật updatedAt để giữ vị trí trong Focus
+        isFocusMode: false,   // Giải phóng slot DB ngay lập tức
+        updatedAt: Date.now() // Đẩy lên đầu Saban
       });
     } else if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
       triggerHaptic('light');
@@ -92,10 +93,14 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
     e.stopPropagation();
     const val = Number(localValue);
     const target = task.targetCount || 1;
+    const isFinished = val >= target;
     
     updateTask(task.id!, {
       doneCount: val,
-      status: val >= target ? 'done' : task.status,
+      status: isFinished ? 'done' : task.status,
+      // [FIX LOGIC]: Nếu hoàn thành thủ công cũng thoát Focus luôn
+      isFocusMode: isFinished ? false : task.isFocusMode,
+      updatedAt: isFinished ? Date.now() : task.updatedAt
     });
   };
 

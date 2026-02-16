@@ -15,12 +15,14 @@ import { EntryModal } from './modules/input/components/entry-modal';
 // [UNFREEZE]: Kích hoạt module Spark Notification 
 // FIX: Điều chỉnh đường dẫn để khớp với vị trí tệp chuẩn trong Master Doc v3.2
 import { SparkNotification } from './modules/spark/components/spark-notification';
+// [NEW]: Import Universal Edit Modal để quản lý sửa chữa & migration tập trung
+import { UniversalEditModal } from './modules/input/components/universal-edit-modal';
 
 // [REMOVED]: WidgetMemorySpark đã được chuyển sang tab Journey để tránh nhiễu tab Today
 
 /**
  * [APP]: Main Layout Controller - Linear.app Aesthetic Update. 
- * Giai đoạn 6.9: Loại bỏ Spark Widget khỏi tab Today để tập trung vào thực thi (Deep Work).
+ * Giai đoạn 6.29: Tích hợp Universal Edit Modal để xử lý sửa đổi & chuyển đổi dữ liệu toàn cục.
  */
 export const App: React.FC = () => {
   // Bổ sung openEditModal để phục vụ Deep Linking
@@ -105,7 +107,7 @@ export const App: React.FC = () => {
                 recordStatus: 'pending',
                 parentId: parentEntry.id, // Truyền context liên kết
                 isLinkMode: true          // Cờ đánh dấu chế độ liên kết
-              });
+              } as any); // Ép kiểu tạm thời nếu IThought interface quá chặt chẽ, hoặc cập nhật IThought
 
               window.history.replaceState({}, '', window.location.pathname);
             }
@@ -226,6 +228,8 @@ export const App: React.FC = () => {
       <IdentityCheckin />
       <EntryModal />
       <SparkNotification />
+      {/* [NEW]: Universal Edit Modal phủ lên trên cùng */}
+      <UniversalEditModal />
     </div>
   );
 };

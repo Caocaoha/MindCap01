@@ -20,6 +20,7 @@ interface UiState {
   activeTab: ActiveTab;
 
   // --- [NEW] States cho Universal Edit Modal ---
+  // Quản lý trạng thái hiển thị của Modal Sửa/Tạo mới
   isModalOpen: boolean;
   editingEntry: ITask | IThought | null;
 
@@ -48,8 +49,11 @@ interface UiState {
   setActiveTab: (tab: ActiveTab) => void;
 
   // --- [NEW] Actions cho Universal Edit Modal ---
+  // Mở modal để sửa một entry cụ thể (Task hoặc Thought)
   openEditModal: (entry: ITask | IThought) => void;
+  // Mở modal để tạo mới (editingEntry = null)
   openCreateModal: () => void; 
+  // Đóng modal và reset data
   closeModal: () => void;
 
   /**

@@ -13,14 +13,16 @@ interface EntryFormProps {
   initialData?: ITask | IThought | null;
   onSuccess: () => void;
   onCancel: () => void;
+  // [NEW]: Hàm lưu tùy chỉnh (Delegated Save) - Dùng cho Universal Edit Modal để xử lý Migrate
+  onCustomSave?: (type: 'task' | 'thought', data: any) => Promise<void>;
 }
 
 /**
- * [MOD_INPUT]: Form nhập liệu v4.3.1 - Thẩm mỹ Linear.app.
- * Giai đoạn 6.20: Tích hợp Auto-fill từ Ninja NLP Parser thông qua Store Sync.
+ * [MOD_INPUT]: Form nhập liệu v4.4 - Hỗ trợ Delegated Save.
+ * Giai đoạn 6.28: Nâng cấp để phục vụ Universal Edit Modal & Data Migration.
  * Bảo tồn 100%: Định lượng, Tần suất, Eisenhower, Mood và Sticky Footer.
  */
-export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, onCancel }) => {
+export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, onCancel, onCustomSave }) => {
   // [MOD]: Lấy thêm các trường dữ liệu bóc tách từ Store để thực hiện Auto-fill
   const { 
     setInputFocused, 
@@ -75,6 +77,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
         if (mTags) setSelectedMonthDays(mTags);
       } else {
         setEntryType('thought');
+        // Nếu là thought, set moodLevel mặc định hoặc từ data cũ (nếu có logic lưu mood vào thought)
       }
     } else if (searchQuery) {
       // Nếu có sẵn nội dung từ InputBar bên ngoài, đổ vào Form ngay
@@ -123,6 +126,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
 
   /**
    * [ACTION]: Logic Lưu trữ (Add/Update)
+   * Đã nâng cấp để hỗ trợ Delegated Save (onCustomSave).
    */
   const handleSave = async () => {
     if (!content.trim()) return;
@@ -134,6 +138,8 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
     const initialEchoCount = isNewLinkedEntry ? 1 : 0;
 
     try {
+      let payload: any; // Chuẩn bị payload chung
+
       if (entryType === 'task') {
         let finalWeekDays = selectedWeekDays;
         if (freq === 'days-week' && selectedWeekDays.length === 0) {
@@ -173,15 +179,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
           parentGroupId: (initialData && 'parentGroupId' in initialData) ? initialData.parentGroupId : undefined,
           sequenceOrder: (initialData && 'sequenceOrder' in initialData) ? initialData.sequenceOrder : 0,
         };
-
-        if (initialData?.id) {
-          await db.tasks.update(initialData.id, taskPayload);
-        } else {
-          const newId = await db.tasks.add(taskPayload);
-          if (wordCount > 16) {
-            NotificationManager.scheduleWaterfall(Number(newId), 'task', content.trim());
-          }
-        }
+        payload = taskPayload;
       } else {
         const thoughtPayload: IThought = {
           content: content.trim(),
@@ -195,36 +193,59 @@ export const EntryForm: React.FC<EntryFormProps> = ({ initialData, onSuccess, on
           echoLinkCount: (initialData?.echoLinkCount || 0) + initialEchoCount,
           lastInteractedAt: now
         };
-
-        if (initialData?.id) {
-          await db.thoughts.update(initialData.id, thoughtPayload);
-        } else {
-          const newId = await db.thoughts.add(thoughtPayload);
-          await db.moods.add({ score: moodLevel, label: 'entry_reflection', createdAt: now });
-          
-          if (wordCount > 16) {
-            NotificationManager.scheduleWaterfall(Number(newId), 'thought', content.trim());
-          }
-        }
+        payload = thoughtPayload;
       }
 
-      if (isNewLinkedEntry && initialData?.parentId) {
-        const parentId = initialData.parentId;
-        const parentTask = await db.tasks.get(parentId);
-        if (parentTask) {
-          await db.tasks.update(parentId, {
-            echoLinkCount: (parentTask.echoLinkCount || 0) + 1,
-            interactionScore: (parentTask.interactionScore || 0) + 10,
-            lastInteractedAt: now
-          });
+      // [MOD]: Logic Delegated Save - Nếu có onCustomSave, gửi payload ra ngoài để xử lý
+      if (onCustomSave) {
+        // Nếu là thought, gửi kèm moodLevel để bên ngoài xử lý
+        if (entryType === 'thought') {
+          payload = { ...payload, moodScore: moodLevel };
+        }
+        await onCustomSave(entryType, payload);
+      } 
+      // Logic Default Save (Giữ nguyên cho InputBar)
+      else {
+        if (entryType === 'task') {
+          if (initialData?.id) {
+            await db.tasks.update(initialData.id, payload);
+          } else {
+            const newId = await db.tasks.add(payload);
+            if (wordCount > 16) {
+              NotificationManager.scheduleWaterfall(Number(newId), 'task', content.trim());
+            }
+          }
         } else {
-          const parentThought = await db.thoughts.get(parentId);
-          if (parentThought) {
-            await db.thoughts.update(parentId, {
-              echoLinkCount: (parentThought.echoLinkCount || 0) + 1,
-              interactionScore: (parentThought.interactionScore || 0) + 10,
+          if (initialData?.id) {
+            await db.thoughts.update(initialData.id, payload);
+          } else {
+            const newId = await db.thoughts.add(payload);
+            await db.moods.add({ score: moodLevel, label: 'entry_reflection', createdAt: now });
+            if (wordCount > 16) {
+              NotificationManager.scheduleWaterfall(Number(newId), 'thought', content.trim());
+            }
+          }
+        }
+
+        // Logic Linked Entry Bonus (Chỉ chạy khi tạo mới và tự lưu)
+        if (isNewLinkedEntry && initialData?.parentId) {
+          const parentId = initialData.parentId;
+          const parentTask = await db.tasks.get(parentId);
+          if (parentTask) {
+            await db.tasks.update(parentId, {
+              echoLinkCount: (parentTask.echoLinkCount || 0) + 1,
+              interactionScore: (parentTask.interactionScore || 0) + 10,
               lastInteractedAt: now
             });
+          } else {
+            const parentThought = await db.thoughts.get(parentId);
+            if (parentThought) {
+              await db.thoughts.update(parentId, {
+                echoLinkCount: (parentThought.echoLinkCount || 0) + 1,
+                interactionScore: (parentThought.interactionScore || 0) + 10,
+                lastInteractedAt: now
+              });
+            }
           }
         }
       }

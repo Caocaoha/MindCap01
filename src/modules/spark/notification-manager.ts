@@ -3,6 +3,7 @@ import { triggerHaptic } from '../../utils/haptic';
 /**
  * [SERVICE]: Spark Notification Messenger (v2.2).
  * Chịu trách nhiệm lập lịch và hiển thị thông báo Spotlight theo mô hình Thác đổ.
+ * Giai đoạn 6.21: Tối giản hóa tiêu đề và nội dung để ưu tiên không gian cho content người dùng.
  */
 
 export const NotificationManager = {
@@ -18,36 +19,39 @@ export const NotificationManager = {
     
     // Đăng ký thông báo hiển thị sau 5 giây để người dùng kịp khóa màn hình
     setTimeout(() => {
-      registration.showNotification("Mind Cap: Test Spark", {
-        body: "Nếu bạn thấy dòng này, hệ thống thông báo đã thông suốt! 🚀",
+      /**
+       * [MOD]: Rút gọn tiêu đề thành icon Spark để tiết kiệm không gian.
+       */
+      registration.showNotification("✨ Test Spark", {
+        body: "Hệ thống thông báo đã thông suốt! 🚀",
         icon: "/icon-192x192.png",
         badge: "/icon-192x192.png",
         tag: "test-notification",
         data: { url: window.location.origin } 
-      } as any); // Ép kiểu any để hỗ trợ các thuộc tính mở rộng của PWA/Service Worker
+      } as any); 
     }, 5000);
   },
 
   /**
    * [SNOOZE]: Hành động nhắc lại sau (Mặc định 1 tiếng).
    * Được kích hoạt khi người dùng nhấn nút 'Snooze' trên banner thông báo.
-   * * @param entryId ID của bản ghi
-   * @param type Loại bản ghi (task/thought)
-   * @param content Nội dung cần hiển thị (Không bắt buộc để tránh lỗi TS2554)
    */
   async snooze(entryId: number, type: 'task' | 'thought', content?: string) {
     if (!("serviceWorker" in navigator)) return;
     
     const registration = await navigator.serviceWorker.ready;
-    const SNOOZE_DELAY = 60 * 60 * 1000; // Khoảng thời gian 1 tiếng
+    const SNOOZE_DELAY = 60 * 60 * 1000; 
     const displayContent = content || "Ký ức cần xem lại";
 
     triggerHaptic('light');
 
     // Lập lịch một thông báo bổ sung trong bộ nhớ cache của Service Worker
     setTimeout(() => {
-      registration.showNotification("Mind Cap (Snooze)", {
-        body: `Nhắc lại: "${displayContent.substring(0, 40)}..."`,
+      /**
+       * [MOD]: Loại bỏ tiền tố "Nhắc lại:" để hiện content ngay từ dòng đầu.
+       */
+      registration.showNotification("✨ Snooze", {
+        body: displayContent,
         icon: "/icon-192x192.png",
         tag: `spark-snooze-${entryId}`,
         data: { 
@@ -65,8 +69,7 @@ export const NotificationManager = {
     if (!("serviceWorker" in navigator) || Notification.permission !== 'granted') return;
 
     const registration = await navigator.serviceWorker.ready;
-    const now = Date.now();
-
+    
     // Các mốc thời gian Waterfall theo thiết kế
     const intervals = [
       { label: '10 phút', delay: 10 * 60 * 1000 },
@@ -76,11 +79,11 @@ export const NotificationManager = {
 
     intervals.forEach((mốc, index) => {
       /**
-       * Ép kiểu any cho options để vượt qua lỗi TS2353 liên quan đến thuộc tính 'actions'
-       * vốn là thuộc tính hợp lệ trong Service Worker Notification nhưng chưa được cập nhật trong Type gốc.
+       * [MOD]: Loại bỏ chuỗi "Ký ức Spotlight:" gây chiếm dụng diện tích.
+       * body giờ đây sẽ hiển thị trực tiếp content thô.
        */
       const notificationOptions: any = {
-        body: `Ký ức Spotlight: "${content.substring(0, 40)}..."`,
+        body: content, 
         icon: "/icon-192x192.png",
         tag: `spark-${entryId}-${index}`,
         data: { 
@@ -95,7 +98,10 @@ export const NotificationManager = {
       // Mốc 10 phút đầu tiên được xử lý trực tiếp khi App còn trong bộ nhớ đệm
       if (index === 0) {
         setTimeout(() => {
-          registration.showNotification("Mind Cap Spark", notificationOptions);
+          /**
+           * [MOD]: Tiêu đề Spark được rút gọn tối đa.
+           */
+          registration.showNotification("✨ Spark", notificationOptions);
         }, mốc.delay);
       }
     });
@@ -114,8 +120,10 @@ export const NotificationManager = {
       const url = notification.data.url;
       const type = url.includes('task') ? 'task' : 'thought';
       
-      // Lấy lại nội dung từ thân thông báo cũ để truyền vào hàm snooze
-      const bodyContent = notification.body.replace('Ký ức Spotlight: "', '').replace('..."', '');
+      /**
+       * [FIX]: Cập nhật Regex để trích xuất content sạch khi tiêu đề đã thay đổi.
+       */
+      const bodyContent = notification.body;
       
       this.snooze(entryId, type, bodyContent);
       notification.close();
@@ -126,7 +134,6 @@ export const NotificationManager = {
     notification.close();
 
     if (url) {
-      // Đưa người dùng quay lại đúng bản ghi thông qua Deep Linking
       window.focus();
       window.location.href = url;
     }

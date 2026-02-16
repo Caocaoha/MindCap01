@@ -8,7 +8,7 @@ import { FocusItem } from './components/focus-item';
 
 /**
  * [MOD_FOCUS]: Chế độ thực thi tập trung v4.6.
- * Giai đoạn 6.23: Ổn định vị trí danh sách (Stable Sort).
+ * Giai đoạn 6.24: Fix lỗi "Ghost Task" và logic hoàn thành task.
  */
 export const FocusSession: React.FC = () => {
   /**
@@ -18,7 +18,8 @@ export const FocusSession: React.FC = () => {
   const focusDisplayTasks = useLiveQuery(async () => {
     const allInFocus = await db.tasks
       .toCollection()
-      .filter(t => t.isFocusMode === true && t.archiveStatus === 'active')
+      // [FIX]: Bổ sung điều kiện status !== 'done' để loại bỏ task hoàn thành ngay lập tức
+      .filter(t => t.isFocusMode === true && t.archiveStatus === 'active' && t.status !== 'done')
       .toArray();
 
     const slots: (ITask & { groupInfo?: { current: number; total: number } })[] = [];
@@ -81,10 +82,11 @@ export const FocusSession: React.FC = () => {
 
       <div className="space-y-3">
         {focusDisplayTasks.map(task => (
-          // Sử dụng FocusItem component mới thay vì render trực tiếp
+          // [FIX]: Truyền trực tiếp object task xuống con để đảm bảo hiển thị
+          // Thay vì chỉ truyền taskId, tránh lỗi lệch pha data trên iPhone/Import
           <FocusItem 
             key={task.id} 
-            taskId={task.id!} 
+            task={task} 
             isActive={true} 
           />
         ))}

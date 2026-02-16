@@ -3,30 +3,36 @@ import { useJourneyStore } from '../../../store/journey-store';
 import { ITask } from '../../../database/types';
 import { triggerHaptic } from '../../../utils/haptic';
 
+/**
+ * [FIX TS2322]: Cập nhật Interface để nhận trực tiếp đối tượng Task.
+ * Thay vì nhận 'taskId' (số), component giờ nhận 'task' (đối tượng ITask).
+ */
 interface FocusItemProps {
-  taskId: number;
+  task: ITask; 
   isActive: boolean;
 }
 
 /**
  * [MOD_FOCUS_UI]: Thành phần hiển thị tác vụ trong chế độ thực thi.
- * Giai đoạn 6.23: Bổ sung nút "X" để thoát Focus và quay về Saban.
- * Tích hợp Diagonal Swipe-to-Complete.
+ * Giai đoạn 6.25: Chuyển đổi kiến trúc sang Direct Prop Passing (Truyền dữ liệu trực tiếp).
+ * Tích hợp Diagonal Swipe-to-Complete và Nút thoát Focus.
  */
-export const FocusItem: React.FC<FocusItemProps> = ({ taskId, isActive }) => {
-  const task = useJourneyStore((state) => state.tasks.find((t) => t.id === taskId));
+export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
+  // [MOD]: Không cần tìm kiếm task trong Store nữa vì đã nhận trực tiếp từ cha.
+  // Điều này giúp hiển thị ngay lập tức dữ liệu từ Database (tránh lỗi Ghost Task trên iPhone).
   const { updateTask, incrementDoneCount } = useJourneyStore();
 
   const [localValue, setLocalValue] = useState<string>('');
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
+  // Đồng bộ số lượng vào ô nhập
   useEffect(() => {
     if (task) {
       setLocalValue(String(task.doneCount || 0));
     }
-  }, [task?.doneCount]);
+  }, [task.doneCount]);
 
-  if (!task) return null;
+  if (!task || !task.id) return null;
 
   const isCompleted = task.status === 'done';
 
@@ -37,9 +43,9 @@ export const FocusItem: React.FC<FocusItemProps> = ({ taskId, isActive }) => {
   const handleRemoveFromFocus = (e: React.PointerEvent) => {
     e.stopPropagation();
     triggerHaptic('light'); // Phản hồi nhẹ khi nhấn nút thoát
-    updateTask(taskId, {
+    updateTask(task.id!, {
       isFocusMode: false,
-      updatedAt: Date.now() // [CRITICAL]: Đẩy lên đầu danh sách Saban
+      updatedAt: Date.now() // Đẩy lên đầu danh sách Saban
     });
   };
 
@@ -69,14 +75,14 @@ export const FocusItem: React.FC<FocusItemProps> = ({ taskId, isActive }) => {
 
     if (isDiagonalSwipe) {
       triggerHaptic('success'); 
-      updateTask(taskId, {
+      updateTask(task.id!, {
         status: 'done',
         doneCount: task.targetCount || 1,
-        // [NOTE]: Không cập nhật updatedAt ở đây để tránh nhảy vị trí trong Focus
+        // Không cập nhật updatedAt để giữ vị trí trong Focus
       });
     } else if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
       triggerHaptic('light');
-      incrementDoneCount(taskId);
+      incrementDoneCount(task.id!);
     }
 
     touchStartRef.current = null;
@@ -87,10 +93,9 @@ export const FocusItem: React.FC<FocusItemProps> = ({ taskId, isActive }) => {
     const val = Number(localValue);
     const target = task.targetCount || 1;
     
-    updateTask(taskId, {
+    updateTask(task.id!, {
       doneCount: val,
       status: val >= target ? 'done' : task.status,
-      // [NOTE]: Giữ nguyên vị trí, không update updatedAt
     });
   };
 
@@ -131,7 +136,7 @@ export const FocusItem: React.FC<FocusItemProps> = ({ taskId, isActive }) => {
 
       {/* PHẢI: Các nút điều khiển */}
       <div className="flex flex-col items-end gap-2 relative z-30">
-        {/* Nút thoát Focus (X) - Luôn hiển thị để dễ dàng loại bỏ */}
+        {/* Nút thoát Focus (X) */}
         <button
           onPointerDown={handleRemoveFromFocus}
           className="w-5 h-5 flex items-center justify-center rounded-full bg-slate-100 text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"

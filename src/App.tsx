@@ -12,24 +12,27 @@ import { SetupPanel } from './modules/setup/setup-panel';
 import { IdentityCheckin } from './modules/identity/identity-checkin';
 import { IdentityDashboard } from './modules/identity/identity-dashboard'; 
 import { EntryModal } from './modules/input/components/entry-modal';
-// [UNFREEZE]: Kích hoạt module Spark Notification 
-// FIX: Điều chỉnh đường dẫn để khớp với vị trí tệp chuẩn trong Master Doc v3.2
 import { SparkNotification } from './modules/spark/components/spark-notification';
-// [NEW]: Import Universal Edit Modal để quản lý sửa chữa & migration tập trung
 import { UniversalEditModal } from './modules/input/components/universal-edit-modal';
 
-// [REMOVED]: WidgetMemorySpark đã được chuyển sang tab Journey để tránh nhiễu tab Today
-
-/**
- * [APP]: Main Layout Controller - Linear.app Aesthetic Update. 
- * Giai đoạn 6.29: Tích hợp Universal Edit Modal để xử lý sửa đổi & chuyển đổi dữ liệu toàn cục.
- */
 export const App: React.FC = () => {
-  // Bổ sung openEditModal để phục vụ Deep Linking
   const { activeTab, setActiveTab, isInputFocused, setInputFocused, setTyping, openEditModal } = useUiStore();
   const { setTasks } = useJourneyStore(); 
   const { progress, openAudit, getPulseFrequency } = useIdentityStore();
   const frequency = getPulseFrequency();
+
+  // [NEW]: Đăng ký Service Worker để xử lý click thông báo và chạy ngầm
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').then(registration => {
+          console.log('SW registered: ', registration);
+        }).catch(registrationError => {
+          console.log('SW registration failed: ', registrationError);
+        });
+      });
+    }
+  }, []);
 
   // Khởi tạo dữ liệu (Bảo tồn 100%)
   useEffect(() => {
@@ -52,15 +55,13 @@ export const App: React.FC = () => {
   }, [setTasks]);
 
   /**
-   * [DEEP LINKING HANDLER]: Lắng nghe các tham số điều hướng từ Widget/Spark.
-   * Hỗ trợ 2 luồng tương tác sâu (V2.1).
+   * [DEEP LINKING HANDLER]: Lắng nghe tham số điều hướng.
    */
   useEffect(() => {
     const handleDeepLink = async () => {
       const params = new URLSearchParams(window.location.search);
-      
-      // LUỒNG 1: DOUBLE CLICK - MỞ BẢN GHI HIỆN TẠI
       const openTarget = params.get('open');
+      
       if (openTarget && openTarget.includes(':')) {
         const [type, idStr] = openTarget.split(':');
         const entryId = parseInt(idStr, 10);
@@ -73,6 +74,7 @@ export const App: React.FC = () => {
             if (entry) {
               triggerHaptic('medium');
               openEditModal(entry);
+              // Xóa tham số trên URL sau khi đã xử lý để tránh reload lại modal
               window.history.replaceState({}, '', window.location.pathname);
             }
           } catch (error) {
@@ -81,7 +83,6 @@ export const App: React.FC = () => {
         }
       }
 
-      // LUỒNG 2: LONG PRESS - TẠO BẢN GHI LIÊN KẾT MỚI
       const createLinkTarget = params.get('create-link-to');
       if (createLinkTarget && createLinkTarget.includes(':')) {
         const [type, idStr] = createLinkTarget.split(':');
@@ -91,24 +92,17 @@ export const App: React.FC = () => {
           try {
             const table = type === 'task' ? db.tasks : db.thoughts;
             const parentEntry = await table.get(entryId);
-
             if (parentEntry) {
-              // Phản hồi rung mạnh cho hành động kiến tạo
               triggerHaptic('heavy');
-              
-              /**
-               * FIX [TS2345]: Bổ sung đầy đủ các trường bắt buộc của IThought để thỏa mãn TypeCheck.
-               */
               openEditModal({
                 content: '',
                 type: 'thought',
                 wordCount: 0,
                 createdAt: Date.now(),
                 recordStatus: 'pending',
-                parentId: parentEntry.id, // Truyền context liên kết
-                isLinkMode: true          // Cờ đánh dấu chế độ liên kết
-              } as any); // Ép kiểu tạm thời nếu IThought interface quá chặt chẽ, hoặc cập nhật IThought
-
+                parentId: parentEntry.id,
+                isLinkMode: true
+              } as any);
               window.history.replaceState({}, '', window.location.pathname);
             }
           } catch (error) {
@@ -143,10 +137,7 @@ export const App: React.FC = () => {
   }, [activeTab, isInputFocused, setInputFocused, setTyping]);
 
   return (
-    /* GIAO DIỆN CHÍNH: Nền trắng tuyệt đối, font Inter (font-sans) */
     <div className="h-screen w-full bg-white text-slate-900 overflow-hidden flex flex-col font-sans select-none">
-      
-      {/* HEADER: Border mảnh 1px #E2E8F0, không đổ bóng */}
       <header className="h-16 flex items-center justify-center px-6 relative z-[60] border-b border-slate-200 bg-white/80 backdrop-blur-md">
         <button 
           onClick={() => { 
@@ -174,7 +165,6 @@ export const App: React.FC = () => {
         </button>
       </header>
 
-      {/* MAIN CONTENT Area */}
       <main className="flex-1 relative px-4 overflow-hidden bg-white">
         {activeTab === 'saban' && <SabanBoard />}
         {activeTab === 'journey' && <JourneyList />}
@@ -184,10 +174,7 @@ export const App: React.FC = () => {
         {activeTab === 'mind' && (
           <div className="h-full flex flex-col relative">
             <div className={`relative z-20 h-full overflow-y-auto pb-32 transition-all duration-700 ease-in-out ${isInputFocused ? 'opacity-0 -translate-y-10 scale-95 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
-              
-              {/* CHỈ GIỮ LẠI FOCUS SESSION: Tab Today giờ đây chỉ tập trung vào việc thực thi hiện tại. */}
               <FocusSession />
-
             </div>
             
             <div className={`absolute left-0 right-0 z-50 transition-all duration-500 ease-out ${isInputFocused ? 'top-0 h-screen bg-white/90 backdrop-blur-sm' : 'bottom-10 sm:bottom-6 h-auto'} pointer-events-none`}>
@@ -199,36 +186,15 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      {/* FOOTER: Thanh điều hướng 3 vùng chiến lược */}
       <footer className={`h-20 flex items-center justify-between px-10 relative z-30 border-t border-slate-200 bg-white transition-transform duration-500 ${isInputFocused ? 'translate-y-24' : 'translate-y-0'}`}>
-        <button 
-          onClick={() => { triggerHaptic('light'); setActiveTab('saban'); }} 
-          className={`text-[11px] font-bold transition-colors ${activeTab === 'saban' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
-        >
-          Todo
-        </button>
-
-        <button 
-          onClick={() => { triggerHaptic('medium'); setActiveTab('mind'); }} 
-          className={`px-8 py-2 rounded-[6px] font-bold uppercase text-[10px] tracking-widest transition-all
-            ${activeTab === 'mind' ? 'bg-[#2563EB] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-        >
-          Today
-        </button>
-
-        <button 
-          onClick={() => { triggerHaptic('light'); setActiveTab('journey'); }} 
-          className={`text-[11px] font-bold transition-colors ${activeTab === 'journey' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
-        >
-          To.Morrow
-        </button>
+        <button onClick={() => { triggerHaptic('light'); setActiveTab('saban'); }} className={`text-[11px] font-bold transition-colors ${activeTab === 'saban' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>Todo</button>
+        <button onClick={() => { triggerHaptic('medium'); setActiveTab('mind'); }} className={`px-8 py-2 rounded-[6px] font-bold uppercase text-[10px] tracking-widest transition-all ${activeTab === 'mind' ? 'bg-[#2563EB] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>Today</button>
+        <button onClick={() => { triggerHaptic('light'); setActiveTab('journey'); }} className={`text-[11px] font-bold transition-colors ${activeTab === 'journey' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>To.Morrow</button>
       </footer>
 
-      {/* GLOBAL OVERLAYS */}
       <IdentityCheckin />
       <EntryModal />
       <SparkNotification />
-      {/* [NEW]: Universal Edit Modal phủ lên trên cùng */}
       <UniversalEditModal />
     </div>
   );

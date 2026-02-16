@@ -1,14 +1,13 @@
 import { triggerHaptic } from '../../utils/haptic';
 
 /**
- * [SERVICE]: Spark Notification Messenger (v2.2).
- * Chịu trách nhiệm lập lịch và hiển thị thông báo Spotlight theo mô hình Thác đổ.
- * Giai đoạn 6.21: Tối giản hóa tiêu đề và nội dung để ưu tiên không gian cho content người dùng.
+ * [SERVICE]: Spark Notification Messenger (v2.3).
+ * Giai đoạn 6.30: Tối ưu hiển thị iOS (Content -> Title) và sửa lỗi Deep Linking.
  */
 
 export const NotificationManager = {
   /**
-   * [TEST]: Gửi thông báo tức thì sau 5 giây để kiểm tra kết nối trên iPhone.
+   * [TEST]: Gửi thông báo tức thì sau 5 giây.
    */
   async sendTestNotification() {
     triggerHaptic('medium');
@@ -17,13 +16,12 @@ export const NotificationManager = {
 
     const registration = await navigator.serviceWorker.ready;
     
-    // Đăng ký thông báo hiển thị sau 5 giây để người dùng kịp khóa màn hình
     setTimeout(() => {
       /**
-       * [MOD]: Rút gọn tiêu đề thành icon Spark để tiết kiệm không gian.
+       * [MOD]: Đẩy content lên Title để hiện dòng đầu tiên in đậm trên iOS.
        */
-      registration.showNotification("✨ Test Spark", {
-        body: "Hệ thống thông báo đã thông suốt! 🚀",
+      registration.showNotification("Hệ thống thông báo đã thông suốt! 🚀", {
+        body: "", // Bỏ trống body để tiết kiệm diện tích
         icon: "/icon-192x192.png",
         badge: "/icon-192x192.png",
         tag: "test-notification",
@@ -33,8 +31,7 @@ export const NotificationManager = {
   },
 
   /**
-   * [SNOOZE]: Hành động nhắc lại sau (Mặc định 1 tiếng).
-   * Được kích hoạt khi người dùng nhấn nút 'Snooze' trên banner thông báo.
+   * [SNOOZE]: Hành động nhắc lại sau.
    */
   async snooze(entryId: number, type: 'task' | 'thought', content?: string) {
     if (!("serviceWorker" in navigator)) return;
@@ -45,13 +42,9 @@ export const NotificationManager = {
 
     triggerHaptic('light');
 
-    // Lập lịch một thông báo bổ sung trong bộ nhớ cache của Service Worker
     setTimeout(() => {
-      /**
-       * [MOD]: Loại bỏ tiền tố "Nhắc lại:" để hiện content ngay từ dòng đầu.
-       */
-      registration.showNotification("✨ Snooze", {
-        body: displayContent,
+      registration.showNotification(displayContent, {
+        body: "✨ Snooze (1h)", // Hiện label nhỏ ở dưới
         icon: "/icon-192x192.png",
         tag: `spark-snooze-${entryId}`,
         data: { 
@@ -63,14 +56,13 @@ export const NotificationManager = {
   },
 
   /**
-   * [WATERFALL SCHEDULING]: Lập lịch các mốc thời gian Spotlight (10m, 24h, 72h).
+   * [WATERFALL SCHEDULING]: Lập lịch các mốc thời gian Spotlight.
    */
   async scheduleWaterfall(entryId: number, type: 'task' | 'thought', content: string) {
     if (!("serviceWorker" in navigator) || Notification.permission !== 'granted') return;
 
     const registration = await navigator.serviceWorker.ready;
     
-    // Các mốc thời gian Waterfall theo thiết kế
     const intervals = [
       { label: '10 phút', delay: 10 * 60 * 1000 },
       { label: '24 giờ', delay: 24 * 60 * 60 * 1000 },
@@ -78,12 +70,9 @@ export const NotificationManager = {
     ];
 
     intervals.forEach((mốc, index) => {
-      /**
-       * [MOD]: Loại bỏ chuỗi "Ký ức Spotlight:" gây chiếm dụng diện tích.
-       * body giờ đây sẽ hiển thị trực tiếp content thô.
-       */
       const notificationOptions: any = {
-        body: content, 
+        // [MOD]: Content chính thức làm tiêu đề
+        body: "", 
         icon: "/icon-192x192.png",
         tag: `spark-${entryId}-${index}`,
         data: { 
@@ -95,47 +84,12 @@ export const NotificationManager = {
         ]
       };
 
-      // Mốc 10 phút đầu tiên được xử lý trực tiếp khi App còn trong bộ nhớ đệm
       if (index === 0) {
         setTimeout(() => {
-          /**
-           * [MOD]: Tiêu đề Spark được rút gọn tối đa.
-           */
-          registration.showNotification("✨ Spark", notificationOptions);
+          // Tiêu đề là content thô để hiện được nhiều nhất
+          registration.showNotification(content, notificationOptions);
         }, mốc.delay);
       }
     });
-  },
-
-  /**
-   * [DEEP LINKING]: Xử lý logic khi tương tác với thông báo.
-   */
-  handleNotificationClick(event: any) {
-    const notification = event.notification;
-    const action = event.action;
-
-    // Phân tích hành động từ nút bấm (Snooze) hoặc chạm vào thân thông báo
-    if (action === 'snooze') {
-      const entryId = notification.data.entryId;
-      const url = notification.data.url;
-      const type = url.includes('task') ? 'task' : 'thought';
-      
-      /**
-       * [FIX]: Cập nhật Regex để trích xuất content sạch khi tiêu đề đã thay đổi.
-       */
-      const bodyContent = notification.body;
-      
-      this.snooze(entryId, type, bodyContent);
-      notification.close();
-      return;
-    }
-
-    const url = notification.data.url;
-    notification.close();
-
-    if (url) {
-      window.focus();
-      window.location.href = url;
-    }
   }
 };

@@ -9,9 +9,9 @@ interface FocusItemProps {
 }
 
 /**
- * [MOD_FOCUS_UI]: Thành phần hiển thị tác vụ trong chế độ thực thi.
- * Giai đoạn 6.28: Tối ưu hóa phản hồi trên iOS (iPhone).
- * Tích hợp select-none và active-state để khắc phục triệt để lỗi liệt cảm ứng Zone B.
+ * [MOD_FOCUS_UI]: Thành phân hiển thị tác vụ trong chế độ thực thi.
+ * Giai đoạn 6.29: Fix lỗi "ấn đâu cũng check" và "liệt cảm ứng Zone B" trên iPhone.
+ * Giải pháp: Gỡ pointer-events-none tại Zone B và siết chặt stopPropagation tại Zone A/C.
  */
 export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
   const { updateTask, incrementDoneCount } = useJourneyStore();
@@ -31,10 +31,10 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
 
   /**
    * [ZONE A - LEFT]: Hoàn thành nhiệm vụ (Check Button).
-   * Logic: Hoàn thành -> Thoát Focus -> Lên đỉnh Saban.
+   * Logic: Chặn lan truyền tuyệt đối để không kích hoạt +1 của thẻ cha.
    */
   const handleComplete = (e: React.MouseEvent | React.TouchEvent) => {
-    e.stopPropagation(); // Chặn lan truyền để không kích hoạt +1 ở body
+    e.stopPropagation(); 
     triggerHaptic('success');
     updateTask(task.id!, {
       status: 'done',
@@ -46,7 +46,7 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
 
   /**
    * [ZONE B - CENTER]: Tăng số lượng thực hiện (Body Tap).
-   * Logic: +1 tiến độ.
+   * Kích hoạt khi click vào vùng flex-1 (Giữa).
    */
   const handleIncrement = () => {
     if (isCompleted || !isActive) return;
@@ -56,7 +56,6 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
 
   /**
    * [ZONE C - RIGHT]: Thoát khỏi chế độ Focus (X Button).
-   * Logic: Hủy Focus -> Về Saban -> Lên đỉnh.
    */
   const handleRemoveFromFocus = (e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
@@ -86,7 +85,7 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
 
   return (
     <div 
-      onClick={handleIncrement} // Vùng B (Giữa): Chạm vào body để tăng số
+      onClick={handleIncrement} 
       className={`relative w-full flex items-start gap-3 p-4 mb-3 rounded-[6px] border transition-all duration-200 select-none ${
         isActive 
           ? 'bg-white border-slate-300 shadow-none scale-[1.01] active:scale-[0.98] active:bg-slate-50' 
@@ -94,24 +93,27 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
       } ${isCompleted ? 'opacity-40' : 'cursor-pointer'}`}
     >
       {/* --- ZONE A: TRÁI (Check Button) --- */}
+      {/* Bao bọc bởi một div có diện tích chạm rõ ràng và chặn sự kiện */}
       <div 
         onClick={handleComplete}
-        className={`relative z-20 mt-1 w-6 h-6 flex-shrink-0 rounded-full border-2 flex items-center justify-center transition-colors cursor-pointer hover:bg-slate-50 active:scale-90 ${
-          isCompleted ? 'border-[#2563EB] bg-blue-50' : 'border-slate-300'
-        }`}
+        className="relative z-20 flex-shrink-0 pt-1"
       >
-        {isCompleted && <span className="text-[#2563EB] text-xs font-bold">✓</span>}
+        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors hover:bg-slate-100 active:scale-90 ${
+          isCompleted ? 'border-[#2563EB] bg-blue-50' : 'border-slate-300'
+        }`}>
+          {isCompleted && <span className="text-[#2563EB] text-xs font-bold">✓</span>}
+        </div>
       </div>
 
       {/* --- ZONE B: GIỮA (Nội dung & Tiến độ) --- */}
-      <div className="flex-1 min-w-0 pointer-events-none">
+      {/* [FIX]: Gỡ bỏ pointer-events-none để iPhone nhận diện vùng chạm này và nổi bọt lên thẻ cha */}
+      <div className="flex-1 min-w-0">
         <h3 className={`text-base font-bold tracking-tight break-words whitespace-pre-wrap leading-snug ${
           isCompleted ? 'line-through text-slate-400' : 'text-slate-900'
         }`}>
           {task.content}
         </h3>
         
-        {/* Thanh tiến độ */}
         <div className="mt-3 h-1 bg-slate-100 rounded-full overflow-hidden w-full relative">
           <div 
             className="h-full bg-[#2563EB] transition-all duration-500 shadow-none"
@@ -121,7 +123,11 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
       </div>
 
       {/* --- ZONE C: PHẢI (Control Panel) --- */}
-      <div className="flex-shrink-0 flex flex-col items-end gap-3 z-30" onClick={(e) => e.stopPropagation()}>
+      {/* Chặn lan truyền tại toàn bộ khối điều khiển bên phải */}
+      <div 
+        className="flex-shrink-0 flex flex-col items-end gap-3 z-30" 
+        onClick={(e) => e.stopPropagation()}
+      >
         
         {/* Hàng 1: Nút Xóa (X) */}
         <button
@@ -141,7 +147,7 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
               type="text" 
               inputMode="numeric"
               value={localValue}
-              onClick={(e) => e.stopPropagation()} // Chặn click để không kích hoạt +1
+              onClick={(e) => e.stopPropagation()} 
               onChange={(e) => setLocalValue(e.target.value.replace(/[^0-9]/g, ''))}
               className="w-8 bg-transparent text-center text-slate-900 font-mono text-xs font-bold outline-none border-b border-slate-300 focus:border-[#2563EB]"
               placeholder="0"

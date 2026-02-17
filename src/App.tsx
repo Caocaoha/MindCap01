@@ -14,11 +14,12 @@ import { IdentityDashboard } from './modules/identity/identity-dashboard';
 import { EntryModal } from './modules/input/components/entry-modal';
 import { SparkNotification } from './modules/spark/components/spark-notification';
 import { UniversalEditModal } from './modules/input/components/universal-edit-modal';
+// [NEW]: Import BottomNav component
+import { BottomNav } from './components/shared/bottom-nav';
 
 /**
- * [APP]: Main Layout Controller - Linear.app Aesthetic Update. 
- * Giai đoạn 6.32: Tối ưu Layout Sandwich (InputBar neo trong Main, Footer tách biệt).
- * Fix: Hiển thị đúng nhãn To.Morrow và chỉ báo gạch chân xanh cho Footer.
+ * [APP]: Main Layout Controller.
+ * Giai đoạn 6.32: Phân tách BottomNav để tối ưu hóa bảo trì.
  */
 export const App: React.FC = () => {
   const { activeTab, setActiveTab, isInputFocused, setInputFocused, setTyping, openEditModal } = useUiStore();
@@ -26,7 +27,7 @@ export const App: React.FC = () => {
   const { openAudit, getPulseFrequency } = useIdentityStore();
   const frequency = getPulseFrequency();
 
-  // [NEW]: Đăng ký Service Worker
+  // Đăng ký Service Worker
   useEffect(() => {
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
@@ -177,22 +178,17 @@ export const App: React.FC = () => {
         {activeTab === 'identity' && <IdentityDashboard />}
         
         {activeTab === 'mind' && (
-          // Container của Tab Mind cũng chiếm full Main
           <div className="absolute inset-0 flex flex-col">
-            
-            {/* FOCUS SESSION: Nằm trong Main, có padding dưới để tránh bị InputBar che */}
             <div className={`flex-1 overflow-y-auto pb-24 transition-opacity duration-300 ${
               isInputFocused ? 'opacity-0 pointer-events-none' : 'opacity-100'
             }`}>
               <FocusSession />
             </div>
             
-            {/* INPUT BAR: Neo vào đáy của MAIN (Trên đầu Footer) */}
-            {/* Khi Focus: Biến hình thành Top-0 để phủ kín Main */}
             <div className={`absolute left-0 right-0 z-50 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
               isInputFocused 
-                ? 'top-0 bottom-0 h-full' // Focus Mode: Phủ kín Main
-                : 'bottom-0 h-auto'       // Normal Mode: Nằm đáy Main
+                ? 'top-0 bottom-0 h-full' 
+                : 'bottom-0 h-auto'
             }`}>
               <InputBar 
                 onFocus={() => { 
@@ -206,47 +202,11 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      {/* FOOTER: Bottom Bun (Flex-none, Cố định) */}
-      <footer className={`h-20 flex-none flex items-center justify-between px-10 relative z-40 border-t border-slate-200 bg-white transition-transform duration-500 ease-out ${
+      {/* FOOTER: Bottom Bun (Sử dụng Component tách biệt) */}
+      <footer className={`h-20 flex-none relative z-40 border-t border-slate-200 bg-white transition-transform duration-500 ease-out ${
         isInputFocused ? 'translate-y-full' : 'translate-y-0'
       }`}>
-        {/* TODO TAB */}
-        <button 
-          onClick={() => { triggerHaptic('light'); setActiveTab('saban'); }} 
-          className="relative h-full flex flex-col items-center justify-center outline-none"
-        >
-          <span className={`text-[11px] font-bold transition-colors ${activeTab === 'saban' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>
-            Todo
-          </span>
-          {/* Active Indicator: Gạch chân xanh */}
-          <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 w-5 h-[3px] rounded-full bg-[#2563EB] transition-all duration-300 ${
-            activeTab === 'saban' ? 'opacity-100 scale-x-100' : 'opacity-0 scale-x-0'
-          }`} />
-        </button>
-
-        {/* TODAY TAB */}
-        <button 
-          onClick={() => { triggerHaptic('medium'); setActiveTab('mind'); }} 
-          className={`px-8 py-2 rounded-[6px] font-bold uppercase text-[10px] tracking-widest transition-all outline-none ${
-            activeTab === 'mind' ? 'bg-[#2563EB] text-white shadow-md shadow-blue-500/30' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-          }`}
-        >
-          Today
-        </button>
-
-        {/* TO.MORROW TAB (Đã sửa từ History) */}
-        <button 
-          onClick={() => { triggerHaptic('light'); setActiveTab('journey'); }} 
-          className="relative h-full flex flex-col items-center justify-center outline-none"
-        >
-          <span className={`text-[11px] font-bold transition-colors ${activeTab === 'journey' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>
-            To.Morrow
-          </span>
-          {/* Active Indicator: Gạch chân xanh */}
-          <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 w-5 h-[3px] rounded-full bg-[#2563EB] transition-all duration-300 ${
-            activeTab === 'journey' ? 'opacity-100 scale-x-100' : 'opacity-0 scale-x-0'
-          }`} />
-        </button>
+        <BottomNav />
       </footer>
 
       <IdentityCheckin />

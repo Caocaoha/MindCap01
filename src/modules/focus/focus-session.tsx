@@ -7,8 +7,9 @@ import { triggerHaptic } from '../../utils/haptic';
 import { FocusItem } from './components/focus-item';
 
 /**
- * [MOD_FOCUS]: Chế độ thực thi tập trung v4.6.
- * Giai đoạn 6.24: Fix lỗi "Ghost Task" và logic hoàn thành task.
+ * [MOD_FOCUS]: Chế độ thực thi tập trung v4.7 - Modern Card Layout Integration.
+ * Giai đoạn 6.37: Cập nhật Container để hỗ trợ giao diện thẻ bài (Card-based).
+ * Chỉ kích hoạt trạng thái 'Active' (Nền trắng) cho Task đầu tiên.
  */
 export const FocusSession: React.FC = () => {
   /**
@@ -61,7 +62,8 @@ export const FocusSession: React.FC = () => {
 
   if (!focusDisplayTasks || focusDisplayTasks.length === 0) {
     return (
-      <div className="h-64 flex flex-col items-center justify-center border border-dashed border-slate-200 rounded-[6px] bg-slate-50/50">
+      // [STYLE UPDATE]: Bo góc 12px để đồng bộ với thiết kế Card mới
+      <div className="h-64 flex flex-col items-center justify-center border border-dashed border-slate-200 rounded-[12px] bg-slate-50/50">
         <p className="text-[10px] font-bold uppercase tracking-[0.4em] text-slate-400">Deep Work Session</p>
         <p className="text-[9px] mt-2 text-slate-300 italic">Chọn việc từ Saban để bắt đầu</p>
       </div>
@@ -80,14 +82,16 @@ export const FocusSession: React.FC = () => {
         </div>
       </header>
 
+      {/* Container danh sách: Sử dụng space-y-3 (12px) đúng theo thiết kế */}
       <div className="space-y-3">
-        {focusDisplayTasks.map(task => (
+        {focusDisplayTasks.map((task, index) => (
           // [FIX]: Truyền trực tiếp object task xuống con để đảm bảo hiển thị
-          // Thay vì chỉ truyền taskId, tránh lỗi lệch pha data trên iPhone/Import
+          // [LOGIC VISUAL]: Chỉ task đầu tiên (index === 0) mới là Active (Nền trắng/Nổi).
+          // Các task sau sẽ là Inactive (Nền xám/Chìm).
           <FocusItem 
             key={task.id} 
             task={task} 
-            isActive={true} 
+            isActive={index === 0} 
           />
         ))}
       </div>

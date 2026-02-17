@@ -10,8 +10,7 @@ interface FocusItemProps {
 
 /**
  * [MOD_FOCUS_UI]: Thành phân hiển thị tác vụ trong chế độ thực thi.
- * Giai đoạn 6.29: Fix lỗi "ấn đâu cũng check" và "liệt cảm ứng Zone B" trên iPhone.
- * Giải pháp: Gỡ pointer-events-none tại Zone B và siết chặt stopPropagation tại Zone A/C.
+ * Giai đoạn 6.36: Nâng cấp UI theo phong cách Modern Card (No Border, Soft Shadow, 12px Radius).
  */
 export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
   const { updateTask, incrementDoneCount } = useJourneyStore();
@@ -86,11 +85,12 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
   return (
     <div 
       onClick={handleIncrement} 
-      className={`relative w-full flex items-start gap-3 p-4 mb-3 rounded-[6px] border transition-all duration-200 select-none ${
+      className={`relative w-full flex items-start gap-3 p-4 mb-3 rounded-[12px] transition-all duration-300 select-none ${
+        // [MODERN CARD STYLE]: Logic hiển thị mới
         isActive 
-          ? 'bg-white border-slate-300 shadow-none scale-[1.01] active:scale-[0.98] active:bg-slate-50' 
-          : 'bg-slate-50 border-slate-200 opacity-50'
-      } ${isCompleted ? 'opacity-40' : 'cursor-pointer'}`}
+          ? 'bg-white shadow-md scale-[1.02] active:scale-[0.98]' // Active: Trắng, Nổi, Bóng đẹp
+          : 'bg-[#F8F9FA] shadow-[0_4px_6px_rgba(0,0,0,0.05)] opacity-80' // Inactive: Xám nhạt, Chìm
+      } ${isCompleted ? 'opacity-40 grayscale' : 'cursor-pointer'}`}
     >
       {/* --- ZONE A: TRÁI (Check Button) --- */}
       {/* Bao bọc bởi một div có diện tích chạm rõ ràng và chặn sự kiện */}
@@ -132,7 +132,7 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
         {/* Hàng 1: Nút Xóa (X) */}
         <button
           onClick={handleRemoveFromFocus}
-          className="w-6 h-6 flex items-center justify-center rounded-full bg-slate-50 border border-slate-100 text-slate-400 hover:bg-red-50 hover:text-red-500 hover:border-red-100 transition-colors active:scale-90"
+          className="w-6 h-6 flex items-center justify-center rounded-full bg-white shadow-sm border border-slate-100 text-slate-400 hover:bg-red-50 hover:text-red-500 hover:border-red-100 transition-all active:scale-90"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -142,20 +142,20 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
 
         {/* Hàng 2: Nhập liệu & Lưu */}
         {!isCompleted ? (
-          <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-[4px] border border-slate-200">
+          <div className="flex items-center gap-1 bg-white p-1 rounded-[6px] shadow-sm border border-slate-100">
             <input 
               type="text" 
               inputMode="numeric"
               value={localValue}
               onClick={(e) => e.stopPropagation()} 
               onChange={(e) => setLocalValue(e.target.value.replace(/[^0-9]/g, ''))}
-              className="w-8 bg-transparent text-center text-slate-900 font-mono text-xs font-bold outline-none border-b border-slate-300 focus:border-[#2563EB]"
+              className="w-8 bg-transparent text-center text-slate-900 font-mono text-xs font-bold outline-none border-b border-slate-200 focus:border-[#2563EB]"
               placeholder="0"
             />
             
             <button
               onClick={handleSave}
-              className="px-2 py-1 bg-[#2563EB] hover:bg-blue-700 rounded-[3px] text-[9px] font-bold text-white uppercase tracking-wider transition-all active:scale-90"
+              className="px-2 py-1 bg-[#2563EB] hover:bg-blue-700 rounded-[4px] text-[9px] font-bold text-white uppercase tracking-wider transition-all active:scale-90"
             >
               Lưu
             </button>

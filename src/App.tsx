@@ -18,6 +18,7 @@ import { UniversalEditModal } from './modules/input/components/universal-edit-mo
 /**
  * [APP]: Main Layout Controller - Linear.app Aesthetic Update. 
  * Giai đoạn 6.32: Tối ưu Layout Sandwich (InputBar neo trong Main, Footer tách biệt).
+ * Fix: Hiển thị đúng nhãn To.Morrow và chỉ báo gạch chân xanh cho Footer.
  */
 export const App: React.FC = () => {
   const { activeTab, setActiveTab, isInputFocused, setInputFocused, setTyping, openEditModal } = useUiStore();
@@ -209,9 +210,43 @@ export const App: React.FC = () => {
       <footer className={`h-20 flex-none flex items-center justify-between px-10 relative z-40 border-t border-slate-200 bg-white transition-transform duration-500 ease-out ${
         isInputFocused ? 'translate-y-full' : 'translate-y-0'
       }`}>
-        <button onClick={() => { triggerHaptic('light'); setActiveTab('saban'); }} className={`text-[11px] font-bold transition-colors ${activeTab === 'saban' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>Todo</button>
-        <button onClick={() => { triggerHaptic('medium'); setActiveTab('mind'); }} className={`px-8 py-2 rounded-[6px] font-bold uppercase text-[10px] tracking-widest transition-all ${activeTab === 'mind' ? 'bg-[#2563EB] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>Today</button>
-        <button onClick={() => { triggerHaptic('light'); setActiveTab('journey'); }} className={`text-[11px] font-bold transition-colors ${activeTab === 'journey' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>History</button>
+        {/* TODO TAB */}
+        <button 
+          onClick={() => { triggerHaptic('light'); setActiveTab('saban'); }} 
+          className="relative h-full flex flex-col items-center justify-center outline-none"
+        >
+          <span className={`text-[11px] font-bold transition-colors ${activeTab === 'saban' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>
+            Todo
+          </span>
+          {/* Active Indicator: Gạch chân xanh */}
+          <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 w-5 h-[3px] rounded-full bg-[#2563EB] transition-all duration-300 ${
+            activeTab === 'saban' ? 'opacity-100 scale-x-100' : 'opacity-0 scale-x-0'
+          }`} />
+        </button>
+
+        {/* TODAY TAB */}
+        <button 
+          onClick={() => { triggerHaptic('medium'); setActiveTab('mind'); }} 
+          className={`px-8 py-2 rounded-[6px] font-bold uppercase text-[10px] tracking-widest transition-all outline-none ${
+            activeTab === 'mind' ? 'bg-[#2563EB] text-white shadow-md shadow-blue-500/30' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+          }`}
+        >
+          Today
+        </button>
+
+        {/* TO.MORROW TAB (Đã sửa từ History) */}
+        <button 
+          onClick={() => { triggerHaptic('light'); setActiveTab('journey'); }} 
+          className="relative h-full flex flex-col items-center justify-center outline-none"
+        >
+          <span className={`text-[11px] font-bold transition-colors ${activeTab === 'journey' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>
+            To.Morrow
+          </span>
+          {/* Active Indicator: Gạch chân xanh */}
+          <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 w-5 h-[3px] rounded-full bg-[#2563EB] transition-all duration-300 ${
+            activeTab === 'journey' ? 'opacity-100 scale-x-100' : 'opacity-0 scale-x-0'
+          }`} />
+        </button>
       </footer>
 
       <IdentityCheckin />

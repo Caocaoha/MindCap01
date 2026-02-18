@@ -1,9 +1,10 @@
 /**
- * Purpose: Quan ly toan bo logic, trang thai va luu tru cho Entry Form.
+ * Purpose: Quan ly toan bo logic, trang thai va luu tru cho Entry Form (v9.3).
  * Inputs/Outputs: Tra ve trang thai (State) va cac ham xu ly (Handlers) cho UI.
  * Business Rule: 
- * - Xu ly logic NLP tu dong, tinh diem tuong tac va kich hoat Waterfall (>16 tu).
- * - Gan mac dinh syncStatus: 'pending' cho tat ca ban ghi moi de phuc vu dong bo Obsidian.
+ * - [MIGRATION]: Chuyen doi vat ly giua Task/Thought thong qua Transaction.
+ * - [SOURCE]: Gan sourceTable vinh vien de phuc vu dong bo Obsidian Bridge.
+ * - [FIX]: Thiet lap gia tri mac dinh isFocusMode de xuat hien ngay tren Saban Todo.
  */
 
 import { useState, useEffect } from 'react';
@@ -32,10 +33,13 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
   useEffect(() => {
     if (initialData) {
       setContent(initialData.content);
-      if ('status' in initialData) {
+      // Xac dinh loai dua tren thuoc tinh status hoac sourceTable
+      const isTaskRecord = 'status' in initialData || initialData.sourceTable === 'tasks';
+      
+      if (isTaskRecord) {
         setEntryType('task');
-        setTargetCount(initialData.targetCount || 1);
-        setUnit(initialData.unit || '');
+        setTargetCount((initialData as ITask).targetCount || 1);
+        setUnit((initialData as ITask).unit || '');
         setIsUrgent(initialData.tags?.includes('p:urgent') || false);
         setIsImportant(initialData.tags?.includes('p:important') || false);
         const fTag = initialData.tags?.find(t => t.startsWith('freq:'));
@@ -69,11 +73,14 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
     if (!content.trim()) return;
     const now = Date.now();
     const wordCount = content.trim().split(/\s+/).length;
-    const isNewLinked = initialData?.parentId && !initialData?.id;
-    const bonus = isNewLinked ? 10 : 0;
     
+    // Logic xac dinh su thay doi bang du lieu
+    const wasTask = initialData && ('status' in initialData || initialData.sourceTable === 'tasks');
+    const isNowTask = entryType === 'task';
+    const hasTypeChanged = initialData?.id && ((wasTask && !isNowTask) || (!wasTask && isNowTask));
+
     let payload: any;
-    if (entryType === 'task') {
+    if (isNowTask) {
       const tags = [`freq:${freq}`, isUrgent ? 'p:urgent' : '', isImportant ? 'p:important' : '', 
                     ...selectedWeekDays.map(d => `d:${d}`), ...selectedMonthDays.map(m => `m:${m}`)].filter(Boolean);
       payload = {
@@ -85,11 +92,13 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
         unit: unit.trim(),
         tags, 
         parentId: initialData?.parentId, 
-        interactionScore: (initialData?.interactionScore || 0) + bonus,
+        interactionScore: (initialData?.interactionScore || 0),
         lastInteractedAt: now, 
+        // [FIX]: Dam bao co gia tri false de vuot qua bo loc SabanBoard
+        isFocusMode: (initialData as ITask)?.isFocusMode || false, 
         archiveStatus: (initialData as ITask)?.archiveStatus || 'active',
-        // [NEW]: Dam bao luon co syncStatus cho Obsidian Bridge
-        syncStatus: (initialData as ITask)?.syncStatus || 'pending'
+        syncStatus: (initialData as ITask)?.syncStatus || 'pending',
+        sourceTable: 'tasks'
       };
     } else {
       payload = { 
@@ -99,23 +108,38 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
         createdAt: initialData?.createdAt || now, 
         updatedAt: now, 
         parentId: initialData?.parentId, 
-        interactionScore: (initialData?.interactionScore || 0) + bonus,
-        // [NEW]: Dam bao luon co syncStatus cho Obsidian Bridge
-        syncStatus: (initialData as IThought)?.syncStatus || 'pending'
+        interactionScore: (initialData?.interactionScore || 0),
+        syncStatus: (initialData as IThought)?.syncStatus || 'pending',
+        sourceTable: 'thoughts'
       };
     }
 
     if (onCustomSave) {
+      // Delegated Save: Neu co custom logic tu Modal
       await onCustomSave(entryType, entryType === 'thought' ? { ...payload, moodScore: moodLevel } : payload);
     } else {
-      const table = entryType === 'task' ? db.tasks : db.thoughts;
-      if (initialData?.id) await (table as any).update(initialData.id, payload);
-      else {
+      if (hasTypeChanged) {
+        // [ATOMIC MIGRATION]: Xoa o bang cu va them vao bang moi
+        const oldTable = wasTask ? db.tasks : db.thoughts;
+        const newTable = isNowTask ? db.tasks : db.thoughts;
+
+        await db.transaction('rw', db.tasks, db.thoughts, async () => {
+          await oldTable.delete(Number(initialData.id));
+          await newTable.add(payload);
+        });
+      } else if (initialData?.id) {
+        // Cap nhat cung bang
+        const table = isNowTask ? db.tasks : db.thoughts;
+        await (table as any).update(Number(initialData.id), payload);
+      } else {
+        // Tao moi hoan toan
+        const table = isNowTask ? db.tasks : db.thoughts;
         const id = await (table as any).add(payload);
         if (entryType === 'thought') await db.moods.add({ score: moodLevel, label: 'entry_reflection', createdAt: now });
         if (wordCount > 16) NotificationManager.scheduleWaterfall(Number(id), entryType, content.trim());
       }
     }
+
     if (!initialData) setSearchQuery('', 'mind');
     triggerHaptic('success');
     onSuccess();
@@ -126,7 +150,8 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
     unit, setUnit, freq, setFreq, isUrgent, setIsUrgent, isImportant, setIsImportant,
     selectedWeekDays, selectedMonthDays, moodLevel, setMoodLevel,
     toggleWeekDay: (d) => setSelectedWeekDays(p => p.includes(d) ? p.filter(x => x !== d) : [...p, d]),
-    toggleMonthDay: (d) => setSelectedWeekDays(p => p.includes(d) ? p.filter(x => x !== d) : [...p, d]),
+    // [FIX]: Cap nhat dung state cho ngay trong thang
+    toggleMonthDay: (d) => setSelectedMonthDays(p => p.includes(d) ? p.filter(x => x !== d) : [...p, d]),
     handleSave, handleContentChange
   };
 };

@@ -9,8 +9,8 @@ import { SearchBar } from '../../../components/shared/search-bar';
 import { matchesSearch } from '../../../utils/nlp-engine'; 
 
 /**
- * [MOD_JOURNEY]: Thành phần hiển thị danh sách nhật ký sống động.
- * Giai đoạn 6.30: Tích hợp Universal Edit Modal để sửa chữa & chuyển đổi dữ liệu.
+ * [MOD_JOURNEY]: Thành phần hiển thị danh sách nhật ký sống động (v9.2).
+ * Giai đoạn 6.30: Tích hợp chuẩn "Kỷ luật dữ liệu" sử dụng sourceTable.
  */
 export const LivingMemory: React.FC = () => {
   // --- STORE ACTIONS & STATES (Bảo tồn 100%) ---
@@ -21,7 +21,7 @@ export const LivingMemory: React.FC = () => {
     isDiaryEntry 
   } = useJourneyStore(); 
 
-  // [MOD]: Lấy action openCreateModal và openEditModal từ ui-store
+  // Lấy action openCreateModal và openEditModal từ ui-store
   const { openEditModal, openCreateModal, searchQuery } = useUiStore(); 
 
   // --- LOCAL UI STATES ---
@@ -29,25 +29,25 @@ export const LivingMemory: React.FC = () => {
 
   /**
    * [CORE QUERY]: Truy vấn dữ liệu từ IndexedDB.
-   * Cập nhật bộ lọc: Loại bỏ triệt để các bản ghi có archiveStatus === 'archived'.
+   * Tối ưu hóa: Sử dụng sourceTable để định danh loại bản ghi chính xác.
    */
   const entries = useLiveQuery(async () => {
-    const tasks = await db.tasks.toArray();
-    const thoughts = await db.thoughts.toArray();
+    const [tasks, thoughts] = await Promise.all([
+      db.tasks.toArray(),
+      db.thoughts.toArray()
+    ]);
     
     return [...tasks, ...thoughts]
       .filter(item => {
-        // Kiểm tra điều kiện hiển thị: Thuộc Diary & KHÔNG bị lưu trữ (archived) & KHÔNG nằm trong hiddenIds
+        // Kiểm tra điều kiện hiển thị: Thuộc Diary & KHÔNG bị lưu trữ & KHÔNG nằm trong hiddenIds
         const isValidEntry = isDiaryEntry(item) && 
                              item.archiveStatus !== 'archived' && 
                              !hiddenIds.includes(item.id as number);
         
         if (!isValidEntry) return false;
 
-        /**
-         * [FIX]: Truy cập 'tags' một cách an toàn cho IThought.
-         */
-        const itemTags = 'tags' in item ? item.tags : undefined;
+        // Truy cập 'tags' an toàn thông qua việc kiểm tra thuộc tính hoặc kiểu bản ghi
+        const itemTags = item.tags || undefined;
 
         // Áp dụng bộ máy tìm kiếm chuẩn hóa
         return matchesSearch(item.content, itemTags, searchQuery);
@@ -57,18 +57,19 @@ export const LivingMemory: React.FC = () => {
 
   /**
    * [ACTION]: Xử lý xóa/lưu trữ bản ghi.
-   * Sử dụng 'await' để đảm bảo dữ liệu được ghi xuống đĩa trước khi UI phản hồi.
+   * Sử dụng sourceTable (Mỏ neo nguồn) để xác định bảng chính xác.
    */
   const handleArchive = async (item: any) => {
     if (!item.id) return;
     
     triggerHaptic('medium');
     
-    // Xác định bảng dữ liệu tương ứng
-    const table = 'status' in item ? db.tasks : db.thoughts;
+    // [STRATEGY 3.0]: Sử dụng sourceTable để truy cập bảng mục tiêu
+    const tableName = item.sourceTable || ('status' in item ? 'tasks' : 'thoughts');
+    const table = db.table(tableName);
     
-    // Cập nhật trạng thái 'archived' vĩnh viễn trong Database v7
-    await table.update(item.id, { 
+    // Cập nhật trạng thái 'archived' vĩnh viễn
+    await table.update(Number(item.id), { 
       archiveStatus: 'archived',
       updatedAt: Date.now() 
     });
@@ -80,10 +81,13 @@ export const LivingMemory: React.FC = () => {
   const handleBookmarkConfirm = async (reason: string) => {
     if (!bookmarkTarget?.id) return;
     
-    const table = 'status' in bookmarkTarget ? db.tasks : db.thoughts;
-    await table.update(bookmarkTarget.id, { 
+    const tableName = bookmarkTarget.sourceTable || ('status' in bookmarkTarget ? 'tasks' : 'thoughts');
+    const table = db.table(tableName);
+
+    await table.update(Number(bookmarkTarget.id), { 
       isBookmarked: true, 
-      bookmarkReason: reason 
+      bookmarkReason: reason,
+      updatedAt: Date.now()
     });
     
     setBookmarkTarget(null);
@@ -99,7 +103,8 @@ export const LivingMemory: React.FC = () => {
 
       {entries?.map((item: any) => {
         const entropyOpacity = calculateOpacity(item.createdAt, item.isBookmarked); 
-        const isTask = 'status' in item;
+        // [STRATEGY 3.0]: Ưu tiên sourceTable để xác định nhãn hiển thị
+        const isTask = item.sourceTable === 'tasks' || 'status' in item;
         const isBookmarked = item.isBookmarked;
 
         return (
@@ -179,11 +184,10 @@ export const LivingMemory: React.FC = () => {
 
             {/* --- 3. CỤM PHẢI: CONTROL --- */}
             <div className="flex-shrink-0 flex flex-col gap-5 pt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-              {/* Nút Sửa: Kết nối với Universal Edit Modal */}
               <button 
                 onClick={() => { 
                   triggerHaptic('light'); 
-                  openEditModal(item); // [MOD]: Mở Modal Sửa Vạn Năng
+                  openEditModal(item);
                 }}
                 className="text-slate-400 hover:text-slate-900 active:scale-90 transition-all"
               >

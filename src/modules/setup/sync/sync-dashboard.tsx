@@ -2,9 +2,9 @@
  * Purpose: Màn hình điều phối trung tâm cho hệ thống đồng bộ Obsidian.
  * Inputs/Outputs: JSX.Element.
  * Business Rule: 
- * - Quản lý luồng Manual JSON Bridge: Export (nguồn) -> Import/Merge (đích).
- * - Thực thi ghi dữ liệu trực tiếp vào Obsidian Vault qua File System Access API.
- * - [FIX]: Đồng bộ kiểu dữ liệu ExtendedIdea để giải quyết lỗi biên dịch TS2345.
+ * - Quản lý luồng Manual JSON Bridge và Obsidian Direct Write.
+ * - [FIX]: Đồng bộ tuyệt đối số lượng readyCount từ Global Store.
+ * - [FIX]: Đảm bảo lệnh ghi luôn lấy dữ liệu mới nhất từ DB để tránh sót bản ghi hoặc trùng lặp.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -12,7 +12,6 @@ import { triggerHaptic } from '../../../utils/haptic';
 import { useUiStore } from '../../../store/ui-store';
 import { generateExportPackage } from './export-engine';
 import { parseAndMergePackage } from './import-engine';
-// [FIX]: Import thêm interface ExtendedIdea
 import { obsidianWriter, ExtendedIdea } from './obsidian-writer';
 import { ReviewStack } from './components/review-stack';
 import { useReviewLogic } from './use-review-logic';
@@ -20,38 +19,50 @@ import { useReviewLogic } from './use-review-logic';
 export const SyncDashboard: React.FC = () => {
   const [view, setView] = useState<'review' | 'summary'>('review');
   const [isSupported, setIsSupported] = useState(false);
+  
+  // [FIX]: Lấy số lượng từ Global Store để khớp 100% với tab Review
   const { readyCount } = useUiStore();
   const { refresh } = useReviewLogic();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    // Kiểm tra hỗ trợ File System Access API trên Desktop
     setIsSupported('showDirectoryPicker' in window);
   }, []);
 
   /**
    * [ACTION]: Ghi trực tiếp vào Obsidian Vault.
+   * Thực hiện gom dữ liệu và chuyển trạng thái nguyên tử.
    */
   const handleWriteToObsidian = async () => {
     try {
+      // 1. Tạo gói dữ liệu export từ những bản ghi 'ready_to_export'
       const pkg = await generateExportPackage();
+      
       if (pkg.ideas.length === 0) {
-        alert("Không có ý tưởng nào 'Ready to export'. Hãy duyệt thẻ tại tab REVIEW trước!");
+        alert("Không còn ý tưởng nào chờ đồng bộ. Hãy duyệt thêm ở tab REVIEW!");
         return;
       }
 
       triggerHaptic('heavy');
       
-      // [FIX]: Ép kiểu tường minh cho pkg.ideas sang ExtendedIdea[] để khớp với hàm writeToVault
-      // Dữ liệu từ Backup JSON đã có sẵn createdAt nên việc ép kiểu này là an toàn.
+      // 2. Gọi Obsidian Writer thực thi ghi Single-File và update DB Transaction
+      // Ép kiểu sang ExtendedIdea[] để đảm bảo ID là kiểu số (Number) như trong Database
       const result = await obsidianWriter.writeToVault(pkg.ideas as unknown as ExtendedIdea[]);
       
-      alert(`Thành công! Đã đồng bộ ${result.success} mẩu tin vào tệp tổng hợp trong Obsidian/MindCap.`);
+      alert(`Đồng bộ thành công ${result.success} ý tưởng vào Obsidian/MindCap!`);
+      
+      // 3. Refresh lại để cập nhật số đếm về 0
       refresh(); 
     } catch (err) {
-      console.error("Lỗi thực thi ghi file:", err);
+      console.error("Lỗi trong quá trình Write:", err);
+      alert("Đồng bộ thất bại. Vui lòng kiểm tra quyền truy cập thư mục.");
     }
   };
 
+  /**
+   * [ACTION]: Xuất JSON Bridge cho Mobile.
+   */
   const handleExportBridge = async () => {
     try {
       const pkg = await generateExportPackage();
@@ -63,10 +74,13 @@ export const SyncDashboard: React.FC = () => {
       a.click();
       triggerHaptic('success');
     } catch (err) {
-      console.error("Export Bridge thất bại:", err);
+      console.error("Lỗi Export Bridge:", err);
     }
   };
 
+  /**
+   * [ACTION]: Nhập JSON Bridge và gộp dữ liệu tại Laptop.
+   */
   const handleImportBridge = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -77,10 +91,10 @@ export const SyncDashboard: React.FC = () => {
         const pkg = JSON.parse(event.target?.result as string);
         triggerHaptic('medium');
         await parseAndMergePackage(pkg);
-        alert("Đồng bộ Bridge thành công!");
-        refresh();
+        alert("Đã gộp dữ liệu thành công!");
+        refresh(); // Cập nhật lại số liệu sau khi gộp
       } catch (err) {
-        alert("Lỗi khi nhập file Bridge: " + err);
+        alert("Lỗi Import: " + err);
       }
     };
     reader.readAsText(file);
@@ -89,10 +103,11 @@ export const SyncDashboard: React.FC = () => {
   return (
     <div className="flex flex-col h-full bg-slate-50 overflow-hidden animate-in slide-in-from-bottom duration-500">
       
+      {/* HEADER: Switcher giữa Review và Sync */}
       <header className="px-6 pt-12 pb-6 bg-white border-b border-slate-100 flex items-center justify-between">
         <div className="flex flex-col">
           <h2 className="text-xl font-black text-slate-900 tracking-tight">KNOWLEDGE BRIDGE</h2>
-          <span className="text-[8px] font-black text-purple-500 uppercase tracking-widest mt-0.5">Local-First Knowledge Transfer</span>
+          <span className="text-[8px] font-black text-purple-500 uppercase tracking-widest mt-0.5 underline underline-offset-4 decoration-2">Protocol v1.5</span>
         </div>
         <div className="flex bg-slate-100 p-1 rounded-xl">
           <button 
@@ -110,25 +125,28 @@ export const SyncDashboard: React.FC = () => {
         </div>
       </header>
 
+      {/* NỘI DUNG CHÍNH */}
       <main className="flex-1 p-6 relative overflow-y-auto no-scrollbar">
         {view === 'review' ? (
           <ReviewStack />
         ) : (
           <div className="space-y-6 animate-in fade-in duration-300 pb-12">
             
+            {/* Hộp chỉ dẫn chọn Root Vault */}
             <div className="bg-amber-50 border border-amber-100 p-6 rounded-[2.5rem] shadow-sm">
               <div className="flex gap-4">
                 <span className="text-2xl">💡</span>
                 <div className="space-y-1.5">
-                  <p className="text-[10px] font-black text-amber-900 uppercase tracking-[0.2em]">Hướng dẫn đồng bộ</p>
+                  <p className="text-[10px] font-black text-amber-900 uppercase tracking-[0.2em]">Chọn Obsidian Vault</p>
                   <p className="text-[11px] leading-relaxed text-amber-800/80 font-bold">
-                    Sau khi bấm nút "Write" bên dưới, hãy chọn thư mục <strong>Gốc (Root)</strong> của Obsidian Vault. 
-                    Hệ thống sẽ tự động quản lý tri thức trong thư mục <code>/MindCap</code> để không làm lẫn dữ liệu của bạn.
+                    Bấm "Write" và chọn thư mục <strong>Gốc (Root)</strong> của Vault. 
+                    Mọi tri thức sẽ được gom vào 1 file duy nhất trong thư mục <code>/MindCap</code>.
                   </p>
                 </div>
               </div>
             </div>
 
+            {/* Nút bấm thực thi chính */}
             <div className="space-y-4">
               <button 
                 onClick={handleWriteToObsidian} 
@@ -139,9 +157,10 @@ export const SyncDashboard: React.FC = () => {
                     : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
                 }`}
               >
-                {isSupported ? '🚀 3. Write to Obsidian Vault' : 'Desktop Browser Required'}
+                {isSupported ? '🚀 3. Write to Obsidian Vault' : 'Desktop Access Only'}
               </button>
 
+              {/* Bộ đếm đồng bộ toàn cục */}
               <div className="flex justify-center">
                 <div className="px-6 py-2 bg-white border border-slate-100 rounded-full shadow-sm flex items-center gap-3">
                   <div className={`h-2 w-2 rounded-full ${readyCount > 0 ? 'bg-green-500 animate-pulse' : 'bg-slate-200'}`} />
@@ -152,12 +171,11 @@ export const SyncDashboard: React.FC = () => {
               </div>
             </div>
 
+            {/* Luồng đồng bộ thủ công qua JSON */}
             <div className="pt-6 space-y-3">
               <div className="flex items-center gap-3 mb-2 px-2">
                 <div className="h-[1px] flex-1 bg-slate-200" />
-                <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em]">
-                  Manual JSON Bridge
-                </p>
+                <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em]">Manual Bridge</p>
                 <div className="h-[1px] flex-1 bg-slate-200" />
               </div>
               
@@ -183,7 +201,7 @@ export const SyncDashboard: React.FC = () => {
 
             <div className="bg-slate-900/5 p-6 rounded-[2.5rem] border border-slate-100 mt-4">
               <p className="text-[8px] leading-relaxed text-slate-400 font-bold uppercase tracking-widest text-center">
-                Phase 3 Active • Obsidian Bridge Protocol v1.2
+                Data Integrity Mode • Atomic Transactions Active
               </p>
             </div>
           </div>
@@ -191,7 +209,7 @@ export const SyncDashboard: React.FC = () => {
       </main>
 
       <footer className="p-8 text-center opacity-10 text-[8px] font-black uppercase tracking-[0.5em]">
-        Knowledge Transfer Secure
+        Knowledge Engine v1.5
       </footer>
     </div>
   );

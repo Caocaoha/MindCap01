@@ -1,11 +1,11 @@
 /**
- * Purpose: Quan ly toan bo logic, trang thai va luu tru cho Entry Form (v9.4).
+ * Purpose: Quan ly toan bo logic, trang thai va luu tru cho Entry Form (v9.5).
  * Inputs/Outputs: Tra ve trang thai (State) va cac ham xu ly (Handlers) cho UI.
  * Business Rule: 
  * - [MIGRATION]: Chuyen doi vat ly giua Task/Thought thong qua Transaction.
  * - [SOURCE]: Gan sourceTable vinh vien de phuc vu dong bo Obsidian Bridge.
  * - [SMART ROUTING]: Tu dong day vao Focus (max 4) neu Saban Todo dang trong.
- * - [NOTIFICATION]: Hien thi thong bao tuong tac chinh giua man hinh voi nut Sua nhanh.
+ * - [NOTIFICATION]: [FIXED] Phản hồi cho mọi trường hợp lưu trữ với thông báo tương tác.
  */
 
 import { useState, useEffect } from 'react';
@@ -81,15 +81,16 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
     const wasTask = initialData && ('status' in initialData || initialData.sourceTable === 'tasks');
     const isNowTask = entryType === 'task';
     const hasTypeChanged = initialData?.id && ((wasTask && !isNowTask) || (!wasTask && isNowTask));
+    const isNew = !initialData?.id;
 
     /**
-     * [SMART ROUTING LOGIC]: Kiem tra trang thai Todo va Focus truoc khi luu
+     * [SMART ROUTING LOGIC]: Kiểm tra trạng thái Saban và Focus
      */
     let targetFocusMode = false;
     let routingMessage = "📥 Đã thêm nhiệm vụ vào Saban Todo.";
 
-    if (isNowTask && !initialData?.id) {
-      // Todo 'Active' la nhiem vu chua xong, dang o che do backlog (isFocusMode = false)
+    // Logic này sẽ chạy khi tạo mới Task HOẶC chuyển đổi từ Nhật ký sang Task
+    if (isNowTask && (isNew || hasTypeChanged)) {
       const todoActiveCount = await db.tasks
         .where('isFocusMode').equals(0) // false
         .and(t => t.archiveStatus === 'active' && t.status !== 'done')
@@ -124,8 +125,8 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
         parentId: initialData?.parentId, 
         interactionScore: (initialData?.interactionScore || 0),
         lastInteractedAt: now, 
-        // Su dung isFocusMode hien tai neu dang edit, hoac dung targetFocusMode neu tao moi
-        isFocusMode: initialData?.id ? (initialData as ITask).isFocusMode : targetFocusMode, 
+        // Giữ FocusMode cũ nếu chỉ là chỉnh sửa cùng bảng, ngược lại dùng target tính toán
+        isFocusMode: (initialData?.id && !hasTypeChanged) ? (initialData as ITask).isFocusMode : targetFocusMode, 
         archiveStatus: (initialData as ITask)?.archiveStatus || 'active',
         syncStatus: (initialData as ITask)?.syncStatus || 'pending',
         sourceTable: 'tasks'
@@ -148,11 +149,10 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
     let savedRecord: any = { ...payload };
 
     if (onCustomSave) {
-      // Delegated Save: Neu co custom logic tu Modal
       await onCustomSave(entryType, entryType === 'thought' ? { ...payload, moodScore: moodLevel } : payload);
     } else {
       if (hasTypeChanged) {
-        // [ATOMIC MIGRATION]: Xoa o bang cu va them vao bang moi
+        // [ATOMIC MIGRATION]: Di cư bản ghi qua Transaction
         const oldTable = wasTask ? db.tasks : db.thoughts;
         const newTable = isNowTask ? db.tasks : db.thoughts;
 
@@ -162,36 +162,47 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
           savedRecord.id = id;
         });
       } else if (initialData?.id) {
-        // Cap nhat cung bang
-        const table = isNowTask ? db.tasks : db.thoughts;
-        await (table as any).update(Number(initialData.id), payload);
+        await (tableFromType(isNowTask) as any).update(Number(initialData.id), payload);
         savedRecord.id = initialData.id;
       } else {
-        // Tao moi hoan toan
-        const table = isNowTask ? db.tasks : db.thoughts;
-        const id = await (table as any).add(payload);
+        const id = await (tableFromType(isNowTask) as any).add(payload);
         savedRecord.id = id;
         if (entryType === 'thought') await db.moods.add({ score: moodLevel, label: 'entry_reflection', createdAt: now });
         if (wordCount > 16) NotificationManager.scheduleWaterfall(Number(id), entryType, content.trim());
       }
     }
 
-    // [NOTIFICATION TRIGGER]: Ban thong bao tuong tac khi luu moi Task
-    if (isNowTask && !initialData?.id) {
-      showNotification(routingMessage, () => openEditModal(savedRecord));
+    /**
+     * [NOTIFICATION DISPATCHER]: Phản hồi thị giác tương tác
+     */
+    let finalMessage = "✅ Đã cập nhật thành công.";
+    
+    if (isNew || hasTypeChanged) {
+      if (isNowTask) {
+        finalMessage = routingMessage;
+      } else {
+        finalMessage = hasTypeChanged 
+          ? "🔄 Đã chuyển đổi thành nhận thức thành công." 
+          : "📝 Đã lưu nhận thức vào Nhật ký.";
+      }
     }
+
+    // Luôn kích hoạt thông báo tương tác chính giữa màn hình
+    showNotification(finalMessage, () => openEditModal(savedRecord));
 
     if (!initialData) setSearchQuery('', 'mind');
     triggerHaptic('success');
     onSuccess();
   };
 
+  // Helper nội bộ để lấy bảng
+  const tableFromType = (isTask: boolean) => isTask ? db.tasks : db.thoughts;
+
   return {
     entryType, setEntryType, content, setContent, targetCount, setTargetCount,
     unit, setUnit, freq, setFreq, isUrgent, setIsUrgent, isImportant, setIsImportant,
     selectedWeekDays, selectedMonthDays, moodLevel, setMoodLevel,
     toggleWeekDay: (d) => setSelectedWeekDays(p => p.includes(d) ? p.filter(x => x !== d) : [...p, d]),
-    // [FIX]: Cap nhat dung state cho ngay trong thang (selectedMonthDays)
     toggleMonthDay: (d) => setSelectedMonthDays(p => p.includes(d) ? p.filter(x => x !== d) : [...p, d]),
     handleSave, handleContentChange
   };

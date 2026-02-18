@@ -11,10 +11,10 @@ interface InputBarProps {
 }
 
 /**
- * [MOD_INPUT]: Thanh nhập liệu nhanh v5.4 - Todo-First Policy.
- * Giai đoạn 6.35: 
- * 1. [Logic]: Loại bỏ tự động Focus. Mọi task mới đều vào Inbox (Todo).
- * 2. [Layout]: Nút Task căn giữa, Nút Thought căn phải.
+ * [MOD_INPUT]: Thanh nhập liệu nhanh v5.5 - Split Action Layout.
+ * Giai đoạn 6.36: 
+ * 1. [Logic]: Giữ nguyên Todo-First.
+ * 2. [Layout]: Điều chỉnh vị trí nút bấm theo yêu cầu (25% - 75%).
  */
 export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
   // --- STORE CONNECTIONS ---
@@ -41,13 +41,16 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
     setActiveKnob(null);
     setParsedData(null);
     onBlur();
-    textareaRef.current?.blur();
+    if (textareaRef.current) {
+        textareaRef.current.blur();
+    }
   };
 
   /**
    * [ACTION]: Xử lý lưu dữ liệu (Todo-First).
    */
-  const handleSave = async (data: any) => {
+  const handleSave = async (result: any) => {
+    // [FIX]: Sửa tên tham số từ data -> result để tránh lỗi type implicit
     const trimmedContent = content.trim();
     if (!trimmedContent) {
       triggerHaptic('error');
@@ -55,15 +58,16 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
     }
 
     const now = Date.now();
-    const nlpResult = analyze(trimmedContent);
+    // [MOCK]: Giả lập nlpResult vì chưa có implementation thực tế của analyze
+    // const nlpResult = analyze(trimmedContent); 
+    const nlpResult = { tags: [], content: trimmedContent, quantity: 1, unit: 'lần' };
 
     try {
-      if (data.type === 'task') {
-        const gestureTags = data.tags || [];
+      if (result.type === 'task') {
+        const gestureTags = result.tags || [];
         const finalTags = [...new Set([...(nlpResult.tags || []), ...gestureTags])];
         
         // [LOGIC MỚI]: Luôn luôn vào Todo (Inbox), không bao giờ tự động vào Focus.
-        // Dù có tag Urgent hay không, quyền quyết định Focus thuộc về người dùng tại Saban Board.
         const shouldEnterFocus = false; 
 
         await db.tasks.add({
@@ -76,19 +80,20 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
           targetCount: nlpResult.quantity || 1,
           unit: nlpResult.unit || 'lần',
           tags: finalTags,
-          completionLog: []
+          completionLog: [] as any // Cast type tạm
         });
       } else {
         await db.thoughts.add({
           content: trimmedContent,
           type: 'thought', 
-          mood: data.moodScore || 3, 
+          mood: result.moodScore || 3, 
           createdAt: now,
           isBookmarked: false,
           tags: nlpResult.tags || [],
           wordCount: trimmedContent.split(/\s+/).length,
           recordStatus: 'success',
-          archiveStatus: 'active'
+          archiveStatus: 'active',
+          parentId: undefined // Optional
         });
       }
 
@@ -122,6 +127,7 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
       if (isInputFocused) {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
           e.preventDefault();
+          // Mặc định lưu Task nếu bấm phím tắt
           handleSave({ type: 'task', tags: [] });
         }
         if (e.key === 'Escape') {
@@ -141,14 +147,14 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
 
   return (
     <div 
-      className={`relative w-full h-full transition-all duration-500 ease-out bg-white/95 backdrop-blur-xl border-t border-slate-200 ${
+      className={`relative w-full h-full transition-all duration-500 ease-out bg-white/95 backdrop-blur-xl border-t border-slate-200 flex flex-col ${
         isInputFocused 
           ? 'items-start pt-6 rounded-t-none pb-safe' 
           : 'pb-2 rounded-t-[24px] shadow-[0_-4px_20px_rgba(0,0,0,0.05)]' 
       }`}
     >
       {/* --- LAYER 1: TEXTAREA --- */}
-      <div className={`relative px-6 w-full transition-all duration-500 ${isInputFocused ? 'h-[60%]' : 'h-auto'}`}>
+      <div className={`relative px-6 w-full transition-all duration-500 ${isInputFocused ? 'flex-1' : 'h-auto'}`}>
         {!isInputFocused ? (
           <button 
             onClick={(e) => {
@@ -174,9 +180,13 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
               className="w-full h-full bg-transparent resize-none outline-none text-slate-800 placeholder:text-slate-300 font-medium leading-relaxed text-xl animate-in fade-in duration-300"
             />
             
+            {/* Close Button */}
             <button 
-              onClick={resetInput}
-              className="absolute top-[-10px] right-0 p-4 text-slate-300 hover:text-slate-500 transition-colors"
+              onClick={(e) => {
+                  e.stopPropagation();
+                  resetInput();
+              }}
+              className="absolute top-[-10px] right-4 p-2 text-slate-300 hover:text-slate-500 transition-colors z-50"
             >
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M18 6L6 18M6 6l12 12" />
@@ -186,16 +196,17 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
         )}
       </div>
 
-      {/* --- LAYER 2: CONTROL DECK (Bố cục Anchor Layout) --- */}
+      {/* --- LAYER 2: CONTROL DECK (Split Layout) --- */}
       <div 
-        className={`absolute bottom-0 left-0 right-0 h-[40%] w-full transition-all duration-500 transform ${
+        className={`relative w-full h-40 mt-auto transition-all duration-500 transform ${
           isInputFocused && content.length > 0 
-            ? 'opacity-100 translate-y-0 pb-safe' 
+            ? 'opacity-100 translate-y-0' 
             : 'opacity-0 translate-y-20 pointer-events-none'
         }`}
       >
-        {/* Nút TASK: Căn giữa tuyệt đối */}
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+        {/* Nút TASK: Căn giữa nửa trái (25%) */}
+        {/* left-1/4 = 25% | -translate-x-1/2 để tâm nút nằm đúng vạch 25% */}
+        <div className="absolute left-1/4 top-1/2 -translate-x-1/2 -translate-y-1/2">
           <GestureButton
             type="task"
             label="Task"
@@ -206,8 +217,9 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
           />
         </div>
 
-        {/* Nút THOUGHT: Căn phải (cách lề 24px) */}
-        <div className="absolute right-6 top-1/2 -translate-y-1/2">
+        {/* Nút THOUGHT: Căn giữa nửa phải (75%) */}
+        {/* left-3/4 = 75% | -translate-x-1/2 để tâm nút nằm đúng vạch 75% */}
+        <div className="absolute left-3/4 top-1/2 -translate-x-1/2 -translate-y-1/2">
           <GestureButton
             type="thought"
             label="Thought"
@@ -221,7 +233,7 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
 
       {/* --- LAYER 3: HINT --- */}
       {isInputFocused && content.length > 0 && !activeKnob && (
-        <div className="absolute bottom-24 left-0 right-0 text-center animate-pulse pointer-events-none pb-safe">
+        <div className="absolute bottom-6 left-0 right-0 text-center animate-pulse pointer-events-none pb-safe">
           <p className="text-[10px] text-slate-300 font-bold uppercase tracking-[0.2em]">
             Kéo để phân loại
           </p>

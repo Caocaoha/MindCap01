@@ -1,9 +1,10 @@
 /**
- * Purpose: Thực thi ghi tệp vật lý và chốt trạng thái Database.
- * Inputs/Outputs: ExtendedIdea[] -> { success, failed }.
+ * Purpose: Thực thi ghi tệp vật lý và cập nhật Database trạng thái Synced.
+ * Inputs/Outputs: ExtendedIdea[] -> Kết quả số lượng bản ghi đã xử lý.
  * Business Rule: 
- * - Thực hiện Atomic Transaction: Chỉ update DB khi đã ghi file thành công.
- * - [FIX]: Ép kiểu Number(id) để đảm bảo khớp chính xác khóa chính của IndexedDB.
+ * - Sử dụng sourceTable để tìm đúng bảng nguồn (tasks/thoughts).
+ * - Sử dụng db.transaction để đảm bảo tính nguyên tử (ghi thành công mới update DB).
+ * - Ép kiểu Number(id) tuyệt đối để khớp khóa chính IndexedDB.
  */
 
 import { db } from '../../../database/db';
@@ -17,7 +18,7 @@ export interface ExtendedIdea {
   tags?: string[];
   isBookmarked?: boolean;
   bookmarkReason?: string;
-  _dbTable: 'tasks' | 'thoughts';
+  sourceTable: 'tasks' | 'thoughts'; // Bắt buộc từ Version 9
 }
 
 export const obsidianWriter = {
@@ -34,10 +35,11 @@ export const obsidianWriter = {
       await writable.write(fileContent);
       await writable.close();
 
-      // [ATOMIC]: Chốt trạng thái trong DB với ID đã được chuẩn hóa kiểu Number
+      // [ATOMIC UPDATE]: Chỉ thực thi khi file đã ghi thành công
       await db.transaction('rw', db.tasks, db.thoughts, async () => {
         for (const idea of ideas) {
-          const table = idea._dbTable === 'tasks' ? db.tasks : db.thoughts;
+          const table = idea.sourceTable === 'tasks' ? db.tasks : db.thoughts;
+          // [KỶ LUẬT ID]: Luôn dùng kiểu Number để khớp database
           await (table as any).update(Number(idea.id), { 
             syncStatus: 'synced', 
             updatedAt: Date.now() 
@@ -47,7 +49,7 @@ export const obsidianWriter = {
 
       return { success: ideas.length, failed: 0 };
     } catch (err) {
-      console.error("Lỗi ghi Obsidian:", err);
+      console.error("Critical Sync Error:", err);
       throw err;
     }
   }

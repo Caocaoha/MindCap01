@@ -2,12 +2,12 @@ import Dexie, { type Table } from 'dexie';
 import type { ITask, IThought, IMood, IUserProfile } from './types';
 
 /**
- * Purpose: MindCap Core Database Controller - Quản lý lưu trữ IndexedDB bằng Dexie.js.
+ * Purpose: MindCap Core Database Controller - Quản lý lưu trữ IndexedDB bằng Dexie.js (v9.0).
  * Inputs/Outputs: Khởi tạo database, thực hiện migration dữ liệu.
  * Business Rule: 
  * - Quản lý phiên bản và lược đồ lưu trữ đồng bộ.
- * - Hỗ trợ hệ thống đồng bộ Obsidian (v8) thông qua chỉ mục syncStatus.
- * - Đảm bảo tính nhất quán dữ liệu qua các hàm upgrade và initialize.
+ * - [NEW 9.0]: Tích hợp chỉ mục sourceTable để định danh tuyệt đối nguồn dữ liệu.
+ * - Đảm bảo tính nhất quán dữ liệu qua cơ chế Atomic Migration.
  */
 export class MindCapDatabase extends Dexie {
   tasks!: Table<ITask, number>;
@@ -72,7 +72,6 @@ export class MindCapDatabase extends Dexie {
 
     /**
      * [NEW] Version 7: Tích hợp Mod-Saban v4.1 (Task Chains & Archive)
-     * Thêm chỉ mục cho parentGroupId để truy vấn nhóm và archiveStatus để lọc danh sách Saban.
      */
     this.version(7).stores({
       tasks: '++id, status, createdAt, isFocusMode, scheduledFor, *tags, doneCount, targetCount, nextReviewAt, interactionScore, echoLinkCount, parentId, parentGroupId, archiveStatus', 
@@ -80,9 +79,6 @@ export class MindCapDatabase extends Dexie {
       moods: '++id, score, createdAt',
       userProfile: '++id'
     }).upgrade(trans => {
-      /**
-       * MIGRATION LOGIC: Khởi tạo giá trị mặc định cho hệ thống chuỗi và lưu trữ.
-       */
       return trans.table('tasks').toCollection().modify(task => {
         if (task.parentGroupId === undefined) task.parentGroupId = null;
         if (task.sequenceOrder === undefined) task.sequenceOrder = 0;
@@ -93,7 +89,6 @@ export class MindCapDatabase extends Dexie {
 
     /**
      * [NEW 8.0] Version 8: Tích hợp Obsidian Sync System (Phase 1)
-     * Bổ sung chỉ mục syncStatus phục vụ việc xuất dữ liệu đồng bộ.
      */
     this.version(8).stores({
       tasks: '++id, status, createdAt, isFocusMode, scheduledFor, *tags, doneCount, targetCount, nextReviewAt, interactionScore, echoLinkCount, parentId, parentGroupId, archiveStatus, syncStatus', 
@@ -101,9 +96,6 @@ export class MindCapDatabase extends Dexie {
       moods: '++id, score, createdAt',
       userProfile: '++id'
     }).upgrade(trans => {
-      /**
-       * MIGRATION LOGIC: Khởi tạo các trường dữ liệu phục vụ đồng bộ Obsidian.
-       */
       const initializeSyncData = (record: any) => {
         if (record.syncStatus === undefined) record.syncStatus = 'pending';
         if (record.title === undefined) record.title = '';
@@ -114,6 +106,30 @@ export class MindCapDatabase extends Dexie {
 
       trans.table('tasks').toCollection().modify(initializeSyncData);
       return trans.table('thoughts').toCollection().modify(initializeSyncData);
+    });
+
+    /**
+     * [NEW 9.0] Version 9: Hệ thống Kỷ luật dữ liệu & Source Traceability
+     * Bổ sung chỉ mục sourceTable để phục vụ Atomic Transaction và xử lý đồng bộ đa thiết bị.
+     */
+    this.version(9).stores({
+      tasks: '++id, status, createdAt, isFocusMode, scheduledFor, *tags, doneCount, targetCount, nextReviewAt, interactionScore, echoLinkCount, parentId, parentGroupId, archiveStatus, syncStatus, sourceTable', 
+      thoughts: '++id, type, createdAt, nextReviewAt, interactionScore, echoLinkCount, parentId, syncStatus, sourceTable',
+      moods: '++id, score, createdAt',
+      userProfile: '++id'
+    }).upgrade(trans => {
+      /**
+       * MIGRATION LOGIC: Gán nhãn nguồn vĩnh viễn cho dữ liệu cũ để phục vụ Bridge.
+       */
+      const tagTaskSource = (task: any) => {
+        if (task.sourceTable === undefined) task.sourceTable = 'tasks';
+      };
+      const tagThoughtSource = (thought: any) => {
+        if (thought.sourceTable === undefined) thought.sourceTable = 'thoughts';
+      };
+
+      trans.table('tasks').toCollection().modify(tagTaskSource);
+      return trans.table('thoughts').toCollection().modify(tagThoughtSource);
     });
   }
 }

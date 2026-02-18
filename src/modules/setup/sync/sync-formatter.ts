@@ -1,10 +1,10 @@
 /**
- * Purpose: Định dạng dữ liệu tri thức sang Markdown tổng hợp (Single-file).
- * Inputs/Outputs: ExtendedIdea[] -> string (Markdown Content).
+ * Purpose: Chuyển đổi dữ liệu ý tưởng sang định dạng Markdown tối giản.
+ * Inputs/Outputs: ExtendedIdea[] -> Chuỗi Markdown hoàn chỉnh.
  * Business Rule: 
- * - Loại bỏ Header tiêu đề mẩu tin để tệp tin sạch hơn.
- * - Tự động bóc tách và chèn Bookmark Reason nếu bản ghi có nhãn bookmark.
- * - Chuẩn hóa Metadata theo định dạng Dataview (::) để hỗ trợ truy vấn.
+ * - Loại bỏ Header tiêu đề mẩu tin (###).
+ * - Sử dụng metadata Dataview (::) và tích hợp Bookmark Reason.
+ * - Đảm bảo mỗi mẩu tin có một Block ID duy nhất.
  */
 
 import { ExtendedIdea } from './obsidian-writer';
@@ -16,8 +16,7 @@ export const syncFormatter = {
     const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
     let content = `# 📥 MindCap Export: ${dateStr} | ${timeStr}\n\n`;
-    content += `## 📊 Tổng quan phiên\n`;
-    content += `- **Số lượng:** ${ideas.length} bản ghi\n`;
+    content += `## 📊 Tổng quan phiên\n- **Số lượng:** ${ideas.length} bản ghi\n`;
     content += `- **Trạng thái:** #inbox/processing\n\n---\n\n`;
 
     content += ideas.map(idea => {

@@ -1,10 +1,10 @@
 /**
- * Purpose: Định nghĩa interface và kiểu dữ liệu cho database (v8.0).
+ * Purpose: Định nghĩa interface và kiểu dữ liệu cho database (v8.5).
  * Inputs/Outputs: N/A.
  * Business Rule: 
- * - Tích hợp hệ thống đồng bộ Obsidian (syncStatus, metadata).
- * - Hỗ trợ Smart Merge logic dựa trên timestamp updatedAt.
- * - Bảo tồn dữ liệu cũ cho tính năng T-Rail và Memory Spark.
+ * - Tích hợp hệ thống đồng bộ Obsidian với cơ chế định danh nguồn (sourceTable).
+ * - Bổ sung trạng thái 'ignored' để dứt khoát hóa quy trình Review.
+ * - Hỗ trợ Smart Merge và bảo tồn tính nhất quán dữ liệu qua Bridge.
  */
 
 // --- MODULE: INPUT & SABAN & FOCUS ---
@@ -26,8 +26,11 @@ export interface ITask {
   doneCount?: number;
   unit?: string;
 
-  // [NEW 8.0]: Obsidian Sync Fields
-  syncStatus?: 'pending' | 'ready_to_export' | 'synced';
+  // [NEW 8.5]: Obsidian Sync Fields & Traceability
+  // Bổ sung 'ignored' để hỗ trợ logic duyệt thẻ nhị phân
+  syncStatus?: 'pending' | 'ready_to_export' | 'synced' | 'ignored';
+  // Định danh bảng nguồn để tránh trùng lặp ID giữa các bảng khi Export/Import
+  sourceTable?: 'tasks' | 'thoughts';
   title?: string;
   obsidianPath?: string;
   suggestedTags?: string[];
@@ -64,8 +67,11 @@ export interface IThought {
   isBookmarked?: boolean;
   bookmarkReason?: string;
 
-  // [NEW 8.0]: Obsidian Sync Fields
-  syncStatus?: 'pending' | 'ready_to_export' | 'synced';
+  // [NEW 8.5]: Obsidian Sync Fields & Traceability
+  // Bổ sung 'ignored' để hỗ trợ logic duyệt thẻ nhị phân
+  syncStatus?: 'pending' | 'ready_to_export' | 'synced' | 'ignored';
+  // Định danh bảng nguồn để tránh trùng lặp ID giữa các bảng khi Export/Import
+  sourceTable?: 'tasks' | 'thoughts';
   title?: string;
   obsidianPath?: string;
   suggestedTags?: string[];

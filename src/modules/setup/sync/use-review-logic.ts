@@ -1,7 +1,9 @@
 /**
- * Purpose: Quản lý trạng thái duyệt và đồng bộ bộ đếm UI.
- * Inputs/Outputs: Review states and Refresh actions.
- * Business Rule: Đảm bảo số liệu Refresh đồng thời cho mọi trạng thái syncStatus.
+ * Purpose: Quản lý trạng thái duyệt thẻ và bộ đếm đồng bộ UI.
+ * Inputs/Outputs: Review items và refresh actions.
+ * Business Rule: 
+ * - Lọc dữ liệu thô từ Database và gán sourceTable tạm thời nếu thiếu.
+ * - Đồng bộ số lượng sẵn sàng (ready_to_export) lên Global Store.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -23,8 +25,10 @@ export const useReviewLogic = () => {
     ]);
     
     setReadyCount(rT.length + rTh.length);
-    setItems([...pT.map(t => ({...t, _dbTable: 'tasks'})), 
-              ...pTh.map(t => ({...t, _dbTable: 'thoughts'}))]);
+    setItems([
+      ...pT.map(t => ({...t, sourceTable: t.sourceTable || 'tasks'})), 
+      ...pTh.map(t => ({...t, sourceTable: t.sourceTable || 'thoughts'}))
+    ]);
     setLoading(false);
   }, [setReadyCount]);
 

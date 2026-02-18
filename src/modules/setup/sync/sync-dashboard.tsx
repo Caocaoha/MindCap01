@@ -1,9 +1,12 @@
 /**
- * Purpose: Giao diện điều khiển trung tâm cho tiến trình Obsidian Bridge.
- * Business Rule: Tách biệt UI và logic thực thi, hỗ trợ người dùng chọn đúng thư mục.
+ * Purpose: Giao diện điều phối và thực thi đồng bộ Obsidian Bridge.
+ * Business Rule: 
+ * - Hiển thị hộp chỉ dẫn trực quan về Root Vault.
+ * - Thực hiện xác nhận trạng thái (Refresh) sau khi ghi file thành công.
+ * - Đảm bảo dữ liệu truyền vào writer có đầy đủ thông tin sourceTable.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { triggerHaptic } from '../../../utils/haptic';
 import { useUiStore } from '../../../store/ui-store';
 import { generateExportPackage } from './export-engine';
@@ -25,11 +28,17 @@ export const SyncDashboard: React.FC = () => {
 
     try {
       triggerHaptic('heavy');
-      const result = await obsidianWriter.writeToVault(pkg.ideas as any as ExtendedIdea[]);
-      alert(`Thành công! Đã ghi ${result.success} ý tưởng.`);
+      // [FIX]: Chuyển đổi dữ liệu thô sang ExtendedIdea với sourceTable đầy đủ
+      const ideasToWrite = pkg.ideas.map((i: any) => ({
+        ...i,
+        sourceTable: i.sourceTable || (i.type ? 'thoughts' : 'tasks')
+      })) as ExtendedIdea[];
+
+      const result = await obsidianWriter.writeToVault(ideasToWrite);
+      alert(`Thành công! Đã ghi ${result.success} mẩu nhận thức.`);
       refresh();
     } catch (err) {
-      alert("Đồng bộ thất bại. Vui lòng thử lại.");
+      alert("Đồng bộ thất bại. Vui lòng kiểm tra quyền thư mục.");
     }
   };
 
@@ -46,7 +55,12 @@ export const SyncDashboard: React.FC = () => {
       <main className="flex-1 p-6 relative">
         {view === 'review' ? <ReviewStack /> : (
           <div className="space-y-6">
-            <button onClick={handleWrite} disabled={!supported} className={`w-full py-8 rounded-[2.5rem] text-[11px] font-black uppercase tracking-widest ${supported ? 'bg-purple-600 text-white shadow-2xl' : 'bg-slate-200 text-slate-400'}`}>
+            <div className="bg-amber-50 border border-amber-100 p-6 rounded-[2.5rem]">
+              <p className="text-[11px] leading-relaxed text-amber-800/80 font-bold">
+                Chọn thư mục <strong>Gốc (Root)</strong> của Vault. Hệ thống sẽ tự quản lý <code>/MindCap</code>.
+              </p>
+            </div>
+            <button onClick={handleWrite} disabled={!supported} className={`w-full py-8 rounded-[2.5rem] text-[11px] font-black uppercase tracking-widest ${supported ? 'bg-purple-600 text-white shadow-2xl active:scale-95' : 'bg-slate-200 text-slate-400'}`}>
               🚀 Write to Obsidian Vault
             </button>
             <div className="flex justify-center">

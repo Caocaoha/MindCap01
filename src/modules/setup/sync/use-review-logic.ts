@@ -1,10 +1,9 @@
 /**
- * Purpose: Điều phối logic duyệt ý tưởng và quản lý trạng thái đồng bộ.
- * Inputs/Outputs: items, loading, handleApprove, handleIgnore, refresh.
+ * Purpose: Quản lý logic duyệt thẻ và đóng băng nhãn nguồn dữ liệu.
+ * Inputs/Outputs: items, loading, handleApprove, handleIgnore.
  * Business Rule: 
- * - Lọc bản ghi 'pending' để duyệt.
- * - [MỎ NEO]: Lưu vĩnh viễn sourceTable vào DB khi người dùng nhấn Sync.
- * - Đồng bộ readyCount lên Global Store để hiển thị tại tab Sync.
+ * - [SOURCE ANCHOR]: Ghi đè vĩnh viễn sourceTable vào DB khi Approve/Ignore.
+ * - Đảm bảo dữ liệu Bridge không bao giờ mất dấu bảng gốc (tasks/thoughts).
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -19,40 +18,36 @@ export const useReviewLogic = () => {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [pTasks, pThoughts, rTasks, rThoughts] = await Promise.all([
+      const [pT, pTh, rT, rTh] = await Promise.all([
         db.tasks.where('syncStatus').equals('pending').toArray(),
         db.thoughts.where('syncStatus').equals('pending').toArray(),
         db.tasks.where('syncStatus').equals('ready_to_export').toArray(),
         db.thoughts.where('syncStatus').equals('ready_to_export').toArray()
       ]);
       
-      setReadyCount(rTasks.length + rThoughts.length);
-      
+      setReadyCount(rT.length + rTh.length);
       setItems([
-        ...pTasks.map(t => ({ ...t, sourceTable: 'tasks' })), 
-        ...pThoughts.map(t => ({ ...t, sourceTable: 'thoughts' }))
+        ...pT.map(t => ({ ...t, sourceTable: 'tasks' })), 
+        ...pTh.map(t => ({ ...t, sourceTable: 'thoughts' }))
       ]);
-    } catch (err) {
-      console.error("Refresh Error:", err);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { console.error("Refresh Error:", err); }
+    finally { setLoading(false); }
   }, [setReadyCount]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
   const handleApprove = async (id: number, table: 'tasks' | 'thoughts') => {
-    // [FIX]: Ghi đè vĩnh viễn sourceTable để không bị mất dấu khi Bridge/Export
-    await (db as any)[table].update(id, { 
+    // Ghi đè nhãn nguồn vĩnh viễn để tránh lỗi undefined khi Sync
+    await (db as any)[table].update(Number(id), { 
       syncStatus: 'ready_to_export', 
-      sourceTable: table, 
+      sourceTable: table,
       updatedAt: Date.now() 
     });
     refresh();
   };
 
   const handleIgnore = async (id: number, table: 'tasks' | 'thoughts') => {
-    await (db as any)[table].update(id, { 
+    await (db as any)[table].update(Number(id), { 
       syncStatus: 'ignored', 
       sourceTable: table,
       updatedAt: Date.now() 

@@ -1,39 +1,28 @@
-import { db } from '../../../database/db';
-import type { MindCapSyncPackage, MindCapIdea } from './types';
-
 /**
- * Purpose: Trích xuất và đóng gói dữ liệu sẵn sàng đồng bộ sang Obsidian.
- * Inputs: Truy vấn trực tiếp từ IndexedDB.
- * Outputs: Đối tượng MindCapSyncPackage sẵn sàng để chuyển sang JSON.
+ * Purpose: Truy vấn và đóng gói dữ liệu sẵn sàng xuất sang Obsidian.
+ * Inputs/Outputs: N/A -> { ideas: ExtendedIdea[] }.
  * Business Rule: 
  * - Chỉ lấy các bản ghi có syncStatus là 'ready_to_export'.
- * - Chuyển đổi ITask/IThought sang cấu trúc MindCapIdea tiêu chuẩn.
+ * - [CRITICAL]: Truy xuất kèm theo trường sourceTable từ Database.
  */
 
-export const generateExportPackage = async (): Promise<MindCapSyncPackage> => {
-  const readyTasks = await db.tasks.where('syncStatus').equals('ready_to_export').toArray();
-  const readyThoughts = await db.thoughts.where('syncStatus').equals('ready_to_export').toArray();
+import { db } from '../../../database/db';
 
-  const transformToIdea = (record: any): MindCapIdea => ({
-    id: String(record.id),
-    content: record.content,
-    rawKeywords: record.tags || [],
-    interactionScore: record.interactionScore || 0,
-    syncStatus: record.syncStatus,
-    metadata: {
-      title: record.title || '',
-      suggestedTags: record.suggestedTags || [],
-      obsidianPath: record.obsidianPath || '',
-      createdAt: record.createdAt,
-      updatedAt: record.updatedAt || record.createdAt,
-    }
-  });
+export const generateExportPackage = async () => {
+  const [readyTasks, readyThoughts] = await Promise.all([
+    db.tasks.where('syncStatus').equals('ready_to_export').toArray(),
+    db.thoughts.where('syncStatus').equals('ready_to_export').toArray()
+  ]);
+
+  // Đảm bảo mỗi bản ghi khi xuất ra luôn mang theo hộ chiếu sourceTable
+  const ideas = [
+    ...readyTasks.map(t => ({ ...t, sourceTable: t.sourceTable || 'tasks' })),
+    ...readyThoughts.map(t => ({ ...t, sourceTable: t.sourceTable || 'thoughts' }))
+  ];
 
   return {
     version: "1.0",
-    exportTimestamp: Date.now(),
-    ideas: [...readyTasks, ...readyThoughts].map(transformToIdea),
-    tagMappings: [], // Sẽ được bổ sung khi có module Tag Mapping
-    appSettings: {}
+    timestamp: Date.now(),
+    ideas
   };
 };

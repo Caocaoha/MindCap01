@@ -1,10 +1,8 @@
 /**
- * Purpose: Ghi file vật lý và chốt trạng thái 'synced' trong database.
- * Inputs/Outputs: ExtendedIdea[] -> Result.
+ * Purpose: Thực thi ghi file và chốt trạng thái 'synced' cưỡng bách.
  * Business Rule: 
- * - Sử dụng mỏ neo sourceTable để xác định đúng bảng cần cập nhật.
- * - Ép kiểu Number(id) để tránh lỗi lệch kiểu dữ liệu trên Cloudflare.
- * - Thực hiện Atomic-like update: Ghi file xong mới đổi trạng thái DB.
+ * - [FALLBACK]: Nếu không có sourceTable, tự quét ID ở cả 2 bảng.
+ * - Ép kiểu Number(id) để tránh lệch kiểu trên Cloudflare.
  */
 
 import { db } from '../../../database/db';
@@ -13,12 +11,8 @@ import { syncFormatter } from './sync-formatter';
 export interface ExtendedIdea {
   id: number;
   content: string;
-  createdAt: number;
-  interactionScore?: number;
-  tags?: string[];
-  isBookmarked?: boolean;
-  bookmarkReason?: string;
-  sourceTable: 'tasks' | 'thoughts';
+  sourceTable?: 'tasks' | 'thoughts';
+  [key: string]: any;
 }
 
 export const obsidianWriter = {
@@ -26,30 +20,30 @@ export const obsidianWriter = {
     try {
       const rootHandle = await (window as any).showDirectoryPicker();
       const folder = await rootHandle.getDirectoryHandle('MindCap', { create: true });
-      
       const fileContent = syncFormatter.formatSingleFile(ideas);
-      const fileName = `MindCap_Sync_${new Date().getTime()}.md`;
+      const fileName = `MindCap_Sync_${Date.now()}.md`;
       
       const fileHandle = await folder.getFileHandle(fileName, { create: true });
       const writable = await fileHandle.createWritable();
       await writable.write(fileContent);
       await writable.close();
 
-      // [KỶ LUẬT CẬP NHẬT]: Dựa vào sourceTable đã được đóng băng
+      // [PHÒNG THỦ]: Cập nhật trạng thái từng bản ghi
       for (const idea of ideas) {
-        const table = db.table(idea.sourceTable);
-        if (table) {
-          await table.update(Number(idea.id), { 
-            syncStatus: 'synced', 
-            updatedAt: Date.now() 
-          });
+        const numId = Number(idea.id);
+        const updateData = { syncStatus: 'synced', updatedAt: Date.now() };
+
+        if (idea.sourceTable) {
+          await (db as any)[idea.sourceTable].update(numId, updateData);
+        } else {
+          // Fallback cho bản ghi cũ: Thử cập nhật ở cả 2 bảng
+          await Promise.all([
+            db.tasks.update(numId, updateData),
+            db.thoughts.update(numId, updateData)
+          ]);
         }
       }
-
       return { success: ideas.length, failed: 0 };
-    } catch (err) {
-      console.error("Critical Writer Error:", err);
-      throw err;
-    }
+    } catch (err) { throw err; }
   }
 };

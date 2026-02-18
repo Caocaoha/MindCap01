@@ -1,3 +1,12 @@
+/**
+ * Purpose: Bộ điều khiển bố cục chính (Main Layout Controller) của ứng dụng MindCap.
+ * Inputs/Outputs: Quản lý trạng thái hiển thị của các Module dựa trên ActiveTab.
+ * Business Rule: 
+ * - Khởi tạo dữ liệu từ IndexedDB khi ứng dụng bắt đầu.
+ * - Xử lý Deep Linking để mở nhanh các bản ghi hoặc tạo liên kết.
+ * - Điều phối hiển thị giữa các phân vùng: Saban, Journey, Setup, Identity và Sync Review.
+ */
+
 import React, { useEffect } from 'react';
 import { useUiStore } from './store/ui-store';
 import { triggerHaptic } from './utils/haptic';
@@ -9,6 +18,7 @@ import { InputBar } from './modules/input/input-bar';
 import { SabanBoard } from './modules/saban/saban-board';
 import { JourneyList } from './modules/journey/journey-list';
 import { SetupPanel } from './modules/setup/setup-panel';
+import { SyncDashboard } from './modules/setup/sync/sync-dashboard';
 import { IdentityCheckin } from './modules/identity/identity-checkin';
 import { IdentityDashboard } from './modules/identity/identity-dashboard'; 
 import { EntryModal } from './modules/input/components/entry-modal';
@@ -176,6 +186,7 @@ export const App: React.FC = () => {
         {activeTab === 'journey' && <JourneyList />}
         {activeTab === 'setup' && <SetupPanel />}
         {activeTab === 'identity' && <IdentityDashboard />}
+        {activeTab === 'sync-review' && <SyncDashboard />}
         
         {activeTab === 'mind' && (
           <div className="absolute inset-0 flex flex-col">

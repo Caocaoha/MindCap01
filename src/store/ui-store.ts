@@ -1,13 +1,22 @@
+/**
+ * Purpose: Quản lý trạng thái giao diện hợp nhất (Unified UI State) và điều hướng Tab.
+ * Inputs/Outputs: Cung cấp trạng thái (state) và các hành động (actions) điều khiển UI toàn cục.
+ * Business Rule: 
+ * - Hỗ trợ phân vùng tab chính bao gồm cả hệ thống duyệt đồng bộ Obsidian (sync-review).
+ * - Tích hợp Middleware nlpListener để xử lý ngôn ngữ tự nhiên từ thanh nhập liệu.
+ * - Thực hiện Scoped Reset dữ liệu khi chuyển đổi ngữ cảnh giữa các Tab.
+ */
+
 import { create } from 'zustand';
 import { ITask, IThought } from '../database/types';
 // [NEW]: Import Middleware nlpListener để kích hoạt bộ não xử lý ngôn ngữ
 import { nlpListener } from './middleware/nlp-listener';
 
 /**
- * [STATE]: Quản lý trạng thái giao diện hợp nhất (v4.7).
- * Định nghĩa các phân vùng tab chính dựa trên PROJECT STRUCTURE.
+ * [STATE]: Quản lý trạng thái giao diện hợp nhất (v4.8).
+ * [FIX]: Bổ sung 'sync-review' để hỗ trợ hệ thống đồng bộ Obsidian.
  */
-export type ActiveTab = 'saban' | 'mind' | 'journey' | 'setup' | 'identity';
+export type ActiveTab = 'saban' | 'mind' | 'journey' | 'setup' | 'identity' | 'sync-review';
 
 interface UiState {
   // --- States từ User (BẢO TỒN 100%) ---
@@ -71,7 +80,6 @@ interface UiState {
 /**
  * [CORE STORE]: Kích hoạt nlpListener middleware.
  * [FIX FINAL]: Bọc nlpListener quanh hàm khởi tạo state.
- * Nhờ Middleware đã được fix Generic, chúng ta KHÔNG CẦN ép kiểu thủ công ở đây nữa.
  */
 export const useUiStore = create<UiState>(
   nlpListener((set) => ({

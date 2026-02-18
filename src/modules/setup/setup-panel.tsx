@@ -3,7 +3,7 @@
  * Inputs/Outputs: Giao diện người dùng (JSX.Element).
  * Business Rule: 
  * - Quản lý Export/Import JSON chuẩn và Legacy.
- * - Kích hoạt và thử nghiệm hệ thống thông báo Spark.
+ * - [NEW]: Tự động gán syncStatus: 'pending' cho dữ liệu thiếu trường này khi Import.
  * - Cung cấp lối vào cho hệ thống đồng bộ Obsidian (Sync Review).
  */
 
@@ -83,7 +83,7 @@ export const SetupPanel: React.FC = () => {
     }
   };
 
-  // --- 2. IMPORT JSON CHUẨN ---
+  // --- 2. IMPORT JSON CHUẨN (WITH SANITIZATION) ---
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -94,13 +94,24 @@ export const SetupPanel: React.FC = () => {
         const imported = JSON.parse(event.target?.result as string);
         if (!imported.data) throw new Error("Định dạng file không đúng");
 
+        // [SANITION LAYER]: Duyệt và gán 'pending' cho bản ghi thiếu syncStatus
+        const sanitizedTasks = (imported.data.tasks || []).map((t: any) => ({
+          ...t,
+          syncStatus: t.syncStatus || 'pending'
+        }));
+
+        const sanitizedThoughts = (imported.data.thoughts || []).map((t: any) => ({
+          ...t,
+          syncStatus: t.syncStatus || 'pending'
+        }));
+
         await db.transaction('rw', db.tasks, db.thoughts, db.moods, async () => {
-          await db.tasks.bulkPut(imported.data.tasks || []);
-          await db.thoughts.bulkPut(imported.data.thoughts || []);
+          await db.tasks.bulkPut(sanitizedTasks);
+          await db.thoughts.bulkPut(sanitizedThoughts);
           await db.moods.bulkPut(imported.data.moods || []);
         });
 
-        alert("Nhập dữ liệu thành công!");
+        alert("Nhập dữ liệu thành công! Toàn bộ ý tưởng đã được đưa vào hàng chờ Review.");
         triggerHaptic('success');
       } catch (err) {
         alert("Lỗi khi nhập file: " + err);
@@ -109,7 +120,7 @@ export const SetupPanel: React.FC = () => {
     reader.readAsText(file);
   };
 
-  // --- 3. IMPORT LEGACY ---
+  // --- 3. IMPORT LEGACY (WITH SANITIZATION) ---
   const handleLegacyImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -129,7 +140,8 @@ export const SetupPanel: React.FC = () => {
               wordCount: entry.content.split(/\s+/).length,
               createdAt: timestamp,
               updatedAt: timestamp,
-              recordStatus: 'success'
+              recordStatus: 'success',
+              syncStatus: 'pending' // [NEW]: Kích hoạt dữ liệu legacy sang Obsidian
             });
             await db.moods.add({ score: 0, label: 'imported', createdAt: timestamp });
           }

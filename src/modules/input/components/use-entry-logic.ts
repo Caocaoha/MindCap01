@@ -1,7 +1,9 @@
 /**
  * Purpose: Quan ly toan bo logic, trang thai va luu tru cho Entry Form.
  * Inputs/Outputs: Tra ve trang thai (State) va cac ham xu ly (Handlers) cho UI.
- * Business Rule: Xu ly logic NLP tu dong, tinh diem tuong tac va kich hoat Waterfall (>16 tu).
+ * Business Rule: 
+ * - Xu ly logic NLP tu dong, tinh diem tuong tac va kich hoat Waterfall (>16 tu).
+ * - Gan mac dinh syncStatus: 'pending' cho tat ca ban ghi moi de phuc vu dong bo Obsidian.
  */
 
 import { useState, useEffect } from 'react';
@@ -75,14 +77,32 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
       const tags = [`freq:${freq}`, isUrgent ? 'p:urgent' : '', isImportant ? 'p:important' : '', 
                     ...selectedWeekDays.map(d => `d:${d}`), ...selectedMonthDays.map(m => `m:${m}`)].filter(Boolean);
       payload = {
-        content: content.trim(), status: (initialData as ITask)?.status || 'todo',
-        createdAt: initialData?.createdAt || now, updatedAt: now, targetCount, unit: unit.trim(),
-        tags, parentId: initialData?.parentId, interactionScore: (initialData?.interactionScore || 0) + bonus,
-        lastInteractedAt: now, archiveStatus: (initialData as ITask)?.archiveStatus || 'active'
+        content: content.trim(), 
+        status: (initialData as ITask)?.status || 'todo',
+        createdAt: initialData?.createdAt || now, 
+        updatedAt: now, 
+        targetCount, 
+        unit: unit.trim(),
+        tags, 
+        parentId: initialData?.parentId, 
+        interactionScore: (initialData?.interactionScore || 0) + bonus,
+        lastInteractedAt: now, 
+        archiveStatus: (initialData as ITask)?.archiveStatus || 'active',
+        // [NEW]: Dam bao luon co syncStatus cho Obsidian Bridge
+        syncStatus: (initialData as ITask)?.syncStatus || 'pending'
       };
     } else {
-      payload = { content: content.trim(), type: 'thought', wordCount, createdAt: initialData?.createdAt || now, 
-                  updatedAt: now, parentId: initialData?.parentId, interactionScore: (initialData?.interactionScore || 0) + bonus };
+      payload = { 
+        content: content.trim(), 
+        type: 'thought', 
+        wordCount, 
+        createdAt: initialData?.createdAt || now, 
+        updatedAt: now, 
+        parentId: initialData?.parentId, 
+        interactionScore: (initialData?.interactionScore || 0) + bonus,
+        // [NEW]: Dam bao luon co syncStatus cho Obsidian Bridge
+        syncStatus: (initialData as IThought)?.syncStatus || 'pending'
+      };
     }
 
     if (onCustomSave) {
@@ -106,7 +126,7 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
     unit, setUnit, freq, setFreq, isUrgent, setIsUrgent, isImportant, setIsImportant,
     selectedWeekDays, selectedMonthDays, moodLevel, setMoodLevel,
     toggleWeekDay: (d) => setSelectedWeekDays(p => p.includes(d) ? p.filter(x => x !== d) : [...p, d]),
-    toggleMonthDay: (d) => setSelectedMonthDays(p => p.includes(d) ? p.filter(x => x !== d) : [...p, d]),
+    toggleMonthDay: (d) => setSelectedWeekDays(p => p.includes(d) ? p.filter(x => x !== d) : [...p, d]),
     handleSave, handleContentChange
   };
 };

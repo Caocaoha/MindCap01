@@ -3,9 +3,8 @@
  * Inputs/Outputs: Khởi tạo database, thực hiện migration dữ liệu.
  * Business Rule: 
  * - Quản lý phiên bản và lược đồ lưu trữ đồng bộ.
- * - [NEW 9.1]: Sửa lỗi Migration không đồng bộ trên môi trường Cloudflare/Edge.
- * - Tích hợp chỉ mục sourceTable để định danh tuyệt đối nguồn dữ liệu.
- * - Đảm bảo tính nhất quán dữ liệu qua cơ chế Atomic Migration.
+ * - [NEW 9.1]: Tích hợp chỉ mục sourceTable để định danh tuyệt đối nguồn dữ liệu.
+ * - Đảm bảo tính nhất quán dữ liệu qua cơ chế Atomic Migration trên môi trường Cloudflare.
  */
 
 import Dexie, { type Table } from 'dexie';
@@ -113,6 +112,7 @@ export class MindCapDatabase extends Dexie {
     /**
      * [NEW 9.1] Version 9: Hệ thống Kỷ luật dữ liệu & Source Traceability
      * Cập nhật cơ chế Migration bất đồng bộ để đảm bảo ổn định trên Cloudflare.
+     * Bổ sung chỉ mục sourceTable phục vụ cập nhật trạng thái đồng bộ chính xác.
      */
     this.version(9).stores({
       tasks: '++id, status, createdAt, isFocusMode, scheduledFor, *tags, doneCount, targetCount, nextReviewAt, interactionScore, echoLinkCount, parentId, parentGroupId, archiveStatus, syncStatus, sourceTable', 

@@ -1,10 +1,11 @@
 /**
- * Purpose: Định nghĩa interface và kiểu dữ liệu cho database (v8.5).
+ * Purpose: Định nghĩa interface và kiểu dữ liệu cho database (v9.1).
  * Inputs/Outputs: N/A.
  * Business Rule: 
  * - Tích hợp hệ thống đồng bộ Obsidian với cơ chế định danh nguồn (sourceTable).
  * - Bổ sung trạng thái 'ignored' để dứt khoát hóa quy trình Review.
  * - Hỗ trợ Smart Merge và bảo tồn tính nhất quán dữ liệu qua Bridge.
+ * - [NEW 9.1]: Cố định sourceTable để tránh lỗi lệch ID giữa các bảng.
  */
 
 // --- MODULE: INPUT & SABAN & FOCUS ---
@@ -26,10 +27,10 @@ export interface ITask {
   doneCount?: number;
   unit?: string;
 
-  // [NEW 8.5]: Obsidian Sync Fields & Traceability
-  // Bổ sung 'ignored' để hỗ trợ logic duyệt thẻ nhị phân
+  // [NEW 9.1]: Obsidian Sync Fields & Traceability
+  // Bổ sung 'ignored' để hỗ trợ logic duyệt thẻ nhị phân, ngăn tích tụ hàng chờ.
   syncStatus?: 'pending' | 'ready_to_export' | 'synced' | 'ignored';
-  // Định danh bảng nguồn để tránh trùng lặp ID giữa các bảng khi Export/Import
+  // Định danh bảng nguồn vĩnh viễn để lệnh update không bao giờ trượt mục tiêu.
   sourceTable?: 'tasks' | 'thoughts';
   title?: string;
   obsidianPath?: string;
@@ -67,10 +68,10 @@ export interface IThought {
   isBookmarked?: boolean;
   bookmarkReason?: string;
 
-  // [NEW 8.5]: Obsidian Sync Fields & Traceability
-  // Bổ sung 'ignored' để hỗ trợ logic duyệt thẻ nhị phân
+  // [NEW 9.1]: Obsidian Sync Fields & Traceability
+  // Bổ sung 'ignored' để hỗ trợ logic duyệt thẻ nhị phân.
   syncStatus?: 'pending' | 'ready_to_export' | 'synced' | 'ignored';
-  // Định danh bảng nguồn để tránh trùng lặp ID giữa các bảng khi Export/Import
+  // Định danh bảng nguồn vĩnh viễn phục vụ Atomic Transaction và xử lý Bridge.
   sourceTable?: 'tasks' | 'thoughts';
   title?: string;
   obsidianPath?: string;

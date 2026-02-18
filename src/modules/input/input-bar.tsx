@@ -15,6 +15,7 @@ interface InputBarProps {
  * Giai đoạn 6.35: 
  * 1. [Logic]: Loại bỏ tự động Focus. Mọi task mới đều vào Inbox (Todo).
  * 2. [Layout]: Nút Task căn giữa, Nút Thought căn phải.
+ * 3. [Fix]: Áp dụng "Vùng Cấm Bay" (touch-none) để chặn xung đột cuộn trang khi kéo nút.
  */
 export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
   // --- STORE CONNECTIONS ---
@@ -63,7 +64,6 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
         const finalTags = [...new Set([...(nlpResult.tags || []), ...gestureTags])];
         
         // [LOGIC MỚI]: Luôn luôn vào Todo (Inbox), không bao giờ tự động vào Focus.
-        // Dù có tag Urgent hay không, quyền quyết định Focus thuộc về người dùng tại Saban Board.
         const shouldEnterFocus = false; 
 
         await db.tasks.add({
@@ -141,7 +141,7 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
 
   return (
     <div 
-      className={`relative w-full h-full transition-all duration-500 ease-out bg-white/95 backdrop-blur-xl border-t border-slate-200 ${
+      className={`relative w-full h-full transition-all duration-500 ease-out bg-white/95 backdrop-blur-xl border-t border-slate-200 flex flex-col ${
         isInputFocused 
           ? 'items-start pt-6 rounded-t-none pb-safe' 
           : 'pb-2 rounded-t-[24px] shadow-[0_-4px_20px_rgba(0,0,0,0.05)]' 
@@ -186,16 +186,21 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
         )}
       </div>
 
-      {/* --- LAYER 2: CONTROL DECK (Bố cục Anchor Layout) --- */}
+      {/* --- LAYER 2: CONTROL DECK (Split Layout + Anti-Scroll Zone) --- */}
       <div 
-        className={`absolute bottom-0 left-0 right-0 h-[40%] w-full transition-all duration-500 transform ${
+        className={`relative w-full h-[40%] mt-auto transition-all duration-500 transform touch-none ${
           isInputFocused && content.length > 0 
             ? 'opacity-100 translate-y-0 pb-safe' 
             : 'opacity-0 translate-y-20 pointer-events-none'
         }`}
+        // [FIX]: Chặn triệt để sự kiện cuộn từ trình duyệt ở cấp độ Container cha
+        onTouchMove={(e) => e.preventDefault()}
       >
-        {/* Nút TASK: Căn giữa tuyệt đối */}
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+        {/* Nút TASK: Căn giữa nửa trái (25%) */}
+        <div 
+            className="absolute left-1/4 top-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 flex items-center justify-center touch-none"
+            onTouchStart={(e) => e.stopPropagation()}
+        >
           <GestureButton
             type="task"
             label="Task"
@@ -206,8 +211,11 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
           />
         </div>
 
-        {/* Nút THOUGHT: Căn phải (cách lề 24px) */}
-        <div className="absolute right-6 top-1/2 -translate-y-1/2">
+        {/* Nút THOUGHT: Căn giữa nửa phải (75%) */}
+        <div 
+            className="absolute left-3/4 top-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 flex items-center justify-center touch-none"
+            onTouchStart={(e) => e.stopPropagation()}
+        >
           <GestureButton
             type="thought"
             label="Thought"

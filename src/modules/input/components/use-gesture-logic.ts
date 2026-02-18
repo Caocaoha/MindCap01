@@ -45,6 +45,12 @@ export const useGestureLogic = ({ type, onSelect, onInteractionStart, onInteract
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
+    // [FIX]: Ngăn chặn hành vi cuộn (Scroll) hoặc Pull-to-refresh của trình duyệt khi đang kéo
+    if (isDragging) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
     if (!isDragging || !startPosRef.current) return;
 
     const dx = e.clientX - startPosRef.current.x;

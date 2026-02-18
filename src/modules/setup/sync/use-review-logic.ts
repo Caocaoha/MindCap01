@@ -1,3 +1,9 @@
+/**
+ * Purpose: Quản lý trạng thái duyệt và đồng bộ bộ đếm UI.
+ * Inputs/Outputs: Review states and Refresh actions.
+ * Business Rule: Đảm bảo số liệu Refresh đồng thời cho mọi trạng thái syncStatus.
+ */
+
 import { useState, useEffect, useCallback } from 'react';
 import { db } from '../../../database/db';
 import { useUiStore } from '../../../store/ui-store';
@@ -9,23 +15,16 @@ export const useReviewLogic = () => {
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    // [FIX]: Truy vấn đồng thời cả Pending và Ready để khớp số liệu tuyệt đối
-    const [pTasks, pThoughts, rTasks, rThoughts] = await Promise.all([
+    const [pT, pTh, rT, rTh] = await Promise.all([
       db.tasks.where('syncStatus').equals('pending').toArray(),
       db.thoughts.where('syncStatus').equals('pending').toArray(),
       db.tasks.where('syncStatus').equals('ready_to_export').toArray(),
       db.thoughts.where('syncStatus').equals('ready_to_export').toArray()
     ]);
     
-    // Cập nhật số liệu Sẵn sàng (SyncDashboard dùng biến này)
-    setReadyCount(rTasks.length + rThoughts.length);
-    
-    // Cập nhật danh sách chờ duyệt
-    setItems([
-      ...pTasks.map(t => ({...t, _dbTable: 'tasks'})), 
-      ...pThoughts.map(t => ({...t, _dbTable: 'thoughts'}))
-    ]);
-    
+    setReadyCount(rT.length + rTh.length);
+    setItems([...pT.map(t => ({...t, _dbTable: 'tasks'})), 
+              ...pTh.map(t => ({...t, _dbTable: 'thoughts'}))]);
     setLoading(false);
   }, [setReadyCount]);
 

@@ -1,15 +1,16 @@
 /**
- * Purpose: Thực thi ghi dữ liệu tri thức vào Obsidian Vault với tính nguyên tử cao.
+ * Purpose: Thực thi ghi tệp vật lý và chốt trạng thái Database.
+ * Inputs/Outputs: ExtendedIdea[] -> { success, failed }.
  * Business Rule: 
- * - Sử dụng Transaction để đảm bảo không sót bản ghi, không trùng lặp.
- * - [FIX]: Đồng bộ kiểu dữ liệu ID (Number) trực tiếp từ Database JSON.
- * - [NEW]: Template Markdown tối giản, tích hợp sâu phần Bookmark.
+ * - Thực hiện Atomic Transaction: Chỉ update DB khi đã ghi file thành công.
+ * - [FIX]: Ép kiểu Number(id) để đảm bảo khớp chính xác khóa chính của IndexedDB.
  */
 
 import { db } from '../../../database/db';
+import { syncFormatter } from './sync-formatter';
 
 export interface ExtendedIdea {
-  id: number; // [FIX]: Sử dụng kiểu Number đồng bộ với ID thực trong JSON
+  id: number;
   content: string;
   createdAt: number;
   interactionScore?: number;
@@ -22,51 +23,22 @@ export interface ExtendedIdea {
 export const obsidianWriter = {
   async writeToVault(ideas: ExtendedIdea[]): Promise<{ success: number; failed: number }> {
     try {
-      // 1. Yêu cầu chọn Vault gốc
       const rootHandle = await (window as any).showDirectoryPicker();
-      const mindCapFolder = await rootHandle.getDirectoryHandle('MindCap', { create: true });
-
-      const now = new Date();
-      const dateStr = now.toISOString().split('T')[0];
-      const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      const folder = await rootHandle.getDirectoryHandle('MindCap', { create: true });
       
-      // 2. Khởi tạo Nội dung theo Template mới (Bỏ Header mẩu tin)
-      let fileContent = `# 📥 MindCap Export: ${dateStr} | ${timeStr}\n\n`;
-      fileContent += `## 📊 Tổng quan phiên\n`;
-      fileContent += `- **Số lượng:** ${ideas.length} bản ghi\n`;
-      fileContent += `- **Trạng thái:** #inbox/processing\n\n---\n\n`;
-
-      for (const idea of ideas) {
-        const tags = (idea.tags || []).map((t: string) => "#" + t).join(' ') || '#uncategorized';
-        const shortId = Math.random().toString(36).substring(2, 8);
-
-        // [TEMPLATE MỚI]: Tập trung vào Metadata và Content
-        fileContent += `- **ID::** ${idea.id}\n`;
-        fileContent += `- **Score::** ${idea.interactionScore || 0}\n`;
-        fileContent += `- **Topic::** ${tags}\n`;
-        fileContent += `- **Content:**\n    > ${idea.content.replace(/\n/g, '\n    > ')}\n`;
-        
-        // [NEW]: Thêm phần bookmark nếu có
-        if (idea.isBookmarked && idea.bookmarkReason) {
-          fileContent += `- **Bookmark:** *${idea.bookmarkReason}*\n`;
-        }
-        
-        fileContent += `\n^block-${shortId}\n\n---\n\n`;
-      }
-
-      // 3. Ghi tệp vật lý
-      const fileName = `MindCap_Sync_${dateStr.replace(/-/g, '')}_${timeStr.replace(/:/g, '')}.md`;
-      const fileHandle = await mindCapFolder.getFileHandle(fileName, { create: true });
+      const fileContent = syncFormatter.formatSingleFile(ideas);
+      const fileName = `MindCap_Sync_${new Date().getTime()}.md`;
+      
+      const fileHandle = await folder.getFileHandle(fileName, { create: true });
       const writable = await fileHandle.createWritable();
       await writable.write(fileContent);
       await writable.close();
 
-      // 4. [ATOMIC UPDATE]: Sử dụng Transaction để cập nhật trạng thái DB
-      // Đảm bảo cập nhật chính xác ID kiểu Number từ JSON
+      // [ATOMIC]: Chốt trạng thái trong DB với ID đã được chuẩn hóa kiểu Number
       await db.transaction('rw', db.tasks, db.thoughts, async () => {
         for (const idea of ideas) {
           const table = idea._dbTable === 'tasks' ? db.tasks : db.thoughts;
-          await (table as any).update(idea.id, { 
+          await (table as any).update(Number(idea.id), { 
             syncStatus: 'synced', 
             updatedAt: Date.now() 
           });
@@ -75,7 +47,7 @@ export const obsidianWriter = {
 
       return { success: ideas.length, failed: 0 };
     } catch (err) {
-      console.error("Lỗi đồng bộ tri thức:", err);
+      console.error("Lỗi ghi Obsidian:", err);
       throw err;
     }
   }

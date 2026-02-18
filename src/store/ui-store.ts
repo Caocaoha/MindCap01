@@ -5,6 +5,7 @@
  * - Hỗ trợ phân vùng tab chính bao gồm cả hệ thống duyệt đồng bộ Obsidian (sync-review).
  * - Tích hợp Middleware nlpListener để xử lý ngôn ngữ tự nhiên từ thanh nhập liệu.
  * - Thực hiện Scoped Reset dữ liệu khi chuyển đổi ngữ cảnh giữa các Tab.
+ * - [NEW]: Cung cấp nguồn sự thật duy nhất cho số lượng bản ghi sẵn sàng đồng bộ Obsidian.
  */
 
 import { create } from 'zustand';
@@ -13,7 +14,7 @@ import { ITask, IThought } from '../database/types';
 import { nlpListener } from './middleware/nlp-listener';
 
 /**
- * [STATE]: Quản lý trạng thái giao diện hợp nhất (v4.8).
+ * [STATE]: Quản lý trạng thái giao diện hợp nhất (v4.9).
  * [FIX]: Bổ sung 'sync-review' để hỗ trợ hệ thống đồng bộ Obsidian.
  */
 export type ActiveTab = 'saban' | 'mind' | 'journey' | 'setup' | 'identity' | 'sync-review';
@@ -42,6 +43,10 @@ interface UiState {
   parsedQuantity: number | null;
   parsedUnit: string | null;
   parsedFrequency: string | null;
+
+  // --- [NEW]: States cho Obsidian Sync ---
+  // Lưu trữ số lượng bản ghi đã được duyệt (ready_to_export) để đồng bộ hiển thị.
+  readyCount: number;
 
   // --- Actions từ User (BẢO TỒN 100%) ---
   toggleSidebar: () => void;
@@ -75,7 +80,12 @@ interface UiState {
   // --- [NEW]: Action cập nhật dữ liệu NLP bóc tách ---
   // Nhận dữ liệu từ Ninja NLP Listener để cập nhật vào Form.
   setParsedData: (data: { quantity?: number; unit?: string; frequency?: string } | null) => void;
+
+  // --- [NEW]: Action cập nhật số lượng chờ Sync ---
+  setReadyCount: (count: number) => void;
 }
+
+
 
 /**
  * [CORE STORE]: Kích hoạt nlpListener middleware.
@@ -103,7 +113,10 @@ export const useUiStore = create<UiState>(
     parsedUnit: null,
     parsedFrequency: null,
 
-    // Triển khai Actions bảo tồn logic của User
+    // [NEW]: Khởi tạo mặc định cho Obsidian Sync
+    readyCount: 0,
+
+    // Tri triển khai Actions bảo tồn logic của User
     toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
     setFocusMode: (isActive) => set({ isFocusModeActive: isActive }),
     setTyping: (isTyping) => set({ isTyping }),
@@ -166,5 +179,8 @@ export const useUiStore = create<UiState>(
       parsedUnit: data?.unit ?? null,
       parsedFrequency: data?.frequency ?? null
     }),
+
+    // [NEW]: Triển khai cập nhật số lượng chờ Sync Obsidian
+    setReadyCount: (count) => set({ readyCount: count }),
   }), 'ui-store')
 );

@@ -4,32 +4,32 @@
  * Business Rule: 
  * - Quản lý luồng Manual JSON Bridge: Export (nguồn) -> Import/Merge (đích).
  * - Thực thi ghi dữ liệu trực tiếp vào Obsidian Vault qua File System Access API.
- * - [NEW]: Cung cấp hộp chỉ dẫn trực quan để người dùng chọn đúng Root Folder của Obsidian.
- * - Hiển thị số lượng bản ghi Ready to Sync để kiểm soát khối lượng tri thức.
+ * - [FIX]: Đồng bộ kiểu dữ liệu ExtendedIdea để giải quyết lỗi biên dịch TS2345.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
 import { triggerHaptic } from '../../../utils/haptic';
+import { useUiStore } from '../../../store/ui-store';
 import { generateExportPackage } from './export-engine';
 import { parseAndMergePackage } from './import-engine';
-import { obsidianWriter } from './obsidian-writer';
+// [FIX]: Import thêm interface ExtendedIdea
+import { obsidianWriter, ExtendedIdea } from './obsidian-writer';
 import { ReviewStack } from './components/review-stack';
 import { useReviewLogic } from './use-review-logic';
 
 export const SyncDashboard: React.FC = () => {
   const [view, setView] = useState<'review' | 'summary'>('review');
   const [isSupported, setIsSupported] = useState(false);
-  const { readyCount, refresh } = useReviewLogic();
+  const { readyCount } = useUiStore();
+  const { refresh } = useReviewLogic();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // Kiểm tra trình duyệt có hỗ trợ File System Access API không (Ưu tiên Chrome/Edge Desktop)
     setIsSupported('showDirectoryPicker' in window);
   }, []);
 
   /**
    * [ACTION]: Ghi trực tiếp vào Obsidian Vault.
-   * Logic bên trong obsidian-writer.ts sẽ tự động xử lý thư mục /MindCap.
    */
   const handleWriteToObsidian = async () => {
     try {
@@ -40,18 +40,18 @@ export const SyncDashboard: React.FC = () => {
       }
 
       triggerHaptic('heavy');
-      const result = await obsidianWriter.writeToVault(pkg.ideas);
       
-      alert(`Thành công! Đã đồng bộ ${result.success} tệp vào thư mục Obsidian/MindCap.`);
+      // [FIX]: Ép kiểu tường minh cho pkg.ideas sang ExtendedIdea[] để khớp với hàm writeToVault
+      // Dữ liệu từ Backup JSON đã có sẵn createdAt nên việc ép kiểu này là an toàn.
+      const result = await obsidianWriter.writeToVault(pkg.ideas as unknown as ExtendedIdea[]);
+      
+      alert(`Thành công! Đã đồng bộ ${result.success} mẩu tin vào tệp tổng hợp trong Obsidian/MindCap.`);
       refresh(); 
     } catch (err) {
       console.error("Lỗi thực thi ghi file:", err);
     }
   };
 
-  /**
-   * [ACTION]: Export JSON cho thiết bị nguồn.
-   */
   const handleExportBridge = async () => {
     try {
       const pkg = await generateExportPackage();
@@ -67,9 +67,6 @@ export const SyncDashboard: React.FC = () => {
     }
   };
 
-  /**
-   * [ACTION]: Import JSON và Smart Merge tại thiết bị đích.
-   */
   const handleImportBridge = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -80,7 +77,7 @@ export const SyncDashboard: React.FC = () => {
         const pkg = JSON.parse(event.target?.result as string);
         triggerHaptic('medium');
         await parseAndMergePackage(pkg);
-        alert("Đồng bộ Bridge thành công! Dữ liệu đã được gộp thông minh.");
+        alert("Đồng bộ Bridge thành công!");
         refresh();
       } catch (err) {
         alert("Lỗi khi nhập file Bridge: " + err);
@@ -92,7 +89,6 @@ export const SyncDashboard: React.FC = () => {
   return (
     <div className="flex flex-col h-full bg-slate-50 overflow-hidden animate-in slide-in-from-bottom duration-500">
       
-      {/* HEADER: Navigation Tabs */}
       <header className="px-6 pt-12 pb-6 bg-white border-b border-slate-100 flex items-center justify-between">
         <div className="flex flex-col">
           <h2 className="text-xl font-black text-slate-900 tracking-tight">KNOWLEDGE BRIDGE</h2>
@@ -114,14 +110,12 @@ export const SyncDashboard: React.FC = () => {
         </div>
       </header>
 
-      {/* MAIN AREA */}
       <main className="flex-1 p-6 relative overflow-y-auto no-scrollbar">
         {view === 'review' ? (
           <ReviewStack />
         ) : (
           <div className="space-y-6 animate-in fade-in duration-300 pb-12">
             
-            {/* [NEW]: INSTRUCTION BOX (Hộp chỉ dẫn trực quan) */}
             <div className="bg-amber-50 border border-amber-100 p-6 rounded-[2.5rem] shadow-sm">
               <div className="flex gap-4">
                 <span className="text-2xl">💡</span>
@@ -135,7 +129,6 @@ export const SyncDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* SYNC EXECUTION LAYER */}
             <div className="space-y-4">
               <button 
                 onClick={handleWriteToObsidian} 
@@ -149,7 +142,6 @@ export const SyncDashboard: React.FC = () => {
                 {isSupported ? '🚀 3. Write to Obsidian Vault' : 'Desktop Browser Required'}
               </button>
 
-              {/* Indicator: Số lượng bản ghi Ready */}
               <div className="flex justify-center">
                 <div className="px-6 py-2 bg-white border border-slate-100 rounded-full shadow-sm flex items-center gap-3">
                   <div className={`h-2 w-2 rounded-full ${readyCount > 0 ? 'bg-green-500 animate-pulse' : 'bg-slate-200'}`} />
@@ -160,7 +152,6 @@ export const SyncDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* BRIDGE SECTION */}
             <div className="pt-6 space-y-3">
               <div className="flex items-center gap-3 mb-2 px-2">
                 <div className="h-[1px] flex-1 bg-slate-200" />

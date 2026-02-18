@@ -1,6 +1,10 @@
 /**
- * [CORE]: Định nghĩa interface và kiểu dữ liệu cho database (v3.8)
- * Giai đoạn 6.21: Nâng cấp IThought để hỗ trợ tính năng T-Rail (Thought + Mood).
+ * Purpose: Định nghĩa interface và kiểu dữ liệu cho database (v8.0).
+ * Inputs/Outputs: N/A.
+ * Business Rule: 
+ * - Tích hợp hệ thống đồng bộ Obsidian (syncStatus, metadata).
+ * - Hỗ trợ Smart Merge logic dựa trên timestamp updatedAt.
+ * - Bảo tồn dữ liệu cũ cho tính năng T-Rail và Memory Spark.
  */
 
 // --- MODULE: INPUT & SABAN & FOCUS ---
@@ -21,6 +25,12 @@ export interface ITask {
   targetCount?: number;
   doneCount?: number;
   unit?: string;
+
+  // [NEW 8.0]: Obsidian Sync Fields
+  syncStatus?: 'pending' | 'ready_to_export' | 'synced';
+  title?: string;
+  obsidianPath?: string;
+  suggestedTags?: string[];
 
   // Memory Spark & Widget Fields
   nextReviewAt?: number; 
@@ -53,6 +63,12 @@ export interface IThought {
   updatedAt?: number; 
   isBookmarked?: boolean;
   bookmarkReason?: string;
+
+  // [NEW 8.0]: Obsidian Sync Fields
+  syncStatus?: 'pending' | 'ready_to_export' | 'synced';
+  title?: string;
+  obsidianPath?: string;
+  suggestedTags?: string[];
 
   /**
    * [NEW 6.21]: Trường mood (Tùy chọn).

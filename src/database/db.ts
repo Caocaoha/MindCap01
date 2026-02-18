@@ -2,8 +2,12 @@ import Dexie, { type Table } from 'dexie';
 import type { ITask, IThought, IMood, IUserProfile } from './types';
 
 /**
- * [DATABASE]: MindCap Core Database Controller.
- * Quản lý phiên bản và chỉ mục dữ liệu để tối ưu hóa Candidate Pooling cho Widget.
+ * Purpose: MindCap Core Database Controller - Quản lý lưu trữ IndexedDB bằng Dexie.js.
+ * Inputs/Outputs: Khởi tạo database, thực hiện migration dữ liệu.
+ * Business Rule: 
+ * - Quản lý phiên bản và lược đồ lưu trữ đồng bộ.
+ * - Hỗ trợ hệ thống đồng bộ Obsidian (v8) thông qua chỉ mục syncStatus.
+ * - Đảm bảo tính nhất quán dữ liệu qua các hàm upgrade và initialize.
  */
 export class MindCapDatabase extends Dexie {
   tasks!: Table<ITask, number>;
@@ -85,6 +89,31 @@ export class MindCapDatabase extends Dexie {
         if (task.archiveStatus === undefined) task.archiveStatus = 'active';
         if (task.completionLog === undefined) task.completionLog = [];
       });
+    });
+
+    /**
+     * [NEW 8.0] Version 8: Tích hợp Obsidian Sync System (Phase 1)
+     * Bổ sung chỉ mục syncStatus phục vụ việc xuất dữ liệu đồng bộ.
+     */
+    this.version(8).stores({
+      tasks: '++id, status, createdAt, isFocusMode, scheduledFor, *tags, doneCount, targetCount, nextReviewAt, interactionScore, echoLinkCount, parentId, parentGroupId, archiveStatus, syncStatus', 
+      thoughts: '++id, type, createdAt, nextReviewAt, interactionScore, echoLinkCount, parentId, syncStatus',
+      moods: '++id, score, createdAt',
+      userProfile: '++id'
+    }).upgrade(trans => {
+      /**
+       * MIGRATION LOGIC: Khởi tạo các trường dữ liệu phục vụ đồng bộ Obsidian.
+       */
+      const initializeSyncData = (record: any) => {
+        if (record.syncStatus === undefined) record.syncStatus = 'pending';
+        if (record.title === undefined) record.title = '';
+        if (record.obsidianPath === undefined) record.obsidianPath = '';
+        if (record.suggestedTags === undefined) record.suggestedTags = [];
+        if (record.updatedAt === undefined) record.updatedAt = record.createdAt || Date.now();
+      };
+
+      trans.table('tasks').toCollection().modify(initializeSyncData);
+      return trans.table('thoughts').toCollection().modify(initializeSyncData);
     });
   }
 }

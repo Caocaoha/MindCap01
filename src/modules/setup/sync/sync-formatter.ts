@@ -1,10 +1,10 @@
 /**
- * Purpose: Chuyển đổi dữ liệu ý tưởng sang định dạng Markdown tối giản.
- * Inputs/Outputs: ExtendedIdea[] -> Chuỗi Markdown hoàn chỉnh.
+ * Purpose: Định dạng mảng ý tưởng thành nội dung Markdown tổng hợp.
+ * Inputs/Outputs: ExtendedIdea[] -> string.
  * Business Rule: 
  * - Loại bỏ Header tiêu đề mẩu tin (###).
- * - Sử dụng metadata Dataview (::) và tích hợp Bookmark Reason.
- * - Đảm bảo mỗi mẩu tin có một Block ID duy nhất.
+ * - Metadata định dạng Dataview (::).
+ * - Tích hợp Bookmark trực tiếp dưới Content nếu tồn tại.
  */
 
 import { ExtendedIdea } from './obsidian-writer';

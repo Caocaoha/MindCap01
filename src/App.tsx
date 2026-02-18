@@ -5,6 +5,7 @@
  * - Khởi tạo dữ liệu từ IndexedDB khi ứng dụng bắt đầu.
  * - Xử lý Deep Linking để mở nhanh các bản ghi hoặc tạo liên kết.
  * - Điều phối hiển thị giữa các phân vùng: Saban, Journey, Setup, Identity và Sync Review.
+ * - [NEW]: Tích hợp GlobalToast để hiển thị thông báo tương tác toàn hệ thống.
  */
 
 import React, { useEffect } from 'react';
@@ -24,8 +25,9 @@ import { IdentityDashboard } from './modules/identity/identity-dashboard';
 import { EntryModal } from './modules/input/components/entry-modal';
 import { SparkNotification } from './modules/spark/components/spark-notification';
 import { UniversalEditModal } from './modules/input/components/universal-edit-modal';
-// [NEW]: Import BottomNav component
 import { BottomNav } from './components/shared/bottom-nav';
+// [NEW]: Import GlobalToast cho hệ thống thông báo tương tác chính giữa màn hình
+import { GlobalToast } from './components/shared/global-toast';
 
 /**
  * [APP]: Main Layout Controller.
@@ -220,10 +222,14 @@ export const App: React.FC = () => {
         <BottomNav />
       </footer>
 
+      {/* OVERLAYS & MODALS */}
       <IdentityCheckin />
       <EntryModal />
       <SparkNotification />
       <UniversalEditModal />
+      
+      {/* [NEW]: Global Toast Component hiển thị ở lớp cao nhất */}
+      <GlobalToast />
     </div>
   );
 };

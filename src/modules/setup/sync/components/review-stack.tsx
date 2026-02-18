@@ -1,3 +1,9 @@
+/**
+ * Purpose: Hiển thị chồng thẻ duyệt ý tưởng với hiệu ứng quẹt.
+ * Inputs/Outputs: Sử dụng data từ useReviewLogic.
+ * Business Rule: Mapping hành động quẹt trái/phải vào logic Ignore/Approve.
+ */
+
 import React, { useState } from 'react';
 import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { useReviewLogic } from '../use-review-logic';
@@ -13,6 +19,7 @@ const cardVariants: Variants = {
 };
 
 export const ReviewStack: React.FC = () => {
+  // Gọi Hook và lấy các hàm xử lý
   const { items, loading, handleApprove, handleIgnore } = useReviewLogic();
   const [exitDir, setExitDir] = useState<Record<number, 'sync' | 'ignore'>>({});
 
@@ -22,7 +29,13 @@ export const ReviewStack: React.FC = () => {
     else handleIgnore(id, table);
   };
 
-  if (loading || items.length === 0) return <div className="h-[500px] flex items-center justify-center text-[10px] font-black opacity-20 uppercase tracking-widest">Sạch sẽ</div>;
+  if (loading || items.length === 0) {
+    return (
+      <div className="h-[500px] flex items-center justify-center text-[10px] font-black opacity-20 uppercase tracking-[0.5em]">
+        Sạch sẽ
+      </div>
+    );
+  }
 
   const topItem = items[0];
 
@@ -39,14 +52,14 @@ export const ReviewStack: React.FC = () => {
           exit="exit"
           drag="x"
           onDragEnd={(_, info) => {
-            if (info.offset.x > 100) performAction(topItem.id, 'sync', topItem._dbTable);
-            else if (info.offset.x < -100) performAction(topItem.id, 'ignore', topItem._dbTable);
+            if (info.offset.x > 100) performAction(topItem.id, 'sync', topItem.sourceTable);
+            else if (info.offset.x < -100) performAction(topItem.id, 'ignore', topItem.sourceTable);
           }}
         >
           <ReviewCard 
             item={topItem} 
-            onIgnore={() => performAction(topItem.id, 'ignore', topItem._dbTable)}
-            onApprove={() => performAction(topItem.id, 'sync', topItem._dbTable)}
+            onIgnore={() => performAction(topItem.id, 'ignore', topItem.sourceTable)}
+            onApprove={() => performAction(topItem.id, 'sync', topItem.sourceTable)}
           />
         </motion.div>
       </AnimatePresence>

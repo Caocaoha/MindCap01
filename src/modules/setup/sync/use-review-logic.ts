@@ -1,9 +1,9 @@
 /**
- * Purpose: Quản lý trạng thái duyệt thẻ và bộ đếm đồng bộ UI.
- * Inputs/Outputs: Review items và refresh actions.
+ * Purpose: Quản lý logic duyệt thẻ và đồng bộ bộ đếm UI (v1.8).
+ * Inputs/Outputs: items, loading, handleApprove, handleIgnore, refresh.
  * Business Rule: 
- * - Lọc dữ liệu thô từ Database và gán sourceTable tạm thời nếu thiếu.
- * - Đồng bộ số lượng sẵn sàng (ready_to_export) lên Global Store.
+ * - Lọc dữ liệu từ Database và đồng bộ trạng thái ready_to_export.
+ * - [FIX]: Xuất đầy đủ các hàm xử lý để Component có thể sử dụng.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -17,19 +17,26 @@ export const useReviewLogic = () => {
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const [pT, pTh, rT, rTh] = await Promise.all([
-      db.tasks.where('syncStatus').equals('pending').toArray(),
-      db.thoughts.where('syncStatus').equals('pending').toArray(),
-      db.tasks.where('syncStatus').equals('ready_to_export').toArray(),
-      db.thoughts.where('syncStatus').equals('ready_to_export').toArray()
-    ]);
-    
-    setReadyCount(rT.length + rTh.length);
-    setItems([
-      ...pT.map(t => ({...t, sourceTable: t.sourceTable || 'tasks'})), 
-      ...pTh.map(t => ({...t, sourceTable: t.sourceTable || 'thoughts'}))
-    ]);
-    setLoading(false);
+    try {
+      if (!db.isOpen()) await db.open();
+
+      const [pT, pTh, rT, rTh] = await Promise.all([
+        db.tasks.where('syncStatus').equals('pending').toArray(),
+        db.thoughts.where('syncStatus').equals('pending').toArray(),
+        db.tasks.where('syncStatus').equals('ready_to_export').toArray(),
+        db.thoughts.where('syncStatus').equals('ready_to_export').toArray()
+      ]);
+      
+      setReadyCount(rT.length + rTh.length);
+      setItems([
+        ...pT.map(t => ({...t, sourceTable: t.sourceTable || 'tasks'})), 
+        ...pTh.map(t => ({...t, sourceTable: t.sourceTable || 'thoughts'}))
+      ]);
+    } catch (err) {
+      console.error("Lỗi Refresh DB:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [setReadyCount]);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -44,5 +51,6 @@ export const useReviewLogic = () => {
     refresh();
   };
 
+  // [FIX]: Đảm bảo xuất đầy đủ các thuộc tính để tránh lỗi Property does not exist
   return { items, loading, handleApprove, handleIgnore, refresh };
 };

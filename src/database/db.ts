@@ -1,14 +1,16 @@
-import Dexie, { type Table } from 'dexie';
-import type { ITask, IThought, IMood, IUserProfile } from './types';
-
 /**
- * Purpose: MindCap Core Database Controller - Quản lý lưu trữ IndexedDB bằng Dexie.js (v9.0).
+ * Purpose: MindCap Core Database Controller - Quản lý lưu trữ IndexedDB bằng Dexie.js (v9.1).
  * Inputs/Outputs: Khởi tạo database, thực hiện migration dữ liệu.
  * Business Rule: 
  * - Quản lý phiên bản và lược đồ lưu trữ đồng bộ.
- * - [NEW 9.0]: Tích hợp chỉ mục sourceTable để định danh tuyệt đối nguồn dữ liệu.
+ * - [NEW 9.1]: Sửa lỗi Migration không đồng bộ trên môi trường Cloudflare/Edge.
+ * - Tích hợp chỉ mục sourceTable để định danh tuyệt đối nguồn dữ liệu.
  * - Đảm bảo tính nhất quán dữ liệu qua cơ chế Atomic Migration.
  */
+
+import Dexie, { type Table } from 'dexie';
+import type { ITask, IThought, IMood, IUserProfile } from './types';
+
 export class MindCapDatabase extends Dexie {
   tasks!: Table<ITask, number>;
   thoughts!: Table<IThought, number>;
@@ -109,27 +111,27 @@ export class MindCapDatabase extends Dexie {
     });
 
     /**
-     * [NEW 9.0] Version 9: Hệ thống Kỷ luật dữ liệu & Source Traceability
-     * Bổ sung chỉ mục sourceTable để phục vụ Atomic Transaction và xử lý đồng bộ đa thiết bị.
+     * [NEW 9.1] Version 9: Hệ thống Kỷ luật dữ liệu & Source Traceability
+     * Cập nhật cơ chế Migration bất đồng bộ để đảm bảo ổn định trên Cloudflare.
      */
     this.version(9).stores({
       tasks: '++id, status, createdAt, isFocusMode, scheduledFor, *tags, doneCount, targetCount, nextReviewAt, interactionScore, echoLinkCount, parentId, parentGroupId, archiveStatus, syncStatus, sourceTable', 
       thoughts: '++id, type, createdAt, nextReviewAt, interactionScore, echoLinkCount, parentId, syncStatus, sourceTable',
       moods: '++id, score, createdAt',
       userProfile: '++id'
-    }).upgrade(trans => {
+    }).upgrade(async (trans) => {
       /**
        * MIGRATION LOGIC: Gán nhãn nguồn vĩnh viễn cho dữ liệu cũ để phục vụ Bridge.
+       * Sử dụng Promise.all để đảm bảo cả hai bảng được xử lý xong trước khi kết thúc transaction.
        */
-      const tagTaskSource = (task: any) => {
-        if (task.sourceTable === undefined) task.sourceTable = 'tasks';
-      };
-      const tagThoughtSource = (thought: any) => {
-        if (thought.sourceTable === undefined) thought.sourceTable = 'thoughts';
-      };
-
-      trans.table('tasks').toCollection().modify(tagTaskSource);
-      return trans.table('thoughts').toCollection().modify(tagThoughtSource);
+      await Promise.all([
+        trans.table('tasks').toCollection().modify(task => {
+          if (task.sourceTable === undefined) task.sourceTable = 'tasks';
+        }),
+        trans.table('thoughts').toCollection().modify(thought => {
+          if (thought.sourceTable === undefined) thought.sourceTable = 'thoughts';
+        })
+      ]);
     });
   }
 }

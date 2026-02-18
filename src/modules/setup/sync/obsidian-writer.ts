@@ -1,10 +1,6 @@
 /**
- * Purpose: Thực thi ghi tệp vật lý và cập nhật Database trạng thái Synced.
- * Inputs/Outputs: ExtendedIdea[] -> Kết quả số lượng bản ghi đã xử lý.
- * Business Rule: 
- * - Sử dụng sourceTable để tìm đúng bảng nguồn (tasks/thoughts).
- * - Sử dụng db.transaction để đảm bảo tính nguyên tử (ghi thành công mới update DB).
- * - Ép kiểu Number(id) tuyệt đối để khớp khóa chính IndexedDB.
+ * Purpose: Thực thi ghi tệp và cập nhật trạng thái đồng bộ (v1.6).
+ * Business Rule: Sử dụng db.table() để truy cập bảng an toàn, tránh lỗi undefined.
  */
 
 import { db } from '../../../database/db';
@@ -18,7 +14,7 @@ export interface ExtendedIdea {
   tags?: string[];
   isBookmarked?: boolean;
   bookmarkReason?: string;
-  sourceTable: 'tasks' | 'thoughts'; // Bắt buộc từ Version 9
+  sourceTable: 'tasks' | 'thoughts';
 }
 
 export const obsidianWriter = {
@@ -26,7 +22,6 @@ export const obsidianWriter = {
     try {
       const rootHandle = await (window as any).showDirectoryPicker();
       const folder = await rootHandle.getDirectoryHandle('MindCap', { create: true });
-      
       const fileContent = syncFormatter.formatSingleFile(ideas);
       const fileName = `MindCap_Sync_${new Date().getTime()}.md`;
       
@@ -35,21 +30,24 @@ export const obsidianWriter = {
       await writable.write(fileContent);
       await writable.close();
 
-      // [ATOMIC UPDATE]: Chỉ thực thi khi file đã ghi thành công
+      // [SAFE UPDATE]: Sử dụng db.table() để đảm bảo bảng luôn được định nghĩa
       await db.transaction('rw', db.tasks, db.thoughts, async () => {
         for (const idea of ideas) {
-          const table = idea.sourceTable === 'tasks' ? db.tasks : db.thoughts;
-          // [KỶ LUẬT ID]: Luôn dùng kiểu Number để khớp database
-          await (table as any).update(Number(idea.id), { 
-            syncStatus: 'synced', 
-            updatedAt: Date.now() 
-          });
+          const tableName = idea.sourceTable || (idea.hasOwnProperty('type') ? 'thoughts' : 'tasks');
+          const table = db.table(tableName); 
+          
+          if (table) {
+            await table.update(Number(idea.id), { 
+              syncStatus: 'synced', 
+              updatedAt: Date.now() 
+            });
+          }
         }
       });
 
       return { success: ideas.length, failed: 0 };
     } catch (err) {
-      console.error("Critical Sync Error:", err);
+      console.error("Lỗi đồng bộ:", err);
       throw err;
     }
   }

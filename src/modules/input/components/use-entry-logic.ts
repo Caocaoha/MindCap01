@@ -1,11 +1,5 @@
 /**
- * Purpose: Quan ly toan bo logic, trang thai va luu tru cho Entry Form (v9.5).
- * Inputs/Outputs: Tra ve trang thai (State) va cac ham xu ly (Handlers) cho UI.
- * Business Rule: 
- * - [MIGRATION]: Chuyen doi vat ly giua Task/Thought thong qua Transaction.
- * - [SOURCE]: Gan sourceTable vinh vien de phuc vu dong bo Obsidian Bridge.
- * - [SMART ROUTING]: Tu dong day vao Focus (max 4) neu Saban Todo dang trong.
- * - [NOTIFICATION]: [FIXED] Phản hồi cho mọi trường hợp lưu trữ với thông báo tương tác.
+ * [FIX v9.6]: Chống crash khi query trường không có index và xử lý lỗi preventDefault.
  */
 
 import { useState, useEffect } from 'react';
@@ -36,9 +30,7 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
   useEffect(() => {
     if (initialData) {
       setContent(initialData.content);
-      // Xac dinh loai dua tren thuoc tinh status hoac sourceTable
       const isTaskRecord = 'status' in initialData || initialData.sourceTable === 'tasks';
-      
       if (isTaskRecord) {
         setEntryType('task');
         setTargetCount((initialData as ITask).targetCount || 1);
@@ -77,126 +69,106 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
     const now = Date.now();
     const wordCount = content.trim().split(/\s+/).length;
     
-    // Logic xac dinh su thay doi bang du lieu
     const wasTask = initialData && ('status' in initialData || initialData.sourceTable === 'tasks');
     const isNowTask = entryType === 'task';
     const hasTypeChanged = initialData?.id && ((wasTask && !isNowTask) || (!wasTask && isNowTask));
-    const isNew = !initialData?.id;
+    const isNewRecord = !initialData?.id;
 
-    /**
-     * [SMART ROUTING LOGIC]: Kiểm tra trạng thái Saban và Focus
-     */
-    let targetFocusMode = false;
-    let routingMessage = "📥 Đã thêm nhiệm vụ vào Saban Todo.";
+    try {
+      /**
+       * [SMART ROUTING]: Dùng filter để tránh crash nếu DB chưa đánh index
+       */
+      let targetFocusMode = false;
+      let routingMessage = "📥 Đã thêm nhiệm vụ vào Saban Todo.";
 
-    // Logic này sẽ chạy khi tạo mới Task HOẶC chuyển đổi từ Nhật ký sang Task
-    if (isNowTask && (isNew || hasTypeChanged)) {
-      const todoActiveCount = await db.tasks
-        .where('isFocusMode').equals(0) // false
-        .and(t => t.archiveStatus === 'active' && t.status !== 'done')
-        .count();
-      
-      const focusSlotsCount = await db.tasks
-        .where('isFocusMode').equals(1) // true
-        .and(t => t.status !== 'done')
-        .count();
+      if (isNowTask && (isNewRecord || hasTypeChanged)) {
+        const allTasks = await db.tasks.toArray();
+        const todoActiveCount = allTasks.filter(t => !t.isFocusMode && t.archiveStatus === 'active' && t.status !== 'done').length;
+        const focusSlotsCount = allTasks.filter(t => t.isFocusMode && t.status !== 'done').length;
 
-      // Neu Todo dang trong va Focus chua day 4 slot
-      if (todoActiveCount === 0 && focusSlotsCount < 4) {
-        targetFocusMode = true;
-        routingMessage = "🚀 Saban đang trống, task đã được đẩy thẳng vào Focus!";
-      } else if (focusSlotsCount >= 4 && todoActiveCount === 0) {
-        routingMessage = "📥 Đã thêm vào Saban Todo (Focus đã đầy 4/4).";
+        if (todoActiveCount === 0 && focusSlotsCount < 4) {
+          targetFocusMode = true;
+          routingMessage = "🚀 Saban đang trống, task đã được đẩy thẳng vào Focus!";
+        } else if (focusSlotsCount >= 4 && todoActiveCount === 0) {
+          routingMessage = "📥 Đã thêm vào Saban Todo (Focus đã đầy 4/4).";
+        }
       }
-    }
 
-    let payload: any;
-    if (isNowTask) {
-      const tags = [`freq:${freq}`, isUrgent ? 'p:urgent' : '', isImportant ? 'p:important' : '', 
-                    ...selectedWeekDays.map(d => `d:${d}`), ...selectedMonthDays.map(m => `m:${m}`)].filter(Boolean);
-      payload = {
-        content: content.trim(), 
-        status: (initialData as ITask)?.status || 'todo',
-        createdAt: initialData?.createdAt || now, 
-        updatedAt: now, 
-        targetCount, 
-        unit: unit.trim(),
-        tags, 
-        parentId: initialData?.parentId, 
-        interactionScore: (initialData?.interactionScore || 0),
-        lastInteractedAt: now, 
-        // Giữ FocusMode cũ nếu chỉ là chỉnh sửa cùng bảng, ngược lại dùng target tính toán
-        isFocusMode: (initialData?.id && !hasTypeChanged) ? (initialData as ITask).isFocusMode : targetFocusMode, 
-        archiveStatus: (initialData as ITask)?.archiveStatus || 'active',
-        syncStatus: (initialData as ITask)?.syncStatus || 'pending',
-        sourceTable: 'tasks'
-      };
-    } else {
-      payload = { 
-        content: content.trim(), 
-        type: 'thought', 
-        wordCount, 
-        createdAt: initialData?.createdAt || now, 
-        updatedAt: now, 
-        parentId: initialData?.parentId, 
-        interactionScore: (initialData?.interactionScore || 0),
-        syncStatus: (initialData as IThought)?.syncStatus || 'pending',
-        sourceTable: 'thoughts'
-      };
-    }
-
-    // Luu tru ban ghi de phuc vu cho hanh dong 'Sua' trong thong bao
-    let savedRecord: any = { ...payload };
-
-    if (onCustomSave) {
-      await onCustomSave(entryType, entryType === 'thought' ? { ...payload, moodScore: moodLevel } : payload);
-    } else {
-      if (hasTypeChanged) {
-        // [ATOMIC MIGRATION]: Di cư bản ghi qua Transaction
-        const oldTable = wasTask ? db.tasks : db.thoughts;
-        const newTable = isNowTask ? db.tasks : db.thoughts;
-
-        await db.transaction('rw', db.tasks, db.thoughts, async () => {
-          await oldTable.delete(Number(initialData.id));
-          const id = await newTable.add(payload);
-          savedRecord.id = id;
-        });
-      } else if (initialData?.id) {
-        await (tableFromType(isNowTask) as any).update(Number(initialData.id), payload);
-        savedRecord.id = initialData.id;
-      } else {
-        const id = await (tableFromType(isNowTask) as any).add(payload);
-        savedRecord.id = id;
-        if (entryType === 'thought') await db.moods.add({ score: moodLevel, label: 'entry_reflection', createdAt: now });
-        if (wordCount > 16) NotificationManager.scheduleWaterfall(Number(id), entryType, content.trim());
-      }
-    }
-
-    /**
-     * [NOTIFICATION DISPATCHER]: Phản hồi thị giác tương tác
-     */
-    let finalMessage = "✅ Đã cập nhật thành công.";
-    
-    if (isNew || hasTypeChanged) {
+      let payload: any;
       if (isNowTask) {
-        finalMessage = routingMessage;
+        const tags = [`freq:${freq}`, isUrgent ? 'p:urgent' : '', isImportant ? 'p:important' : '', 
+                      ...selectedWeekDays.map(d => `d:${d}`), ...selectedMonthDays.map(m => `m:${m}`)].filter(Boolean);
+        payload = {
+          content: content.trim(), 
+          status: (initialData as ITask)?.status || 'todo',
+          createdAt: initialData?.createdAt || now, 
+          updatedAt: now, 
+          targetCount, 
+          unit: unit.trim(),
+          tags, 
+          parentId: initialData?.parentId, 
+          interactionScore: (initialData?.interactionScore || 0),
+          lastInteractedAt: now, 
+          isFocusMode: (initialData?.id && !hasTypeChanged) ? (initialData as ITask).isFocusMode : targetFocusMode, 
+          archiveStatus: (initialData as ITask)?.archiveStatus || 'active',
+          syncStatus: (initialData as ITask)?.syncStatus || 'pending',
+          sourceTable: 'tasks'
+        };
       } else {
-        finalMessage = hasTypeChanged 
-          ? "🔄 Đã chuyển đổi thành nhận thức thành công." 
-          : "📝 Đã lưu nhận thức vào Nhật ký.";
+        payload = { 
+          content: content.trim(), 
+          type: 'thought', 
+          wordCount, 
+          createdAt: initialData?.createdAt || now, 
+          updatedAt: now, 
+          parentId: initialData?.parentId, 
+          interactionScore: (initialData?.interactionScore || 0),
+          syncStatus: (initialData as IThought)?.syncStatus || 'pending',
+          sourceTable: 'thoughts'
+        };
       }
+
+      let savedRecord: any = { ...payload };
+
+      if (onCustomSave) {
+        await onCustomSave(entryType, entryType === 'thought' ? { ...payload, moodScore: moodLevel } : payload);
+      } else {
+        if (hasTypeChanged) {
+          const oldTable = wasTask ? db.tasks : db.thoughts;
+          const newTable = isNowTask ? db.tasks : db.thoughts;
+          await db.transaction('rw', db.tasks, db.thoughts, async () => {
+            await oldTable.delete(Number(initialData.id));
+            const id = await newTable.add(payload);
+            savedRecord.id = id;
+          });
+        } else if (initialData?.id) {
+          const table = isNowTask ? db.tasks : db.thoughts;
+          await (table as any).update(Number(initialData.id), payload);
+          savedRecord.id = initialData.id;
+        } else {
+          const table = isNowTask ? db.tasks : db.thoughts;
+          const id = await (table as any).add(payload);
+          savedRecord.id = id;
+          if (entryType === 'thought') await db.moods.add({ score: moodLevel, label: 'entry_reflection', createdAt: now });
+          if (wordCount > 16) NotificationManager.scheduleWaterfall(Number(id), entryType, content.trim());
+        }
+      }
+
+      // [NOTIFICATION]: Hiện thông báo
+      let finalMsg = isNewRecord || hasTypeChanged 
+        ? (isNowTask ? routingMessage : "📝 Đã gieo nhận thức vào Nhật ký.")
+        : "✅ Đã cập nhật thành công.";
+
+      showNotification(finalMsg, () => openEditModal(savedRecord));
+
+      if (!initialData) setSearchQuery('', 'mind');
+      triggerHaptic('success');
+      onSuccess();
+    } catch (err) {
+      console.error("Critical Save Error:", err);
+      alert("Lỗi khi lưu dữ liệu. Vui lòng kiểm tra console.");
     }
-
-    // Luôn kích hoạt thông báo tương tác chính giữa màn hình
-    showNotification(finalMessage, () => openEditModal(savedRecord));
-
-    if (!initialData) setSearchQuery('', 'mind');
-    triggerHaptic('success');
-    onSuccess();
   };
-
-  // Helper nội bộ để lấy bảng
-  const tableFromType = (isTask: boolean) => isTask ? db.tasks : db.thoughts;
 
   return {
     entryType, setEntryType, content, setContent, targetCount, setTargetCount,

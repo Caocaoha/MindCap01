@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useUiStore } from '../../store/ui-store';
+import { useNotificationStore } from '../../store/notification-store'; // [NEW]: Kêt nối Notification Store
 import { triggerHaptic } from '../../utils/haptic';
 import { db } from '../../database/db';
 import { analyze } from '../../utils/nlp-engine';
@@ -11,11 +12,11 @@ interface InputBarProps {
 }
 
 /**
- * [MOD_INPUT]: Thanh nhập liệu nhanh v5.4 - Todo-First Policy.
- * Giai đoạn 6.35: 
- * 1. [Logic]: Loại bỏ tự động Focus. Mọi task mới đều vào Inbox (Todo).
- * 2. [Layout]: Nút Task căn giữa, Nút Thought căn phải.
- * 3. [Fix]: Áp dụng "Vùng Cấm Bay" (touch-none) để chặn xung đột cuộn trang khi kéo nút.
+ * [MOD_INPUT]: Thanh nhập liệu nhanh v5.5 - Integrated Notifications.
+ * Giai đoạn 6.36: 
+ * 1. [Fix]: Xử lý lỗi passive event listener để không crash JS.
+ * 2. [Logic]: Tích hợp showNotification khi lưu nhanh để đồng bộ với EntryForm.
+ * 3. [Notification]: Thêm nút "Sửa lại" vào thông báo để người dùng điều chỉnh nhanh.
  */
 export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
   // --- STORE CONNECTIONS ---
@@ -24,8 +25,11 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
     setInputFocused, 
     setTyping, 
     setParsedData,
-    setActiveTab 
+    setActiveTab,
+    openEditModal // [NEW]: Để truyền vào callback của thông báo
   } = useUiStore();
+
+  const { showNotification } = useNotificationStore(); // [NEW]: Để hiện Toast chính giữa
 
   // --- LOCAL STATE ---
   const [content, setContent] = useState('');
@@ -59,14 +63,17 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
     const nlpResult = analyze(trimmedContent);
 
     try {
+      let savedRecord: any;
+      let notificationMsg = "";
+
       if (data.type === 'task') {
         const gestureTags = data.tags || [];
         const finalTags = [...new Set([...(nlpResult.tags || []), ...gestureTags])];
         
-        // [LOGIC MỚI]: Luôn luôn vào Todo (Inbox), không bao giờ tự động vào Focus.
+        // [LOGIC MỚI]: Luôn luôn vào Todo (Inbox).
         const shouldEnterFocus = false; 
 
-        await db.tasks.add({
+        const taskData = {
           content: nlpResult.content || trimmedContent,
           status: 'todo',
           isFocusMode: shouldEnterFocus, 
@@ -76,10 +83,15 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
           targetCount: nlpResult.quantity || 1,
           unit: nlpResult.unit || 'lần',
           tags: finalTags,
-          completionLog: []
-        });
+          completionLog: [],
+          sourceTable: 'tasks' // [NEW]: Đảm bảo kỷ luật dữ liệu cho Obsidian
+        };
+
+        const id = await db.tasks.add(taskData as any);
+        savedRecord = { id, ...taskData };
+        notificationMsg = "📥 Đã thêm nhiệm vụ vào Saban Todo.";
       } else {
-        await db.thoughts.add({
+        const thoughtData = {
           content: trimmedContent,
           type: 'thought', 
           mood: data.moodScore || 3, 
@@ -88,9 +100,17 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
           tags: nlpResult.tags || [],
           wordCount: trimmedContent.split(/\s+/).length,
           recordStatus: 'success',
-          archiveStatus: 'active'
-        });
+          archiveStatus: 'active',
+          sourceTable: 'thoughts' // [NEW]: Đảm bảo kỷ luật dữ liệu cho Obsidian
+        };
+
+        const id = await db.thoughts.add(thoughtData as any);
+        savedRecord = { id, ...thoughtData };
+        notificationMsg = "📝 Đã gieo một nhận thức vào Nhật ký.";
       }
+
+      // [NOTIFICATION TRIGGER]: Kích hoạt thông báo tương tác chính giữa màn hình
+      showNotification(notificationMsg, () => openEditModal(savedRecord));
 
       triggerHaptic('success');
       resetInput();
@@ -193,8 +213,10 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
             ? 'opacity-100 translate-y-0 pb-safe' 
             : 'opacity-0 translate-y-20 pointer-events-none'
         }`}
-        // [FIX]: Chặn triệt để sự kiện cuộn từ trình duyệt ở cấp độ Container cha
-        onTouchMove={(e) => e.preventDefault()}
+        // [FIX]: Chèn kiểm tra cancelable để tránh lỗi passive event listener
+        onTouchMove={(e) => {
+          if (e.cancelable) e.preventDefault();
+        }}
       >
         {/* Nút TASK: Căn giữa nửa trái (25%) */}
         <div 

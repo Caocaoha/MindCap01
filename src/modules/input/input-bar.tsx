@@ -12,11 +12,11 @@ interface InputBarProps {
 }
 
 /**
- * [MOD_INPUT]: Thanh nhập liệu nhanh v5.5 - Integrated Notifications.
- * Giai đoạn 6.36: 
- * 1. [Fix]: Xử lý lỗi passive event listener để không crash JS.
- * 2. [Logic]: Tích hợp showNotification khi lưu nhanh để đồng bộ với EntryForm.
- * 3. [Notification]: Thêm nút "Sửa lại" vào thông báo để người dùng điều chỉnh nhanh.
+ * [MOD_INPUT]: Thanh nhập liệu nhanh v5.6 - Smart Routing Integrated.
+ * Giai đoạn 6.37: 
+ * 1. [Logic]: Áp dụng Chiến lược điều hướng thông minh 2 lớp (Saban/Focus) cho mọi Task mới.
+ * 2. [Fix]: Xử lý lỗi passive event listener bằng kiểm tra cancelable.
+ * 3. [Notification]: Tích hợp showNotification với nội dung phản hồi chính xác điểm đến của Task.
  */
 export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
   // --- STORE CONNECTIONS ---
@@ -50,7 +50,7 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
   };
 
   /**
-   * [ACTION]: Xử lý lưu dữ liệu (Todo-First).
+   * [ACTION]: Xử lý lưu dữ liệu (Smart Routing).
    */
   const handleSave = async (data: any) => {
     const trimmedContent = content.trim();
@@ -70,8 +70,31 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
         const gestureTags = data.tags || [];
         const finalTags = [...new Set([...(nlpResult.tags || []), ...gestureTags])];
         
-        // [LOGIC MỚI]: Luôn luôn vào Todo (Inbox).
-        const shouldEnterFocus = false; 
+        /**
+         * [SMART ROUTING LOGIC]: Kiểm tra trạng thái Saban và Focus
+         */
+        const allTasks = await db.tasks.toArray();
+        
+        // Lớp 1: Đếm Task đang hoạt động trong Saban Todo
+        const todoActiveCount = allTasks.filter(t => 
+          !t.isFocusMode && t.archiveStatus === 'active' && t.status !== 'done'
+        ).length;
+        
+        // Lớp 2: Đếm Slot Focus đang sử dụng
+        const focusSlotsCount = allTasks.filter(t => 
+          t.isFocusMode && t.status !== 'done'
+        ).length;
+
+        // Quyết định điểm đến dựa trên chiến lược điều hướng thông minh
+        let shouldEnterFocus = false;
+        if (todoActiveCount === 0 && focusSlotsCount < 4) {
+          shouldEnterFocus = true;
+          notificationMsg = "🚀 Saban đang trống, task đã được đẩy thẳng vào Focus!";
+        } else if (focusSlotsCount >= 4 && todoActiveCount === 0) {
+          notificationMsg = "📥 Đã thêm vào Saban Todo (Focus đã đầy 4/4).";
+        } else {
+          notificationMsg = "📥 Đã thêm nhiệm vụ vào Saban Todo.";
+        }
 
         const taskData = {
           content: nlpResult.content || trimmedContent,
@@ -89,7 +112,6 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
 
         const id = await db.tasks.add(taskData as any);
         savedRecord = { id, ...taskData };
-        notificationMsg = "📥 Đã thêm nhiệm vụ vào Saban Todo.";
       } else {
         const thoughtData = {
           content: trimmedContent,

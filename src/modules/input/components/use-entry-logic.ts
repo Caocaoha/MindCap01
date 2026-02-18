@@ -1,5 +1,11 @@
 /**
- * [FIX v9.6]: Chống crash khi query trường không có index và xử lý lỗi preventDefault.
+ * Purpose: Quan ly toan bo logic, trang thai va luu tru cho Entry Form (v9.7).
+ * Inputs/Outputs: Tra ve trang thai (State) va cac ham xu ly (Handlers) cho UI.
+ * Business Rule: 
+ * - [MIGRATION]: Chuyen doi vat ly giua Task/Thought thong qua Transaction.
+ * - [SOURCE]: Gan sourceTable vinh vien de phuc vu dong bo Obsidian Bridge.
+ * - [UNIFIED ROUTING]: Dong bo hoan toan voi InputBar ve quy tac dieu huong 2 lop.
+ * - [NOTIFICATION]: Tuong tac chinh giua man hinh cho moi hanh dong luu tru.
  */
 
 import { useState, useEffect } from 'react';
@@ -31,6 +37,7 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
     if (initialData) {
       setContent(initialData.content);
       const isTaskRecord = 'status' in initialData || initialData.sourceTable === 'tasks';
+      
       if (isTaskRecord) {
         setEntryType('task');
         setTargetCount((initialData as ITask).targetCount || 1);
@@ -76,16 +83,26 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
 
     try {
       /**
-       * [SMART ROUTING]: Dùng filter để tránh crash nếu DB chưa đánh index
+       * [UNIFIED SMART ROUTING]: Kiểm tra 2 lớp bảo mật dữ liệu
        */
       let targetFocusMode = false;
       let routingMessage = "📥 Đã thêm nhiệm vụ vào Saban Todo.";
 
+      // Chạy logic routing nếu là Task mới HOẶC chuyển từ Nhật ký sang Task
       if (isNowTask && (isNewRecord || hasTypeChanged)) {
         const allTasks = await db.tasks.toArray();
-        const todoActiveCount = allTasks.filter(t => !t.isFocusMode && t.archiveStatus === 'active' && t.status !== 'done').length;
-        const focusSlotsCount = allTasks.filter(t => t.isFocusMode && t.status !== 'done').length;
+        
+        // Lớp 1: Kiểm tra rảnh tay (Saban Todo)
+        const todoActiveCount = allTasks.filter(t => 
+          !t.isFocusMode && t.archiveStatus === 'active' && t.status !== 'done'
+        ).length;
+        
+        // Lớp 2: Kiểm tra sức chứa (Focus Slots < 4)
+        const focusSlotsCount = allTasks.filter(t => 
+          t.isFocusMode && t.status !== 'done'
+        ).length;
 
+        // Kết quả điều phối
         if (todoActiveCount === 0 && focusSlotsCount < 4) {
           targetFocusMode = true;
           routingMessage = "🚀 Saban đang trống, task đã được đẩy thẳng vào Focus!";
@@ -109,6 +126,7 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
           parentId: initialData?.parentId, 
           interactionScore: (initialData?.interactionScore || 0),
           lastInteractedAt: now, 
+          // Giữ FocusMode cũ nếu chỉ là chỉnh sửa cùng bảng, ngược lại dùng target tính toán
           isFocusMode: (initialData?.id && !hasTypeChanged) ? (initialData as ITask).isFocusMode : targetFocusMode, 
           archiveStatus: (initialData as ITask)?.archiveStatus || 'active',
           syncStatus: (initialData as ITask)?.syncStatus || 'pending',
@@ -134,8 +152,10 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
         await onCustomSave(entryType, entryType === 'thought' ? { ...payload, moodScore: moodLevel } : payload);
       } else {
         if (hasTypeChanged) {
+          // [ATOMIC MIGRATION]: Di cư bản ghi qua Transaction
           const oldTable = wasTask ? db.tasks : db.thoughts;
           const newTable = isNowTask ? db.tasks : db.thoughts;
+
           await db.transaction('rw', db.tasks, db.thoughts, async () => {
             await oldTable.delete(Number(initialData.id));
             const id = await newTable.add(payload);
@@ -154,7 +174,9 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
         }
       }
 
-      // [NOTIFICATION]: Hiện thông báo
+      /**
+       * [NOTIFICATION DISPATCHER]: Phản hồi tương tác đồng bộ cho mọi hành động
+       */
       let finalMsg = isNewRecord || hasTypeChanged 
         ? (isNowTask ? routingMessage : "📝 Đã gieo nhận thức vào Nhật ký.")
         : "✅ Đã cập nhật thành công.";
@@ -166,7 +188,6 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
       onSuccess();
     } catch (err) {
       console.error("Critical Save Error:", err);
-      alert("Lỗi khi lưu dữ liệu. Vui lòng kiểm tra console.");
     }
   };
 

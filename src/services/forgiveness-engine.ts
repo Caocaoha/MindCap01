@@ -3,10 +3,10 @@ import { db } from '../database/db';
 import { useNotificationStore } from '../store/notification-store';
 
 /**
- * [SERVICE]: Forgiveness Engine (v1.1)
+ * [SERVICE]: Forgiveness Engine (v1.2)
  * Business Rule: 
  * - Giải phóng tâm lý: Đẩy mọi việc từ Focus về Todo sau mốc giờ cài đặt (mặc định 19h).
- * - Phản hồi cảm xúc: Hiển thị Global Toast nếu có việc được giải phóng.
+ * - Phản hồi cảm xúc: Hiển thị Global Toast với theme 'forgiveness' chuyên biệt.
  * - Bảo tồn: Chỉ thay đổi isFocusMode, không can thiệp status hay reset việc lặp lại.
  */
 
@@ -70,11 +70,15 @@ export const ForgivenessEngine = {
 
         /**
          * [UI FEEDBACK]: Chỉ hiển thị lời nhắn nhủ nếu thực sự có việc được giải phóng.
-         * Sử dụng getState() để kích hoạt Store bên ngoài Component Tree.
+         * Truyền tham số 'forgiveness' để GlobalToast tự động kích hoạt Emerald Theme.
          */
         if (totalCleared > 0) {
           const { showNotification } = useNotificationStore.getState();
-          showNotification("Hãy nghỉ ngơi! Bạn đã rất nỗ lực.");
+          showNotification(
+            "Hãy nghỉ ngơi! Bạn đã rất nỗ lực.", 
+            undefined, 
+            'forgiveness' // Định danh loại thông báo thay vì dò tìm string
+          );
         }
       });
     } catch (error) {

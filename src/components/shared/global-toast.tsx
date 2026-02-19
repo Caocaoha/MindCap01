@@ -1,21 +1,22 @@
 /**
  * [FIX]: Bản an toàn không phụ thuộc plugin animation và thêm log debug.
- * [UPDATE v1.2]: Tích hợp nhận diện thông điệp "Giờ tha thứ" để hiển thị giao diện ấm áp.
+ * [UPDATE v1.3]: Chuyển đổi logic nhận diện theme sang sử dụng 'type' từ store.
  */
 import React, { useEffect } from 'react';
 import { useNotificationStore } from '../../store/notification-store';
 import { triggerHaptic } from '../../utils/haptic';
 
 export const GlobalToast: React.FC = () => {
-  const { isOpen, message, onEditAction, hideNotification } = useNotificationStore();
+  // Bổ sung lấy trường 'type' từ store để định danh theme
+  const { isOpen, message, type, onEditAction, hideNotification } = useNotificationStore();
 
-  // Kiểm tra xem đây có phải là thông điệp từ "Giờ tha thứ" không
-  const isForgivenessMessage = message?.includes("nghỉ ngơi");
+  // Xác định theme Emerald dựa trên type 'forgiveness' thay vì dò tìm string
+  const isForgivenessType = type === 'forgiveness';
 
   // Debug log để kiểm tra state
   useEffect(() => {
-    if (isOpen) console.log("🔔 Notification Triggered:", message);
-  }, [isOpen, message]);
+    if (isOpen) console.log("🔔 Notification Triggered:", message, "| Type:", type);
+  }, [isOpen, message, type]);
 
   if (!isOpen) return null;
 
@@ -28,19 +29,19 @@ export const GlobalToast: React.FC = () => {
       />
       
       <div className={`relative bg-white border-2 shadow-2xl rounded-[24px] p-6 flex flex-col items-center gap-4 max-w-xs w-full pointer-events-auto transform transition-all 
-        ${isForgivenessMessage ? 'border-emerald-100' : 'border-slate-100'}`}
+        ${isForgivenessType ? 'border-emerald-100' : 'border-slate-100'}`}
       >
-        {/* ICON AREA: Thay đổi emoji dựa trên ngữ cảnh thông điệp */}
+        {/* ICON AREA: Hiển thị icon dựa trên logic type */}
         <div className={`w-12 h-12 rounded-full flex items-center justify-center animate-bounce 
-          ${isForgivenessMessage ? 'bg-emerald-50' : 'bg-indigo-50'}`}
+          ${isForgivenessType ? 'bg-emerald-50' : 'bg-indigo-50'}`}
         >
           <span className="text-2xl">
-            {isForgivenessMessage ? '🌿' : '✨'}
+            {isForgivenessType ? '🌿' : '✨'}
           </span>
         </div>
         
         <p className={`text-sm font-bold text-center leading-relaxed 
-          ${isForgivenessMessage ? 'text-emerald-800' : 'text-slate-800'}`}
+          ${isForgivenessType ? 'text-emerald-800' : 'text-slate-800'}`}
         >
           {message}
         </p>
@@ -49,11 +50,11 @@ export const GlobalToast: React.FC = () => {
           <button 
             onClick={() => { triggerHaptic('light'); hideNotification(); }}
             className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all 
-              ${isForgivenessMessage 
+              ${isForgivenessType 
                 ? 'bg-emerald-100 text-emerald-600' 
                 : 'bg-slate-100 text-slate-500'}`}
           >
-            {isForgivenessMessage ? 'Nhận lấy' : 'Đóng'}
+            {isForgivenessType ? 'Nhận lấy' : 'Đóng'}
           </button>
           
           {onEditAction && (

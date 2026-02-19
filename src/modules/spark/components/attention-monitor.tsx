@@ -1,68 +1,74 @@
-import React, { useEffect, useRef } from 'react';
-import { SparkScoringEngine } from '../scoring-engine';
+/**
+ * [COMPONENT]: Attention Monitor (attention-monitor.tsx)
+ * Purpose: Cảm biến theo dõi mức độ tập trung của người dùng trên từng bản ghi.
+ * Logic: Sử dụng Intersection Observer để phát hiện sự hiện diện > 80% diện tích.
+ * Scoring: Tự động cộng +1 điểm (Passive View) nếu duy trì > 3 giây.
+ */
+
+import React, { useEffect, useRef, ReactNode } from 'react';
+import { ScoringEngine } from '../scoring-engine';
 
 interface AttentionMonitorProps {
-  entryId: number;
-  type: 'task' | 'thought';
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
-/**
- * [COMPONENT]: Attention Monitor (Watcher).
- * Sử dụng Intersection Observer để ghi điểm Passive View (+1).
- */
-export const AttentionMonitor: React.FC<AttentionMonitorProps> = ({ entryId, type, children }) => {
-  const elementRef = useRef<HTMLDivElement>(null);
-  /**
-   * FIX: Thay đổi NodeJS.Timeout thành ReturnType<typeof setTimeout>
-   * Điều này giúp TypeScript tự xác định kiểu dữ liệu dựa trên môi trường Browser.
-   */
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+export const AttentionMonitor: React.FC<AttentionMonitorProps> = ({ children }) => {
+  // Bộ nhớ đệm để theo dõi các bản ghi đã được đếm điểm trong phiên này nhằm chống spam 
+  const trackedEntries = useRef<Set<string>>(new Set());
+  // Lưu trữ các bộ đếm thời gian (Timers) cho từng bản ghi đang trong vùng nhìn thấy
+  const timers = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
-    // Chỉ kích hoạt nếu trình duyệt hỗ trợ IntersectionObserver
-    if (!('IntersectionObserver' in window)) return;
-
+    /**
+     * Khởi tạo Intersection Observer với cấu hình Blueprint V2.0[cite: 28, 29].
+     * threshold: 0.8 -> Bản ghi phải hiện diện ít nhất 80% diện tích.
+     */
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          /**
-           * RÀNG BUỘC: Hiện diện trên màn hình > 80% diện tích.
-           */
+          const entryId = entry.target.getAttribute('data-entry-id');
+          const entryType = entry.target.getAttribute('data-entry-type') as 'task' | 'thought';
+          
+          if (!entryId || !entryType) return;
+          const uniqueKey = `${entryType}:${entryId}`;
+
           if (entry.isIntersecting && entry.intersectionRatio >= 0.8) {
-            // Bắt đầu đếm ngược 3 giây chú ý
-            if (!timerRef.current) {
-              timerRef.current = setTimeout(() => {
-                SparkScoringEngine.triggerPassiveView(entryId, type);
-                console.log(`[Attention] Spotted ${type}:${entryId} for 3s.`);
-              }, 3000); 
+            // GIAI ĐOẠN 1: Bắt đầu đếm ngược 3 giây khi lọt vào vùng nhìn 
+            if (!trackedEntries.current.has(uniqueKey) && !timers.current.has(uniqueKey)) {
+              const timer = window.setTimeout(() => {
+                // Thực hiện cộng điểm Passive View (+1) sau 3 giây 
+                ScoringEngine.triggerPassiveView(Number(entryId), entryType);
+                trackedEntries.current.add(uniqueKey);
+                timers.current.delete(uniqueKey);
+              }, 3000);
+
+              timers.current.set(uniqueKey, timer);
             }
           } else {
-            // Nếu người dùng lướt qua nhanh hoặc cuộn đi, hủy đếm ngược
-            if (timerRef.current) {
-              clearTimeout(timerRef.current);
-              timerRef.current = null;
+            // GIAI ĐOẠN 2: Hủy bộ đếm nếu người dùng cuộn đi trước khi đủ 3 giây
+            if (timers.current.has(uniqueKey)) {
+              clearTimeout(timers.current.get(uniqueKey));
+              timers.current.delete(uniqueKey);
             }
           }
         });
       },
-      {
-        threshold: [0, 0.8, 1.0], // Các mốc để Observer kích hoạt callback
-      }
+      { threshold: 0.8 }
     );
 
-    if (elementRef.current) {
-      observer.observe(elementRef.current);
-    }
+    // Tìm kiếm tất cả các thẻ bản ghi có đánh dấu tag 'data-attention-target'
+    const targets = document.querySelectorAll('[data-attention-target="true"]');
+    targets.forEach((target) => observer.observe(target));
 
     return () => {
+      // Dọn dẹp các bộ đếm và observer khi component unmount
+      timers.current.forEach((timer) => clearTimeout(timer));
       observer.disconnect();
-      if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [entryId, type]);
+  }, [children]); // Chạy lại observer khi danh sách children thay đổi
 
   return (
-    <div ref={elementRef} className="w-full">
+    <div className="attention-monitor-wrapper w-full h-full">
       {children}
     </div>
   );

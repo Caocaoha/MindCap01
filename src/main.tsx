@@ -37,6 +37,21 @@ window.onunhandledrejection = function (event) {
   alert(alertMsg);
 };
 
+// 3. ĐĂNG KÝ SERVICE WORKER (SPARK BACKGROUND ENGINE)
+// [NEW]: Kích hoạt luồng chạy ngầm để xử lý Waterfall Notification và Deep Linking.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    // Lưu ý: Đường dẫn 'service-worker.js' là kết quả sau khi build từ src/service-worker.ts
+    navigator.serviceWorker.register('/service-worker.js', { type: 'module' })
+      .then(registration => {
+        console.log('Mind Cap Service Worker đã sẵn sàng: ', registration.scope);
+      })
+      .catch(error => {
+        console.error('Lỗi đăng ký Service Worker:', error);
+      });
+  });
+}
+
 // ========================================================
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

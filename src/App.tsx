@@ -1,11 +1,10 @@
 /**
- * Purpose: Bộ điều khiển bố cục chính (Main Layout Controller) của ứng dụng MindCap.
+ * Purpose: Bộ điều khiển bố cục chính (Main Layout Controller) của ứng dụng MindCap (v6.33).
  * Inputs/Outputs: Quản lý trạng thái hiển thị của các Module dựa trên ActiveTab.
  * Business Rule: 
- * - Khởi tạo dữ liệu từ IndexedDB khi ứng dụng bắt đầu.
- * - Xử lý Deep Linking để mở nhanh các bản ghi hoặc tạo liên kết.
- * - Điều phối hiển thị giữa các phân vùng: Saban, Journey, Setup, Identity và Sync Review.
- * - [NEW]: Tích hợp GlobalToast để hiển thị thông báo tương tác toàn hệ thống.
+ * - [SERVICE WORKER]: Đăng ký và quản lý luồng chạy ngầm của Spark.
+ * - [DEEP LINKING]: Bóc tách tham số URL để mở trực tiếp Task/Thought từ thông báo.
+ * - [INITIALIZATION]: Khởi tạo và chuẩn hóa dữ liệu từ IndexedDB.
  */
 
 import React, { useEffect } from 'react';
@@ -29,30 +28,36 @@ import { BottomNav } from './components/shared/bottom-nav';
 // [NEW]: Import GlobalToast cho hệ thống thông báo tương tác chính giữa màn hình
 import { GlobalToast } from './components/shared/global-toast';
 
-/**
- * [APP]: Main Layout Controller.
- * Giai đoạn 6.32: Phân tách BottomNav để tối ưu hóa bảo trì.
- */
 export const App: React.FC = () => {
   const { activeTab, setActiveTab, isInputFocused, setInputFocused, setTyping, openEditModal } = useUiStore();
   const { setTasks } = useJourneyStore(); 
   const { openAudit, getPulseFrequency } = useIdentityStore();
   const frequency = getPulseFrequency();
 
-  // Đăng ký Service Worker
+  /**
+   * [1. SERVICE WORKER REGISTRATION]
+   * Kích hoạt luồng chạy ngầm cho Spark Waterfall.
+   * Lưu ý: Sử dụng đường dẫn service-worker.js sau build.
+   */
   useEffect(() => {
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').then(registration => {
-          console.log('SW registered: ', registration);
-        }).catch(registrationError => {
-          console.log('SW registration failed: ', registrationError);
-        });
+        // [MOD]: Đảm bảo đường dẫn service-worker.js khớp với cấu hình build của dự án
+        navigator.serviceWorker.register('/service-worker.js', { type: 'module' })
+          .then(registration => {
+            console.log('MindCap SW Registered: ', registration.scope);
+          })
+          .catch(error => {
+            console.error('MindCap SW Registration Failed: ', error);
+          });
       });
     }
   }, []);
 
-  // Khởi tạo dữ liệu
+  /**
+   * [2. DATA INITIALIZATION]
+   * Đồng bộ dữ liệu từ IndexedDB vào Store khi khởi động.
+   */
   useEffect(() => {
     const initializeData = async () => {
       try {
@@ -72,12 +77,16 @@ export const App: React.FC = () => {
     initializeData();
   }, [setTasks]);
 
-  // Deep Linking Handler
+  /**
+   * [3. DEEP LINKING HANDLER]
+   * Xử lý tham số ?open= và ?create-link-to= từ URL.
+   */
   useEffect(() => {
     const handleDeepLink = async () => {
       const params = new URLSearchParams(window.location.search);
-      const openTarget = params.get('open');
       
+      // Xử lý mở bản ghi từ thông báo Spark
+      const openTarget = params.get('open');
       if (openTarget && openTarget.includes(':')) {
         const [type, idStr] = openTarget.split(':');
         const entryId = parseInt(idStr, 10);
@@ -89,7 +98,10 @@ export const App: React.FC = () => {
 
             if (entry) {
               triggerHaptic('medium');
+              // Chuyển Tab tương ứng trước khi mở Modal
+              setActiveTab(type === 'task' ? 'saban' : 'journey');
               openEditModal(entry);
+              // Làm sạch URL sau khi xử lý để tránh re-trigger khi reload
               window.history.replaceState({}, '', window.location.pathname);
             }
           } catch (error) {
@@ -98,6 +110,7 @@ export const App: React.FC = () => {
         }
       }
 
+      // Xử lý tạo liên kết nhanh (Echo Bridge)
       const createLinkTarget = params.get('create-link-to');
       if (createLinkTarget && createLinkTarget.includes(':')) {
         const [type, idStr] = createLinkTarget.split(':');
@@ -116,7 +129,8 @@ export const App: React.FC = () => {
                 createdAt: Date.now(),
                 recordStatus: 'pending',
                 parentId: parentEntry.id,
-                isLinkMode: true
+                isLinkMode: true,
+                sourceTable: 'thoughts'
               } as any);
               window.history.replaceState({}, '', window.location.pathname);
             }
@@ -127,10 +141,14 @@ export const App: React.FC = () => {
       }
     };
 
+    // Theo dõi thay đổi của URL Search để bắt kịp các Deep Link mới
     handleDeepLink();
-  }, [openEditModal]);
+  }, [openEditModal, setActiveTab]);
 
-  // Keyboard Shortcuts
+  /**
+   * [4. KEYBOARD SHORTCUTS]
+   * Xử lý tương tác phím tắt toàn hệ thống.
+   */
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {

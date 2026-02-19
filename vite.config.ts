@@ -1,30 +1,27 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { VitePWA } from 'vite-plugin-pwa'; // [FIX]: Khai báo plugin để xóa lỗi TS2304
+import { VitePWA } from 'vite-plugin-pwa';
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      // Chiến lược 'injectManifest' để sử dụng file src/service-worker.ts tùy chỉnh của bạn
       strategies: 'injectManifest',
       srcDir: 'src',
-      filename: 'service-worker.ts',
+      filename: 'service-worker.ts', // Đây là tệp nguồn để Vite biên dịch
       injectManifest: {
-        // [FIX]: Chỉ đặt tên file để Vite tự động đẩy vào thư mục dist khi build
-        swDest: 'service-worker.js', 
+        // [FIX QUAN TRỌNG]: Chỉ định rõ tệp nguồn cho bước Inject Manifest
+        swSrc: 'src/service-worker.ts', 
+        // [FIX]: Tên tệp đầu ra sau khi build xong
+        swDest: 'dist/service-worker.js',
       },
       manifest: {
         name: 'Mind Cap',
         short_name: 'MindCap',
-        description: 'Capture your thoughts, liberate your mind.',
         theme_color: '#ffffff',
-        background_color: '#ffffff',
-        display: 'standalone',
         icons: [
           {
-            src: 'icon-192x192.png', // Đảm bảo tệp này đã có trong /public
+            src: 'icon-192x192.png',
             sizes: '192x192',
             type: 'image/png'
           },

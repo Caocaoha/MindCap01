@@ -6,12 +6,14 @@ import { LivingMemory } from './components/living-memory';
 import { ReflectiveMirror } from './components/reflective-mirror';
 // [NEW]: Import module Spark để hiển thị không gian ký ức độc lập
 import { WidgetMemorySpark } from '../spark/components/widget-memory-spark';
-// [NEW]: Import SearchBar để tích hợp vào Dynamic Header
-import { SearchBar } from './components/search-bar';
+// [FIX]: Chuyển hướng import SearchBar về thư mục shared theo Project Structure 
+import { SearchBar } from '../../components/shared/search-bar';
 
 /**
- * [MOD_JOURNEY]: Thành phần cha điều phối dòng thời gian và phân tích.
- * Giai đoạn 6.10: Tích hợp Dynamic Sticky Header (Ẩn/Hiện khi cuộn).
+ * [MOD_JOURNEY]: Thành phần cha điều phối dòng thời gian và phân tích (v6.12).
+ * Giai đoạn 6.33: 
+ * 1. [Fix]: Cập nhật import SearchBar từ shared components để xóa lỗi TS2304.
+ * 2. [Spark Engine]: Duy trì cơ chế lọc Candidate Pooling theo Blueprint V2.0[cite: 32, 33].
  */
 export const JourneyList: React.FC = () => {
   // BẢO TỒN 100% STATE VÀ ACTION TỪ STORE (với kiểu dữ liệu viewMode mới)
@@ -23,30 +25,57 @@ export const JourneyList: React.FC = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   /**
-   * [SPARK DATA ENGINE]: Truy vấn và phân loại dữ liệu để lấp đầy 4 slots của Spark Tab.
-   * Đảm bảo lấy đúng các mảnh ký ức theo tiêu chí: Heritage, Trending, Isolated, Universe.
+   * [SPARK DATA ENGINE]: Truy vấn và phân loại dữ liệu theo cơ chế "Hồ chứa" (Pooling).
+   * Tuân thủ Blueprint V2.0: Heritage, Universe, Trending, Isolated[cite: 33, 34, 35, 36].
    */
   const sparkData = useLiveQuery(async () => {
-    const allTasks = await db.tasks.toArray();
-    const allThoughts = await db.thoughts.toArray();
-    // Gộp và sắp xếp theo thời gian để làm cơ sở lọc
-    const allEntries = [...allTasks, ...allThoughts].sort((a, b) => b.createdAt - a.createdAt);
+    const [tasks, thoughts] = await Promise.all([
+      db.tasks.toArray(),
+      db.thoughts.toArray()
+    ]);
 
+    const allEntries = [...tasks, ...thoughts];
     if (allEntries.length === 0) return null;
+
+    const now = Date.now();
+    const tenDaysInMs = 10 * 24 * 60 * 60 * 1000;
+    const tenDaysAgo = now - tenDaysInMs;
+
+    // PHÂN LOẠI CÁC HỒ CHỨA (POOLS) [cite: 33]
+    
+    // Pool 1 (Heritage): > 10 ngày & đã Bookmark[cite: 33]. Sắp xếp theo số lượng liên kết[cite: 34].
+    const poolHeritage = allEntries
+      .filter(item => item.createdAt < tenDaysAgo && item.isBookmarked)
+      .sort((a, b) => (b.echoLinkCount || 0) - (a.echoLinkCount || 0));
+
+    // Pool 2 (Universe): Tất cả bản ghi đã Bookmark[cite: 34]. Sắp xếp ngẫu nhiên.
+    const poolUniverse = allEntries
+      .filter(item => item.isBookmarked)
+      .sort(() => Math.random() - 0.5);
+
+    // Pool 3 (Trending New): <= 10 ngày & có liên kết[cite: 35]. Sắp xếp theo điểm tương tác[cite: 35].
+    const poolTrending = allEntries
+      .filter(item => item.createdAt >= tenDaysAgo && (item.echoLinkCount || 0) > 0)
+      .sort((a, b) => (b.interactionScore || 0) - (a.interactionScore || 0));
+
+    // Pool 4 (Isolated New): <= 10 ngày & chưa có liên kết[cite: 36]. Sắp xếp ngẫu nhiên[cite: 36].
+    const poolIsolated = allEntries
+      .filter(item => item.createdAt >= tenDaysAgo && (item.echoLinkCount || 0) === 0)
+      .sort(() => Math.random() - 0.5);
 
     return {
       slots: {
-        // Slot 1: Heritage (Bản ghi cổ xưa nhất trong hệ thống)
-        slot1: allEntries[allEntries.length - 1],
+        // Slot 1: Heritage - Ký ức sâu sắc nhất từ quá khứ [cite: 39]
+        slot1: poolHeritage[0] || poolUniverse[0],
         
-        // Slot 2: Universe (Một mảnh ký ức ngẫu nhiên để tạo sự bất ngờ)
-        slot2: allEntries[Math.floor(Math.random() * allEntries.length)],
+        // Slot 2: Universe - Một mảnh ký ức ngẫu nhiên để tạo sự bất ngờ [cite: 39]
+        slot2: poolUniverse.find(item => item.id !== poolHeritage[0]?.id) || poolUniverse[1],
         
-        // Slot 3: Trending (Bản ghi có điểm tương tác cao nhất)
-        slot3: [...allEntries].sort((a, b) => (b.interactionScore || 0) - (a.interactionScore || 0))[0],
+        // Slot 3: Trending - Ý tưởng mới đang nóng hổi nhất [cite: 39]
+        slot3: poolTrending[0] || allEntries.sort((a, b) => (b.interactionScore || 0) - (a.interactionScore || 0))[0],
         
-        // Slot 4: Isolated (Bản ghi cô đơn nhất - ít liên kết Echo nhất)
-        slot4: [...allEntries].sort((a, b) => (a.echoLinkCount || 0) - (b.echoLinkCount || 0))[0]
+        // Slot 4: Isolated - Những ý tưởng mới chưa được kết nối [cite: 39]
+        slot4: poolIsolated[0] || allEntries[Math.floor(Math.random() * allEntries.length)]
       }
     };
   }, []);
@@ -114,7 +143,7 @@ export const JourneyList: React.FC = () => {
 
           {/* SEARCH BAR: Tích hợp vào Header để ẩn hiện đồng bộ */}
           <div className="px-4">
-            <SearchBar />
+            <SearchBar context="journey" />
           </div>
         </div>
       </div>
@@ -143,7 +172,7 @@ export const JourneyList: React.FC = () => {
 
         {viewMode === 'spark' && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-            {/* Chế độ Spark: Không gian phản tư ký ức độc lập */}
+            {/* Chế độ Spark: Không gian phản tư ký ức độc lập [cite: 37] */}
             <WidgetMemorySpark data={sparkData} />
           </div>
         )}

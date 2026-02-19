@@ -1,33 +1,38 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { VitePWA } from 'vite-plugin-pwa';
+import { VitePWA } from 'vite-plugin-pwa'; // [FIX]: Khai báo plugin để xóa lỗi TS2304
 
+// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'prompt', //  Hiển thị thông báo khi có bản cập nhật mới
-      injectRegister: 'auto',
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'], // Cache toàn bộ tài nguyên 
-        runtimeCaching: [
-          {
-            urlPattern: ({ request }) => request.destination === 'document',
-            handler: 'CacheFirst', // Ưu tiên bộ nhớ đệm để tải tức thì 
-          }
-        ],
-        cleanupOutdatedCaches: true, // Xóa cache cũ để tránh xung đột 
+      // Chiến lược 'injectManifest' để sử dụng file src/service-worker.ts tùy chỉnh của bạn
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'service-worker.ts',
+      injectManifest: {
+        // [FIX]: Chỉ đặt tên file để Vite tự động đẩy vào thư mục dist khi build
+        swDest: 'service-worker.js', 
       },
       manifest: {
         name: 'Mind Cap',
         short_name: 'MindCap',
-        description: 'Personal Mind Operating System',
-        theme_color: '#000000',
-        background_color: '#000000',
-        display: 'standalone', //  Giao diện ứng dụng độc lập
+        description: 'Capture your thoughts, liberate your mind.',
+        theme_color: '#ffffff',
+        background_color: '#ffffff',
+        display: 'standalone',
         icons: [
-          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }
+          {
+            src: 'icon-192x192.png', // Đảm bảo tệp này đã có trong /public
+            sizes: '192x192',
+            type: 'image/png'
+          },
+          {
+            src: 'icon-512x512.png',
+            sizes: '512x512',
+            type: 'image/png'
+          }
         ]
       }
     })

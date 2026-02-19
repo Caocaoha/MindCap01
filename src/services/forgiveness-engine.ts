@@ -1,11 +1,13 @@
 import { db } from '../database/db';
+// [NEW]: Kết nối Notification Store để hiển thị lời nhắn nhủ
+import { useNotificationStore } from '../store/notification-store';
 
 /**
- * [SERVICE]: Forgiveness Engine (v1.0)
+ * [SERVICE]: Forgiveness Engine (v1.1)
  * Business Rule: 
  * - Giải phóng tâm lý: Đẩy mọi việc từ Focus về Todo sau mốc giờ cài đặt (mặc định 19h).
- * - Bảo tồn: Chỉ thay đổi isFocusMode, không can thiệp status hay reset việc lặp lại (Reset dành cho mốc 0h).
- * - Tiết kiệm: Chạy một lần duy nhất khi App khởi chạy (Lazy Trigger).
+ * - Phản hồi cảm xúc: Hiển thị Global Toast nếu có việc được giải phóng.
+ * - Bảo tồn: Chỉ thay đổi isFocusMode, không can thiệp status hay reset việc lặp lại.
  */
 
 export const ForgivenessEngine = {
@@ -21,7 +23,6 @@ export const ForgivenessEngine = {
    */
   async checkAndRun() {
     try {
-      // 1. Lấy thông tin cấu hình từ User Profile
       const profile = await db.userProfile.toCollection().first();
       if (!profile) return;
 
@@ -32,11 +33,6 @@ export const ForgivenessEngine = {
       const forgivenessHour = profile.forgivenessHour ?? 19;
       const lastRun = profile.lastForgivenessRun || '';
 
-      /**
-       * ĐIỀU KIỆN KÍCH HOẠT:
-       * - Đã đến hoặc qua giờ tha thứ.
-       * - Chưa chạy lần nào trong ngày hôm nay.
-       */
       if (currentHour >= forgivenessHour && lastRun !== today) {
         console.log(`[Forgiveness] Đã chạm mốc ${forgivenessHour}h. Bắt đầu giải phóng Focus...`);
         await this.executeForgiveness(today);
@@ -47,20 +43,15 @@ export const ForgivenessEngine = {
   },
 
   /**
-   * Thực hiện cập nhật hàng loạt trên Database.
+   * Thực hiện cập nhật hàng loạt trên Database và thông báo cho người dùng.
    */
   async executeForgiveness(today: string) {
     try {
-      /**
-       * CHIẾN THUẬT BẢO TỒN TRẠNG THÁI:
-       * Chúng ta thực hiện Bulk Update trên cả 2 bảng Tasks và Thoughts.
-       * Chỉ nhắm vào các bản ghi đang ở chế độ Focus.
-       */
       await db.transaction('rw', db.tasks, db.thoughts, db.userProfile, async () => {
         // 1. Giải phóng Tasks trong Focus
         const focusTasksCount = await db.tasks
           .where('isFocusMode')
-          .equals(1) // Dexie biểu diễn boolean true là 1
+          .equals(1) 
           .modify({ isFocusMode: false });
 
         // 2. Giải phóng Thoughts trong Focus
@@ -74,7 +65,17 @@ export const ForgivenessEngine = {
           lastForgivenessRun: today
         });
 
-        console.log(`[Forgiveness] Hoàn tất: Giải phóng ${focusTasksCount} tasks và ${focusThoughtsCount} thoughts.`);
+        const totalCleared = focusTasksCount + focusThoughtsCount;
+        console.log(`[Forgiveness] Hoàn tất: Giải phóng ${totalCleared} bản ghi.`);
+
+        /**
+         * [UI FEEDBACK]: Chỉ hiển thị lời nhắn nhủ nếu thực sự có việc được giải phóng.
+         * Sử dụng getState() để kích hoạt Store bên ngoài Component Tree.
+         */
+        if (totalCleared > 0) {
+          const { showNotification } = useNotificationStore.getState();
+          showNotification("Hãy nghỉ ngơi! Bạn đã rất nỗ lực.");
+        }
       });
     } catch (error) {
       console.error("[Forgiveness Execution Failed]:", error);

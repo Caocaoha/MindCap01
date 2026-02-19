@@ -1,12 +1,28 @@
 /**
- * Purpose: Định nghĩa interface và kiểu dữ liệu cho database (v9.1).
+ * Purpose: Định nghĩa interface và kiểu dữ liệu cho database (v9.2).
  * Inputs/Outputs: N/A.
  * Business Rule: 
  * - Tích hợp hệ thống đồng bộ Obsidian với cơ chế định danh nguồn (sourceTable).
  * - Bổ sung trạng thái 'ignored' để dứt khoát hóa quy trình Review.
  * - Hỗ trợ Smart Merge và bảo tồn tính nhất quán dữ liệu qua Bridge.
  * - [NEW 9.1]: Cố định sourceTable để tránh lỗi lệch ID giữa các bảng.
+ * - [NEW 9.2]: Bổ sung ISparkSchedule phục vụ Catch-up Logic để fix lỗi trễ thông báo.
  */
+
+// --- MODULE: SPARK CATCH-UP LOGIC (v9.2) ---
+/**
+ * [NEW 9.2]: Interface lưu trữ các mốc thời gian Spark để Service Worker quét ngầm.
+ * Phục vụ việc hiển thị thông báo ngay lập tức nếu trình duyệt bị "ngủ đông" quá 10 phút.
+ */
+export interface ISparkSchedule {
+  id?: number;              // ID tự tăng
+  entryId: number;          // ID của bản ghi (Task/Thought)
+  entryType: 'tasks' | 'thoughts'; // Bảng nguồn
+  content: string;          // Nội dung để hiển thị 100% Content trên banner
+  scheduledAt: number;      // Thời điểm dự kiến hiển thị (Timestamp)
+  status: 'pending' | 'sent' | 'missed'; // Trạng thái của mốc thời gian
+  createdAt: number;        // Thời điểm tạo lịch
+}
 
 // --- MODULE: INPUT & SABAN & FOCUS ---
 export interface ITask {

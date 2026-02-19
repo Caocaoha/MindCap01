@@ -1,20 +1,23 @@
 /**
- * Purpose: MindCap Core Database Controller - Quản lý lưu trữ IndexedDB bằng Dexie.js (v9.1).
+ * Purpose: MindCap Core Database Controller - Quản lý lưu trữ IndexedDB bằng Dexie.js (v10.0).
  * Inputs/Outputs: Khởi tạo database, thực hiện migration dữ liệu.
  * Business Rule: 
  * - Quản lý phiên bản và lược đồ lưu trữ đồng bộ.
  * - [NEW 9.1]: Tích hợp chỉ mục sourceTable để định danh tuyệt đối nguồn dữ liệu.
+ * - [NEW 10.0]: Bổ sung bảng sparkSchedules để hỗ trợ Catch-up Logic, đảm bảo thông báo chính xác.
  * - Đảm bảo tính nhất quán dữ liệu qua cơ chế Atomic Migration trên môi trường Cloudflare.
  */
 
 import Dexie, { type Table } from 'dexie';
-import type { ITask, IThought, IMood, IUserProfile } from './types';
+import type { ITask, IThought, IMood, IUserProfile, ISparkSchedule } from './types';
 
 export class MindCapDatabase extends Dexie {
   tasks!: Table<ITask, number>;
   thoughts!: Table<IThought, number>;
   moods!: Table<IMood, number>;
   userProfile!: Table<IUserProfile, number>;
+  // [NEW 10.0]: Bảng lưu trữ các mốc thời gian thông báo chạy ngầm.
+  sparkSchedules!: Table<ISparkSchedule, number>;
 
   constructor() {
     super('MindCapDB');
@@ -132,6 +135,20 @@ export class MindCapDatabase extends Dexie {
           if (thought.sourceTable === undefined) thought.sourceTable = 'thoughts';
         })
       ]);
+    });
+
+    /**
+     * [NEW 10.0] Version 10: Tích hợp Catch-up Logic cho Spark Notification.
+     * Khởi tạo bảng sparkSchedules để lưu trữ các mốc thông báo cần quét ngầm.
+     * Chỉ mục chính: entryId, scheduledAt (để quét các mốc bị lỡ), status (để lọc trạng thái gửi).
+     */
+    this.version(10).stores({
+      tasks: '++id, status, createdAt, isFocusMode, scheduledFor, *tags, doneCount, targetCount, nextReviewAt, interactionScore, echoLinkCount, parentId, parentGroupId, archiveStatus, syncStatus, sourceTable', 
+      thoughts: '++id, type, createdAt, nextReviewAt, interactionScore, echoLinkCount, parentId, syncStatus, sourceTable',
+      moods: '++id, score, createdAt',
+      userProfile: '++id',
+      // [FIX]: Bổ sung bảng sparkSchedules phục vụ việc fix lỗi thông báo trễ.
+      sparkSchedules: '++id, entryId, entryType, scheduledAt, status'
     });
   }
 }

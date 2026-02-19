@@ -1,37 +1,37 @@
 /// <reference lib="webworker" />
 
 /**
- * [SERVICE WORKER]: Spark Background Processor (v1.8)
- * Layout Update: 
- * - Title: 100% Nội dung bản ghi (Content).
- * - Body: Nhãn thời gian (10 phút, 24h...).
+ * [SERVICE WORKER]: Spark Background Processor (v1.9)
+ * Fix: Sử dụng cú pháp chuẩn để Workbox Inject Manifest thành công trên Cloudflare.
  */
 
-declare const self: ServiceWorkerGlobalScope & { __WB_MANIFEST: Array<any> };
-const manifest = self.__WB_MANIFEST; 
+declare const self: ServiceWorkerGlobalScope & {
+  __WB_MANIFEST: Array<any>;
+};
 
+// [CRITICAL]: Điểm neo bắt buộc để trình build bơm danh sách file.
+// Chúng ta gán vào một biến và log ra để đảm bảo nó không bị Tree-shaking xóa mất.
+const manifest = self.__WB_MANIFEST;
+console.log('[MindCap] Service Worker Manifest Injected:', manifest.length);
+
+/**
+ * [HELPER]: Hàm xử lý thông báo (Giữ nguyên logic v1.8 của bạn)
+ */
 const handleScheduleRequest = (payload: any) => {
   const { entryId, entryType, content, schedule, labels, origin } = payload;
 
   schedule.forEach((timestamp: number, index: number) => {
     const delay = timestamp - Date.now();
-
     if (delay > 0) {
       setTimeout(() => {
-        // [LAYOUT v2.0]: Đưa content làm tiêu đề chính
-        const title = content; 
-        const intervalLabel = labels[index] || "Gia hạn ký ức";
-
-        self.registration.showNotification(title, {
-          body: intervalLabel, // Thông số thời gian nằm dưới icon
+        self.registration.showNotification(content, {
+          body: labels[index] || "Gia hạn ký ức",
           icon: "/icon-192x192.png",
           badge: "/icon-192x192.png",
           tag: `spark-${entryId}-${index}`,
           vibrate: [200, 100, 200],
           data: { url: `${origin}/?open=${entryType}:${entryId}` },
-          actions: [
-            { action: 'open', title: 'Xem chi tiết' }
-          ]
+          actions: [{ action: 'open', title: 'Xem chi tiết' }]
         } as any);
       }, delay);
     }

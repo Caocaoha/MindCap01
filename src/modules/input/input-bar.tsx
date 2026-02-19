@@ -5,6 +5,7 @@ import { triggerHaptic } from '../../utils/haptic';
 import { db } from '../../database/db';
 import { analyze } from '../../utils/nlp-engine';
 import { GestureButton } from './components/gesture-button';
+import { EntryService } from '../../services/entry-service'; // [NEW]: Kết nối tổng kho điều phối
 
 interface InputBarProps {
   onFocus: () => void;
@@ -12,11 +13,11 @@ interface InputBarProps {
 }
 
 /**
- * [MOD_INPUT]: Thanh nhập liệu nhanh v5.6 - Smart Routing Integrated.
- * Giai đoạn 6.37: 
- * 1. [Logic]: Áp dụng Chiến lược điều hướng thông minh 2 lớp (Saban/Focus) cho mọi Task mới.
- * 2. [Fix]: Xử lý lỗi passive event listener bằng kiểm tra cancelable.
- * 3. [Notification]: Tích hợp showNotification với nội dung phản hồi chính xác điểm đến của Task.
+ * [MOD_INPUT]: Thanh nhập liệu nhanh v5.7 - Unified Service Integration.
+ * Giai đoạn 6.38: 
+ * 1. [Centralized]: Ủy quyền lưu trữ hoàn toàn cho EntryService để kích hoạt Spark & Saban Routing.
+ * 2. [Logic]: Loại bỏ các phép tính thủ công về Focus/Todo bên trong Component.
+ * 3. [Fix]: Duy trì xử lý passive event listener để đảm bảo hiệu năng kéo thả.
  */
 export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
   // --- STORE CONNECTIONS ---
@@ -50,7 +51,7 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
   };
 
   /**
-   * [ACTION]: Xử lý lưu dữ liệu (Smart Routing).
+   * [ACTION]: Xử lý lưu dữ liệu thông qua EntryService
    */
   const handleSave = async (data: any) => {
     const trimmedContent = content.trim();
@@ -59,85 +60,54 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
       return;
     }
 
-    const now = Date.now();
     const nlpResult = analyze(trimmedContent);
 
     try {
-      let savedRecord: any;
-      let notificationMsg = "";
+      let payload: any;
+      const type = data.type; // 'task' hoặc 'thought'
 
-      if (data.type === 'task') {
+      if (type === 'task') {
         const gestureTags = data.tags || [];
         const finalTags = [...new Set([...(nlpResult.tags || []), ...gestureTags])];
         
-        /**
-         * [SMART ROUTING LOGIC]: Kiểm tra trạng thái Saban và Focus
-         */
-        const allTasks = await db.tasks.toArray();
-        
-        // Lớp 1: Đếm Task đang hoạt động trong Saban Todo
-        const todoActiveCount = allTasks.filter(t => 
-          !t.isFocusMode && t.archiveStatus === 'active' && t.status !== 'done'
-        ).length;
-        
-        // Lớp 2: Đếm Slot Focus đang sử dụng
-        const focusSlotsCount = allTasks.filter(t => 
-          t.isFocusMode && t.status !== 'done'
-        ).length;
-
-        // Quyết định điểm đến dựa trên chiến lược điều hướng thông minh
-        let shouldEnterFocus = false;
-        if (todoActiveCount === 0 && focusSlotsCount < 4) {
-          shouldEnterFocus = true;
-          notificationMsg = "🚀 Saban đang trống, task đã được đẩy thẳng vào Focus!";
-        } else if (focusSlotsCount >= 4 && todoActiveCount === 0) {
-          notificationMsg = "📥 Đã thêm vào Saban Todo (Focus đã đầy 4/4).";
-        } else {
-          notificationMsg = "📥 Đã thêm nhiệm vụ vào Saban Todo.";
-        }
-
-        const taskData = {
+        // Chuẩn bị dữ liệu Task tối giản cho Service xử lý tiếp
+        payload = {
           content: nlpResult.content || trimmedContent,
           status: 'todo',
-          isFocusMode: shouldEnterFocus, 
           archiveStatus: 'active',
-          createdAt: now,
-          updatedAt: now,
           targetCount: nlpResult.quantity || 1,
           unit: nlpResult.unit || 'lần',
           tags: finalTags,
           completionLog: [],
-          sourceTable: 'tasks' // [NEW]: Đảm bảo kỷ luật dữ liệu cho Obsidian
+          sourceTable: 'tasks'
         };
-
-        const id = await db.tasks.add(taskData as any);
-        savedRecord = { id, ...taskData };
       } else {
-        const thoughtData = {
+        // Chuẩn bị dữ liệu Thought tối giản
+        payload = {
           content: trimmedContent,
           type: 'thought', 
           mood: data.moodScore || 3, 
-          createdAt: now,
           isBookmarked: false,
           tags: nlpResult.tags || [],
           wordCount: trimmedContent.split(/\s+/).length,
           recordStatus: 'success',
           archiveStatus: 'active',
-          sourceTable: 'thoughts' // [NEW]: Đảm bảo kỷ luật dữ liệu cho Obsidian
+          sourceTable: 'thoughts'
         };
-
-        const id = await db.thoughts.add(thoughtData as any);
-        savedRecord = { id, ...thoughtData };
-        notificationMsg = "📝 Đã gieo một nhận thức vào Nhật ký.";
       }
 
-      // [NOTIFICATION TRIGGER]: Kích hoạt thông báo tương tác chính giữa màn hình
-      showNotification(notificationMsg, () => openEditModal(savedRecord));
+      // [UNIFIED CALL]: Gọi Service duy nhất để xử lý Smart Routing và Spark Waterfall
+      const result = await EntryService.saveEntry(payload, type);
 
-      triggerHaptic('success');
-      resetInput();
+      if (result.success) {
+        // Hiển thị thông báo phản hồi từ kết quả điều hướng của Service
+        showNotification(result.message, () => openEditModal(result.record));
+        
+        triggerHaptic('success');
+        resetInput();
+      }
     } catch (error) {
-      console.error('Save failed:', error);
+      console.error('Fast-lane save failed:', error);
       triggerHaptic('error');
     }
   };

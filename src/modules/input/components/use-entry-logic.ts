@@ -1,11 +1,10 @@
 /**
- * Purpose: Quan ly toan bo logic, trang thai va luu tru cho Entry Form (v9.7).
+ * Purpose: Quan ly toan bo logic, trang thai va luu tru cho Entry Form (v9.8).
  * Inputs/Outputs: Tra ve trang thai (State) va cac ham xu ly (Handlers) cho UI.
  * Business Rule: 
- * - [MIGRATION]: Chuyen doi vat ly giua Task/Thought thong qua Transaction.
- * - [SOURCE]: Gan sourceTable vinh vien de phuc vu dong bo Obsidian Bridge.
- * - [UNIFIED ROUTING]: Dong bo hoan toan voi InputBar ve quy tac dieu huong 2 lop.
- * - [NOTIFICATION]: Tuong tac chinh giua man hinh cho moi hanh dong luu tru.
+ * - [CENTRALIZED]: Chuyển toàn bộ logic điều hướng và lập lịch sang EntryService.
+ * - [MIGRATION]: Duy trì tính nguyên tử khi chuyển đổi giữa Task/Thought.
+ * - [UNIFIED]: Đảm bảo mọi bản ghi đều đi qua bộ lọc Spark Waterfall (>16 từ).
  */
 
 import { useState, useEffect } from 'react';
@@ -13,7 +12,7 @@ import { db } from '../../../database/db';
 import { triggerHaptic } from '../../../utils/haptic';
 import { useUiStore } from '../../../store/ui-store';
 import { useNotificationStore } from '../../../store/notification-store';
-import { NotificationManager } from '../../spark/notification-manager';
+import { EntryService } from '../../../services/entry-service'; // [NEW]: Tổng kho điều phối
 import { EntryFormProps, EntryType, FrequencyType, EntryLogic } from './entry-types';
 import { ITask, IThought } from '../../../database/types';
 
@@ -71,123 +70,94 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
     if (!initialData) setSearchQuery(val, 'mind');
   };
 
+  /**
+   * [ACTION]: Lưu trữ thông qua EntryService để kích hoạt Smart Routing và Spark Waterfall.
+   */
   const handleSave = async () => {
     if (!content.trim()) return;
-    const now = Date.now();
-    const wordCount = content.trim().split(/\s+/).length;
     
     const wasTask = initialData && ('status' in initialData || initialData.sourceTable === 'tasks');
     const isNowTask = entryType === 'task';
     const hasTypeChanged = initialData?.id && ((wasTask && !isNowTask) || (!wasTask && isNowTask));
-    const isNewRecord = !initialData?.id;
 
     try {
-      /**
-       * [UNIFIED SMART ROUTING]: Kiểm tra 2 lớp bảo mật dữ liệu
-       */
-      let targetFocusMode = false;
-      let routingMessage = "📥 Đã thêm nhiệm vụ vào Saban Todo.";
-
-      // Chạy logic routing nếu là Task mới HOẶC chuyển từ Nhật ký sang Task
-      if (isNowTask && (isNewRecord || hasTypeChanged)) {
-        const allTasks = await db.tasks.toArray();
-        
-        // Lớp 1: Kiểm tra rảnh tay (Saban Todo)
-        const todoActiveCount = allTasks.filter(t => 
-          !t.isFocusMode && t.archiveStatus === 'active' && t.status !== 'done'
-        ).length;
-        
-        // Lớp 2: Kiểm tra sức chứa (Focus Slots < 4)
-        const focusSlotsCount = allTasks.filter(t => 
-          t.isFocusMode && t.status !== 'done'
-        ).length;
-
-        // Kết quả điều phối
-        if (todoActiveCount === 0 && focusSlotsCount < 4) {
-          targetFocusMode = true;
-          routingMessage = "🚀 Saban đang trống, task đã được đẩy thẳng vào Focus!";
-        } else if (focusSlotsCount >= 4 && todoActiveCount === 0) {
-          routingMessage = "📥 Đã thêm vào Saban Todo (Focus đã đầy 4/4).";
-        }
-      }
-
+      // 1. Chuẩn bị Payload theo loại Entry
       let payload: any;
       if (isNowTask) {
-        const tags = [`freq:${freq}`, isUrgent ? 'p:urgent' : '', isImportant ? 'p:important' : '', 
-                      ...selectedWeekDays.map(d => `d:${d}`), ...selectedMonthDays.map(m => `m:${m}`)].filter(Boolean);
+        const tags = [
+          `freq:${freq}`, 
+          isUrgent ? 'p:urgent' : '', 
+          isImportant ? 'p:important' : '', 
+          ...selectedWeekDays.map(d => `d:${d}`), 
+          ...selectedMonthDays.map(m => `m:${m}`)
+        ].filter(Boolean);
+
         payload = {
+          id: initialData?.id,
           content: content.trim(), 
           status: (initialData as ITask)?.status || 'todo',
-          createdAt: initialData?.createdAt || now, 
-          updatedAt: now, 
           targetCount, 
           unit: unit.trim(),
           tags, 
           parentId: initialData?.parentId, 
           interactionScore: (initialData?.interactionScore || 0),
-          lastInteractedAt: now, 
-          // Giữ FocusMode cũ nếu chỉ là chỉnh sửa cùng bảng, ngược lại dùng target tính toán
-          isFocusMode: (initialData?.id && !hasTypeChanged) ? (initialData as ITask).isFocusMode : targetFocusMode, 
           archiveStatus: (initialData as ITask)?.archiveStatus || 'active',
-          syncStatus: (initialData as ITask)?.syncStatus || 'pending',
-          sourceTable: 'tasks'
+          syncStatus: (initialData as ITask)?.syncStatus || 'pending'
         };
       } else {
         payload = { 
+          id: initialData?.id,
           content: content.trim(), 
           type: 'thought', 
-          wordCount, 
-          createdAt: initialData?.createdAt || now, 
-          updatedAt: now, 
           parentId: initialData?.parentId, 
           interactionScore: (initialData?.interactionScore || 0),
-          syncStatus: (initialData as IThought)?.syncStatus || 'pending',
-          sourceTable: 'thoughts'
+          syncStatus: (initialData as IThought)?.syncStatus || 'pending'
         };
       }
 
-      let savedRecord: any = { ...payload };
+      // 2. Xử lý lưu trữ
+      let result: any;
 
       if (onCustomSave) {
+        // Trường hợp ghi đè logic lưu (ví dụ: Mood Check-in)
         await onCustomSave(entryType, entryType === 'thought' ? { ...payload, moodScore: moodLevel } : payload);
-      } else {
-        if (hasTypeChanged) {
-          // [ATOMIC MIGRATION]: Di cư bản ghi qua Transaction
-          const oldTable = wasTask ? db.tasks : db.thoughts;
-          const newTable = isNowTask ? db.tasks : db.thoughts;
-
-          await db.transaction('rw', db.tasks, db.thoughts, async () => {
-            await oldTable.delete(Number(initialData.id));
-            const id = await newTable.add(payload);
-            savedRecord.id = id;
-          });
-        } else if (initialData?.id) {
-          const table = isNowTask ? db.tasks : db.thoughts;
-          await (table as any).update(Number(initialData.id), payload);
-          savedRecord.id = initialData.id;
-        } else {
-          const table = isNowTask ? db.tasks : db.thoughts;
-          const id = await (table as any).add(payload);
-          savedRecord.id = id;
-          if (entryType === 'thought') await db.moods.add({ score: moodLevel, label: 'entry_reflection', createdAt: now });
-          if (wordCount > 16) NotificationManager.scheduleWaterfall(Number(id), entryType, content.trim());
-        }
+        onSuccess();
+        return;
       }
 
-      /**
-       * [NOTIFICATION DISPATCHER]: Phản hồi tương tác đồng bộ cho mọi hành động
-       */
-      let finalMsg = isNewRecord || hasTypeChanged 
-        ? (isNowTask ? routingMessage : "📝 Đã gieo nhận thức vào Nhật ký.")
-        : "✅ Đã cập nhật thành công.";
+      if (hasTypeChanged) {
+        // [ATOMIC MIGRATION]: Thực hiện xóa cũ và gọi Service lưu mới trong cùng một phiên
+        const oldTable = wasTask ? db.tasks : db.thoughts;
+        await db.transaction('rw', db.tasks, db.thoughts, async () => {
+          await oldTable.delete(Number(initialData.id));
+          // Khi chuyển đổi, ta coi như là một bản ghi mới hoàn toàn để chạy lại Routing
+          const { id, ...payloadWithoutId } = payload;
+          result = await EntryService.saveEntry(payloadWithoutId, entryType);
+        });
+      } else {
+        // Lưu thông thường qua Tổng kho điều phối
+        result = await EntryService.saveEntry(payload, entryType);
+      }
 
-      showNotification(finalMsg, () => openEditModal(savedRecord));
+      // 3. Phản hồi UI đồng bộ
+      if (result && result.success) {
+        // Nếu là Thought mới, lưu thêm điểm Mood vào bảng moods
+        if (!initialData?.id && entryType === 'thought') {
+          await db.moods.add({ 
+            score: moodLevel, 
+            label: 'entry_reflection', 
+            createdAt: Date.now() 
+          });
+        }
 
-      if (!initialData) setSearchQuery('', 'mind');
-      triggerHaptic('success');
-      onSuccess();
+        showNotification(result.message, () => openEditModal(result.record));
+        
+        if (!initialData) setSearchQuery('', 'mind');
+        triggerHaptic('success');
+        onSuccess();
+      }
     } catch (err) {
-      console.error("Critical Save Error:", err);
+      console.error("Critical Save Error in Hook:", err);
     }
   };
 

@@ -1,8 +1,11 @@
 import { triggerHaptic } from '../../utils/haptic';
 
 /**
- * [SERVICE]: Spark Notification Messenger (v2.3).
- * Giai đoạn 6.30: Tối ưu hiển thị iOS (Content -> Title) và sửa lỗi Deep Linking.
+ * [SERVICE]: Spark Notification Messenger (v2.4).
+ * Giai đoạn 6.31: 
+ * 1. [Sync]: Tiếp nhận mảng schedule chính thức từ SparkEngine thông qua EntryService.
+ * 2. [Waterfall]: Thực hiện đăng ký đầy đủ các mốc nhắc nhở (10p, 24h, 72h) thay vì chỉ mốc đầu tiên.
+ * 3. [Deep Linking]: Duy trì tham số open trong data để App.tsx điều hướng chính xác.
  */
 
 export const NotificationManager = {
@@ -56,39 +59,48 @@ export const NotificationManager = {
   },
 
   /**
-   * [WATERFALL SCHEDULING]: Lập lịch các mốc thời gian Spotlight.
+   * [WATERFALL SCHEDULING]: Lập lịch các mốc thời gian Spotlight dựa trên tính toán từ SparkEngine.
+   * @param entryId - ID của bản ghi.
+   * @param type - Loại bản ghi (task/thought).
+   * @param content - Nội dung bản ghi để hiển thị Spotlight trên banner.
+   * @param schedule - Mảng các mốc timestamp (Date.now() + interval) nhận từ EntryService.
    */
-  async scheduleWaterfall(entryId: number, type: 'task' | 'thought', content: string) {
+  async scheduleWaterfall(entryId: number, type: 'task' | 'thought', content: string, schedule: number[]) {
     if (!("serviceWorker" in navigator) || Notification.permission !== 'granted') return;
 
     const registration = await navigator.serviceWorker.ready;
     
-    const intervals = [
-      { label: '10 phút', delay: 10 * 60 * 1000 },
-      { label: '24 giờ', delay: 24 * 60 * 60 * 1000 },
-      { label: '72 giờ', delay: 72 * 60 * 60 * 1000 }
-    ];
+    // Nhãn hiển thị cho các giai đoạn tương ứng với mảng schedule [10p, 24h, 72h]
+    const labels = ['Nhắc nhở 10p', 'Nhắc nhở 24h', 'Nhắc nhở 72h'];
 
-    intervals.forEach((mốc, index) => {
-      const notificationOptions: any = {
-        // [MOD]: Content chính thức làm tiêu đề
-        body: "", 
-        icon: "/icon-192x192.png",
-        tag: `spark-${entryId}-${index}`,
-        data: { 
-          url: `${window.location.origin}/?open=${type}:${entryId}`,
-          entryId
-        },
-        actions: [
-          { action: 'snooze', title: 'Nhắc lại sau (1h)' }
-        ]
-      };
+    schedule.forEach((timestamp, index) => {
+      const delay = timestamp - Date.now();
+      
+      // Chỉ lập lịch cho các mốc thời gian trong tương lai
+      if (delay > 0) {
+        const notificationOptions: any = {
+          // [MOD]: Nội dung bản ghi đóng vai trò tiêu đề ưu tiên nhất (Spotlight) 
+          body: labels[index] || "Gia hạn ký ức", 
+          icon: "/icon-192x192.png",
+          badge: "/icon-192x192.png",
+          tag: `spark-${entryId}-${index}`,
+          // Lưu trữ metadata để App.tsx thực hiện Deep Link khi nhấn vào banner [cite: 9, 22]
+          data: { 
+            url: `${window.location.origin}/?open=${type}:${entryId}`,
+            entryId,
+            entryType: type
+          },
+          actions: [
+            { action: 'snooze', title: 'Nhắc lại sau (1h)' }
+          ],
+          // Hỗ trợ chế độ rung tùy chỉnh nếu trình duyệt cho phép
+          vibrate: [200, 100, 200]
+        };
 
-      if (index === 0) {
+        // Đăng ký thông báo cục bộ thông qua setTimeout (Luồng tạm thời cho PWA)
         setTimeout(() => {
-          // Tiêu đề là content thô để hiện được nhiều nhất
           registration.showNotification(content, notificationOptions);
-        }, mốc.delay);
+        }, delay);
       }
     });
   }

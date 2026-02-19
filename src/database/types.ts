@@ -1,12 +1,10 @@
 /**
- * Purpose: Định nghĩa interface và kiểu dữ liệu cho database (v9.2).
- * Inputs/Outputs: N/A.
+ * Purpose: Định nghĩa interface và kiểu dữ liệu cho database (v11.0).
  * Business Rule: 
  * - Tích hợp hệ thống đồng bộ Obsidian với cơ chế định danh nguồn (sourceTable).
  * - Bổ sung trạng thái 'ignored' để dứt khoát hóa quy trình Review.
- * - Hỗ trợ Smart Merge và bảo tồn tính nhất quán dữ liệu qua Bridge.
- * - [NEW 9.1]: Cố định sourceTable để tránh lỗi lệch ID giữa các bảng.
  * - [NEW 9.2]: Bổ sung ISparkSchedule phục vụ Catch-up Logic để fix lỗi trễ thông báo.
+ * - [NEW 11.0]: Bổ sung cấu hình Forgiveness Hour (Giờ tha thứ) để giải phóng tâm lý.
  */
 
 // --- MODULE: SPARK CATCH-UP LOGIC (v9.2) ---
@@ -134,6 +132,14 @@ export interface IUserProfile {
   cpiScore: number;
   archetype: 'newbie' | 'manager-led' | 'curious-explorer' | 'harmonized';
   lastReset: number;
+
+  /**
+   * [NEW 11.0]: Forgiveness Hour Configuration
+   * Quản lý mốc thời gian giải phóng gánh nặng tâm lý.
+   */
+  forgivenessHour?: number;    // Giờ tha thứ do người dùng thiết lập (0-23)
+  lastForgivenessRun?: string; // Lưu ngày chạy cuối (YYYY-MM-DD) để tránh lặp lại
+
   identityProgress: {
     currentQuestionIndex: number;
     answers: Record<number, string[]>; 

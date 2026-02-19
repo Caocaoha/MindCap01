@@ -1,10 +1,10 @@
 /**
- * Purpose: Bộ điều khiển bố cục chính (Main Layout Controller) của ứng dụng MindCap (v6.33).
+ * Purpose: Bộ điều khiển bố cục chính (Main Layout Controller) của ứng dụng MindCap (v6.34).
  * Inputs/Outputs: Quản lý trạng thái hiển thị của các Module dựa trên ActiveTab.
  * Business Rule: 
  * - [SERVICE WORKER]: Đăng ký và quản lý luồng chạy ngầm của Spark.
  * - [DEEP LINKING]: Bóc tách tham số URL để mở trực tiếp Task/Thought từ thông báo.
- * - [INITIALIZATION]: Khởi tạo và chuẩn hóa dữ liệu từ IndexedDB.
+ * - [FORGIVENESS]: Kích hoạt cơ chế giải phóng tâm lý khi khởi chạy (Lazy Trigger).
  */
 
 import React, { useEffect } from 'react';
@@ -27,6 +27,8 @@ import { UniversalEditModal } from './modules/input/components/universal-edit-mo
 import { BottomNav } from './components/shared/bottom-nav';
 // [NEW]: Import GlobalToast cho hệ thống thông báo tương tác chính giữa màn hình
 import { GlobalToast } from './components/shared/global-toast';
+// [NEW]: Kết nối ForgivenessEngine phục vụ cơ chế giải phóng tâm lý
+import { ForgivenessEngine } from './services/forgiveness-engine';
 
 export const App: React.FC = () => {
   const { activeTab, setActiveTab, isInputFocused, setInputFocused, setTyping, openEditModal } = useUiStore();
@@ -37,12 +39,10 @@ export const App: React.FC = () => {
   /**
    * [1. SERVICE WORKER REGISTRATION]
    * Kích hoạt luồng chạy ngầm cho Spark Waterfall.
-   * Lưu ý: Sử dụng đường dẫn service-worker.js sau build.
    */
   useEffect(() => {
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        // [MOD]: Đảm bảo đường dẫn service-worker.js khớp với cấu hình build của dự án
         navigator.serviceWorker.register('/service-worker.js', { type: 'module' })
           .then(registration => {
             console.log('MindCap SW Registered: ', registration.scope);
@@ -78,14 +78,22 @@ export const App: React.FC = () => {
   }, [setTasks]);
 
   /**
-   * [3. DEEP LINKING HANDLER]
+   * [3. FORGIVENESS HOUR ENGINE]
+   * Chiến thuật Kích hoạt tiết kiệm: Chỉ kiểm tra khi người dùng mở ứng dụng lần đầu.
+   * Đẩy các nội dung còn tồn đọng trong Focus về danh sách Todo để giảm áp lực.
+   */
+  useEffect(() => {
+    ForgivenessEngine.checkAndRun();
+  }, []);
+
+  /**
+   * [4. DEEP LINKING HANDLER]
    * Xử lý tham số ?open= và ?create-link-to= từ URL.
    */
   useEffect(() => {
     const handleDeepLink = async () => {
       const params = new URLSearchParams(window.location.search);
       
-      // Xử lý mở bản ghi từ thông báo Spark
       const openTarget = params.get('open');
       if (openTarget && openTarget.includes(':')) {
         const [type, idStr] = openTarget.split(':');
@@ -98,10 +106,8 @@ export const App: React.FC = () => {
 
             if (entry) {
               triggerHaptic('medium');
-              // Chuyển Tab tương ứng trước khi mở Modal
               setActiveTab(type === 'task' ? 'saban' : 'journey');
               openEditModal(entry);
-              // Làm sạch URL sau khi xử lý để tránh re-trigger khi reload
               window.history.replaceState({}, '', window.location.pathname);
             }
           } catch (error) {
@@ -110,7 +116,6 @@ export const App: React.FC = () => {
         }
       }
 
-      // Xử lý tạo liên kết nhanh (Echo Bridge)
       const createLinkTarget = params.get('create-link-to');
       if (createLinkTarget && createLinkTarget.includes(':')) {
         const [type, idStr] = createLinkTarget.split(':');
@@ -141,12 +146,11 @@ export const App: React.FC = () => {
       }
     };
 
-    // Theo dõi thay đổi của URL Search để bắt kịp các Deep Link mới
     handleDeepLink();
   }, [openEditModal, setActiveTab]);
 
   /**
-   * [4. KEYBOARD SHORTCUTS]
+   * [5. KEYBOARD SHORTCUTS]
    * Xử lý tương tác phím tắt toàn hệ thống.
    */
   useEffect(() => {
@@ -200,7 +204,7 @@ export const App: React.FC = () => {
         </button>
       </header>
 
-      {/* MAIN: Meat (Flex-1 co giãn) */}
+      {/* MAIN: Meat */}
       <main className="flex-1 relative overflow-hidden bg-white">
         {activeTab === 'saban' && <SabanBoard />}
         {activeTab === 'journey' && <JourneyList />}
@@ -233,7 +237,7 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      {/* FOOTER: Bottom Bun (Sử dụng Component tách biệt) */}
+      {/* FOOTER: Bottom Bun */}
       <footer className={`h-20 flex-none relative z-40 border-t border-slate-200 bg-white transition-transform duration-500 ease-out ${
         isInputFocused ? 'translate-y-full' : 'translate-y-0'
       }`}>
@@ -245,8 +249,6 @@ export const App: React.FC = () => {
       <EntryModal />
       <SparkNotification />
       <UniversalEditModal />
-      
-      {/* [NEW]: Global Toast Component hiển thị ở lớp cao nhất */}
       <GlobalToast />
     </div>
   );

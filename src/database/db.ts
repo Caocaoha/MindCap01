@@ -1,10 +1,11 @@
 /**
- * Purpose: MindCap Core Database Controller - Quản lý lưu trữ IndexedDB bằng Dexie.js (v10.0).
+ * Purpose: MindCap Core Database Controller - Quản lý lưu trữ IndexedDB bằng Dexie.js (v11.0).
  * Inputs/Outputs: Khởi tạo database, thực hiện migration dữ liệu.
  * Business Rule: 
  * - Quản lý phiên bản và lược đồ lưu trữ đồng bộ.
  * - [NEW 9.1]: Tích hợp chỉ mục sourceTable để định danh tuyệt đối nguồn dữ liệu.
  * - [NEW 10.0]: Bổ sung bảng sparkSchedules để hỗ trợ Catch-up Logic, đảm bảo thông báo chính xác.
+ * - [NEW 11.0]: Tích hợp cấu hình Forgiveness Hour (Giờ tha thứ) vào User Profile.
  * - Đảm bảo tính nhất quán dữ liệu qua cơ chế Atomic Migration trên môi trường Cloudflare.
  */
 
@@ -139,7 +140,7 @@ export class MindCapDatabase extends Dexie {
 
     /**
      * [NEW 10.0] Version 10: Tích hợp Catch-up Logic cho Spark Notification.
-     * Khởi tạo bảng sparkSchedules để lưu trữ các mốc thông báo cần quét ngầm.
+     * Khởi tạo bảng sparkSchedules để lưu trữ các mốc thời gian thông báo cần quét ngầm.
      * Chỉ mục chính: entryId, scheduledAt (để quét các mốc bị lỡ), status (để lọc trạng thái gửi).
      */
     this.version(10).stores({
@@ -149,6 +150,27 @@ export class MindCapDatabase extends Dexie {
       userProfile: '++id',
       // [FIX]: Bổ sung bảng sparkSchedules phục vụ việc fix lỗi thông báo trễ.
       sparkSchedules: '++id, entryId, entryType, scheduledAt, status'
+    });
+
+    /**
+     * [NEW 11.0] Version 11: Tích hợp Cơ chế Giờ tha thứ (Forgiveness Hour).
+     * Bổ sung logic khởi tạo các trường cấu hình cho tính năng giải phóng gánh nặng tâm lý.
+     */
+    this.version(11).stores({
+      tasks: '++id, status, createdAt, isFocusMode, scheduledFor, *tags, doneCount, targetCount, nextReviewAt, interactionScore, echoLinkCount, parentId, parentGroupId, archiveStatus, syncStatus, sourceTable', 
+      thoughts: '++id, type, createdAt, nextReviewAt, interactionScore, echoLinkCount, parentId, syncStatus, sourceTable',
+      moods: '++id, score, createdAt',
+      userProfile: '++id',
+      sparkSchedules: '++id, entryId, entryType, scheduledAt, status'
+    }).upgrade(async (trans) => {
+      /**
+       * MIGRATION LOGIC: Khởi tạo giá trị mặc định cho Giờ tha thứ.
+       * Mặc định là 19h và chưa chạy lần nào trong ngày hiện tại.
+       */
+      await trans.table('userProfile').toCollection().modify(profile => {
+        if (profile.forgivenessHour === undefined) profile.forgivenessHour = 19;
+        if (profile.lastForgivenessRun === undefined) profile.lastForgivenessRun = '';
+      });
     });
   }
 }

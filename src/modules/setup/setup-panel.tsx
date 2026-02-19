@@ -1,9 +1,8 @@
 /**
- * Purpose: Quản trị hệ thống, dữ liệu và thiết lập đồng bộ MindCap.
- * Inputs/Outputs: Giao diện người dùng (JSX.Element).
+ * Purpose: Quản trị hệ thống, dữ liệu và thiết lập đồng bộ MindCap (v6.40).
  * Business Rule: 
  * - Quản lý Export/Import JSON chuẩn và Legacy.
- * - [NEW]: Tự động gán syncStatus: 'pending' cho dữ liệu thiếu trường này khi Import.
+ * - [NEW]: Cung cấp giao diện thiết lập "Giờ tha thứ" (Forgiveness Hour) để giải phóng tâm lý.
  * - Cung cấp lối vào cho hệ thống đồng bộ Obsidian (Sync Review).
  */
 
@@ -18,13 +17,38 @@ export const SetupPanel: React.FC = () => {
   const legacyInputRef = useRef<HTMLInputElement>(null);
   
   const [permissionStatus, setPermissionStatus] = useState<NotificationPermission>('default');
+  const [forgivenessHour, setForgivenessHour] = useState<number>(19); // Mặc định là 19h
   const { setActiveTab } = useUiStore();
 
+  /**
+   * [INITIALIZATION]: Load cấu hình người dùng từ Database.
+   */
   useEffect(() => {
     if ("Notification" in window) {
       setPermissionStatus(Notification.permission);
     }
+
+    const loadSettings = async () => {
+      const profile = await db.userProfile.toCollection().first();
+      if (profile && profile.forgivenessHour !== undefined) {
+        setForgivenessHour(profile.forgivenessHour);
+      }
+    };
+    loadSettings();
   }, []);
+
+  /**
+   * [ACTION]: Cập nhật Giờ tha thứ vào hồ sơ người dùng.
+   */
+  const handleUpdateForgivenessHour = async (hour: number) => {
+    try {
+      setForgivenessHour(hour);
+      await db.userProfile.toCollection().modify({ forgivenessHour: hour });
+      triggerHaptic('light');
+    } catch (err) {
+      console.error("Cập nhật Giờ tha thứ thất bại:", err);
+    }
+  };
 
   // --- 0. KÍCH HOẠT & THỬ NGHIỆM SPARK NOTIFICATION ---
   const handleEnableNotifications = async () => {
@@ -162,6 +186,30 @@ export const SetupPanel: React.FC = () => {
         <h2 className="text-2xl font-black tracking-tighter text-slate-900">SETUP</h2>
         <p className="text-[9px] uppercase tracking-widest opacity-30 font-bold">Quản trị dữ liệu & Hệ thống</p>
       </header>
+
+      {/* [NEW]: CƠ CHẾ GIẢI PHÓNG TÂM LÝ (FORGIVENESS HOUR) */}
+      <section className="space-y-4">
+        <h3 className="text-[10px] font-black uppercase tracking-widest text-emerald-500/50">Psychological Relief</h3>
+        <div className="p-5 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center justify-between">
+          <div className="text-left">
+            <p className="text-[11px] font-bold text-emerald-700">Giờ Tha Thứ</p>
+            <p className="text-[8px] opacity-40 uppercase mt-0.5">Tự động trả việc về Todo để giải phóng Focus</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <select 
+              value={forgivenessHour}
+              onChange={(e) => handleUpdateForgivenessHour(parseInt(e.target.value, 10))}
+              className="bg-white border border-emerald-200 text-emerald-700 text-[11px] font-black px-3 py-2 rounded-xl outline-none shadow-sm focus:ring-2 focus:ring-emerald-300 transition-all appearance-none cursor-pointer"
+            >
+              {Array.from({ length: 24 }, (_, i) => (
+                <option key={i} value={i}>
+                  {i < 10 ? `0${i}` : i}:00
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </section>
 
       {/* [NEW]: CẦU NỐI TRI THỨC (OBSIDIAN SYNC) */}
       <section className="space-y-4">

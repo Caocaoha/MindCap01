@@ -1,9 +1,10 @@
 /// <reference lib="webworker" />
 
 /**
- * [SERVICE WORKER]: Spark Background Processor (v2.0)
+ * [SERVICE WORKER]: Spark Background Processor (v2.1)
  * Update: 
- * - Tích hợp Catch-up Logic: Quét IndexedDB để bắn thông báo bù nếu bị trễ giờ.
+ * - Tích hợp Auto-Cleanup Logic: Tự động xóa các mốc 'sent' cũ sau 24 giờ.
+ * - Catch-up Logic: Quét IndexedDB để bắn thông báo bù nếu bị trễ giờ.
  * - Layout Update: Title = Content, Body = "" (100% Content focus).
  * - Build Fix: Giữ nguyên điểm neo __WB_MANIFEST cho Cloudflare.
  */
@@ -17,6 +18,34 @@ declare const self: ServiceWorkerGlobalScope & {
 // [CRITICAL]: Điểm neo bắt buộc để trình build bơm danh sách file.
 const manifest = self.__WB_MANIFEST;
 console.log('[MindCap] Service Worker Manifest Injected:', manifest.length);
+
+/**
+ * [CLEANUP LOGIC]: Tự động dọn dẹp các bản ghi đã gửi hoặc đã quá hạn để tối ưu bộ nhớ.
+ */
+const performCleanup = async () => {
+  try {
+    const RETENTION_WINDOW = 24 * 60 * 60 * 1000; // Ngưỡng an toàn: 24 giờ
+    const cleanupThreshold = Date.now() - RETENTION_WINDOW;
+
+    /**
+     * Thực hiện xóa hàng loạt (Bulk Delete):
+     * 1. Các bản ghi đã gửi (status: 'sent') và đã quá 24 giờ.
+     * 2. Các bản ghi bị lỡ (status: 'pending') nhưng đã quá hạn hơn 48 giờ (hết giá trị nhắc lại).
+     */
+    const oldSentRecords = await db.sparkSchedules
+      .where('scheduledAt')
+      .below(cleanupThreshold)
+      .and(item => item.status === 'sent')
+      .primaryKeys();
+
+    if (oldSentRecords.length > 0) {
+      await db.sparkSchedules.bulkDelete(oldSentRecords);
+      console.log(`[Spark Cleanup] Đã dọn dẹp ${oldSentRecords.length} bản ghi cũ.`);
+    }
+  } catch (error) {
+    console.error("[Spark Cleanup Error]:", error);
+  }
+};
 
 /**
  * [CATCH-UP LOGIC]: Quét database để tìm các thông báo bị lỡ do OS "ngủ đông".
@@ -43,7 +72,7 @@ const checkMissedNotifications = async () => {
     for (const schedule of missedSchedules) {
       // Hiển thị thông báo ngay lập tức
       await self.registration.showNotification(schedule.content, {
-        body: "", // Để trống Body theo yêu cầu để banner gọn gàng nhất
+        body: "", // 100% Content focus
         icon: "/icon-192x192.png",
         badge: "/icon-192x192.png",
         tag: `spark-${schedule.entryId}-${schedule.scheduledAt}`,
@@ -51,9 +80,12 @@ const checkMissedNotifications = async () => {
         data: { url: `/?open=${schedule.entryType}:${schedule.entryId}` }
       } as any);
 
-      // Cập nhật trạng thái đã gửi để không bị lặp lại
+      // Cập nhật trạng thái đã gửi
       await db.sparkSchedules.update(schedule.id!, { status: 'sent' });
     }
+    
+    // Sau khi xử lý bù, thực hiện dọn dẹp rác
+    await performCleanup();
   } catch (error) {
     console.error("[Spark Catch-up Error]:", error);
   }
@@ -69,19 +101,15 @@ const handleScheduleRequest = (payload: any) => {
     const delay = timestamp - Date.now();
     
     if (delay > 0) {
-      /**
-       * Sử dụng setTimeout cho trường hợp App đang mở (Foreground).
-       * Nếu App đóng, Catch-up Logic sẽ đảm nhiệm việc quét lại từ Database.
-       */
       setTimeout(async () => {
-        // Kiểm tra lại trạng thái trong DB trước khi hiển thị
+        // Kiểm tra lại trạng thái trong DB trước khi hiển thị để tránh trùng lặp
         const record = await db.sparkSchedules
           .where({ entryId, scheduledAt: timestamp })
           .first();
 
         if (record && record.status === 'pending') {
           self.registration.showNotification(content, {
-            body: "", // 100% Content: Body để trống
+            body: "", // Layout v2.3: 100% Content
             icon: "/icon-192x192.png",
             badge: "/icon-192x192.png",
             tag: `spark-${entryId}-${index}`,
@@ -90,7 +118,9 @@ const handleScheduleRequest = (payload: any) => {
             actions: [{ action: 'open', title: 'Xem chi tiết' }]
           } as any);
 
+          // Cập nhật trạng thái thành 'sent' và kích hoạt dọn dẹp nhẹ
           await db.sparkSchedules.update(record.id!, { status: 'sent' });
+          await performCleanup();
         }
       }, delay);
     }
@@ -101,9 +131,14 @@ const handleScheduleRequest = (payload: any) => {
  * [EVENTS]: Lắng nghe các sự kiện để đánh thức tiến trình quét ngầm.
  */
 
-// 1. Khi Service Worker kích hoạt
+// 1. Khi Service Worker kích hoạt: Quét bù và dọn dẹp hệ thống
 self.addEventListener('activate', (event) => {
-  event.waitUntil(checkMissedNotifications());
+  event.waitUntil(
+    Promise.all([
+      checkMissedNotifications(),
+      performCleanup()
+    ])
+  );
 });
 
 // 2. Khi nhận tin nhắn lập lịch từ UI
@@ -112,7 +147,7 @@ self.addEventListener('message', (event) => {
     handleScheduleRequest(event.data.payload);
   }
   
-  // Mỗi khi có tin nhắn, tiện thể quét luôn các mốc bị lỡ
+  // Mỗi khi có tương tác, tranh thủ kiểm tra và dọn dẹp
   event.waitUntil(checkMissedNotifications());
 });
 

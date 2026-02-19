@@ -13,11 +13,11 @@ interface InputBarProps {
 }
 
 /**
- * [MOD_INPUT]: Thanh nhập liệu nhanh v5.7 - Unified Service Integration.
- * Giai đoạn 6.38: 
- * 1. [Centralized]: Ủy quyền lưu trữ hoàn toàn cho EntryService để kích hoạt Spark & Saban Routing.
- * 2. [Logic]: Loại bỏ các phép tính thủ công về Focus/Todo bên trong Component.
- * 3. [Fix]: Duy trì xử lý passive event listener để đảm bảo hiệu năng kéo thả.
+ * [MOD_INPUT]: Thanh nhập liệu nhanh v5.8 - Unified Service Integration.
+ * Giai đoạn 6.39: 
+ * 1. [UI Update]: Đổi màu nền sang slate-50 và thêm viền bao quanh để nổi bật trên nền Today.
+ * 2. [Centralized]: Ủy quyền lưu trữ hoàn toàn cho EntryService để kích hoạt Spark & Saban Routing.
+ * 3. [Logic]: Giữ nguyên 100% logic xử lý cũ để bảo tồn tính ổn định.
  */
 export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
   // --- STORE CONNECTIONS ---
@@ -153,9 +153,9 @@ export const InputBar: React.FC<InputBarProps> = ({ onFocus, onBlur }) => {
 
   return (
     <div 
-      className={`relative w-full h-full transition-all duration-500 ease-out bg-white/95 backdrop-blur-xl border-t border-slate-200 flex flex-col ${
+      className={`relative w-full h-full transition-all duration-500 ease-out bg-slate-50 backdrop-blur-xl border border-slate-300/60 flex flex-col ${
         isInputFocused 
-          ? 'items-start pt-6 rounded-t-none pb-safe' 
+          ? 'items-start pt-6 rounded-t-none pb-safe border-x-0 border-b-0 border-t-slate-200' 
           : 'pb-2 rounded-t-[24px] shadow-[0_-4px_20px_rgba(0,0,0,0.05)]' 
       }`}
     >

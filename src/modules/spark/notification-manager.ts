@@ -1,11 +1,22 @@
 import { triggerHaptic } from '../../utils/haptic';
 
 /**
- * [SERVICE]: Spark Notification Messenger (v2.7).
- * Giai đoạn 6.46: 
- * - [Fix]: Sửa lỗi TS2304 "Cannot find name 'entryType'".
- * - [Safety]: Đảm bảo biến 'type' được sử dụng nhất quán trong toàn bộ hàm.
+ * [SERVICE]: Spark Notification Messenger (v2.9).
+ * Giai đoạn 6.47: 
+ * - [Update]: Bổ sung tham số isExtended để phân loại nhãn thời gian (10p, 24h... vs 7 ngày, 30 ngày...).
+ * - [Layout]: Truyền mảng 'labels' sang Service Worker để hiển thị vào phần Body của thông báo.
+ * - [Safety]: Giữ nguyên cơ chế kiểm tra Controller và quyền Notification.
  */
+
+/**
+ * Hàm hỗ trợ lấy nhãn hiển thị tương ứng với từng giai đoạn của Spark Engine.
+ */
+const GET_LABELS = (isExtended: boolean): string[] => {
+  if (isExtended) {
+    return ["7 ngày", "30 ngày", "4 tháng"];
+  }
+  return ["10 phút", "24 giờ", "72 giờ"];
+};
 
 export const NotificationManager = {
   /**
@@ -30,8 +41,15 @@ export const NotificationManager = {
 
   /**
    * [WATERFALL SCHEDULING]: Ủy quyền lập lịch cho Service Worker chạy ngầm.
+   * Bổ sung tham số isExtended để xác định tập nhãn thời gian cần hiển thị.
    */
-  async scheduleWaterfall(entryId: number, type: 'task' | 'thought', content: string, schedule: number[]) {
+  async scheduleWaterfall(
+    entryId: number, 
+    type: 'task' | 'thought', 
+    content: string, 
+    schedule: number[], 
+    isExtended: boolean = false
+  ) {
     // 1. Kiểm tra quyền hạn và sự sẵn sàng của SW
     if (!("serviceWorker" in navigator)) return;
     
@@ -53,12 +71,14 @@ export const NotificationManager = {
             entryId,
             entryType: type, // Ánh xạ từ 'type' sang 'entryType' cho Service Worker
             content,
-            schedule, 
+            schedule,
+            labels: GET_LABELS(isExtended), // Gửi mảng nhãn thời gian để SW hiển thị vào Body
             origin: window.location.origin
           }
         });
-        // [FIXED]: Sử dụng đúng tên biến 'type' đã khai báo ở tham số hàm
-        console.log(`[Spark Notification] Đã ủy quyền lập lịch cho ${type}:${entryId}.`);
+        
+        // [LOG]: Theo dõi tiến trình lập lịch trong Console
+        console.log(`[Spark Notification] Đã ủy quyền lập lịch cho ${type}:${entryId}. Chế độ: ${isExtended ? 'Gia hạn' : 'Khởi tạo'}`);
       } else {
         console.warn("[Spark Notification] SW Controller chưa sẵn sàng. Hãy F5 trang web.");
       }
@@ -87,6 +107,7 @@ export const NotificationManager = {
         entryType: type,
         content: content || "Ký ức cần xem lại",
         schedule: [snoozeTimestamp],
+        labels: ["Nhắc lại (1 giờ)"], // Nhãn đặc biệt cho hành động Snooze
         isSnooze: true,
         origin: window.location.origin
       }

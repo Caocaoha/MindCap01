@@ -17,10 +17,10 @@ export interface UserState {
   loadProfile: () => Promise<void>;
   
   /**
-   * [NEW]: Cap nhat Gio Tha Thu vao Database va Store.
-   * Dam bao trang thai ton tai vinh vien ngay ca khi chuyen Tab hoac Reset chat.
+   * [UPDATE]: Chấp nhận cả string (HH:mm) hoặc number.
+   * Reset 'lastForgivenessRun' khi cập nhật để kích hoạt Engine ngay lập tức.
    */
-  updateForgivenessHour: (hour: number) => Promise<void>;
+  updateForgivenessHour: (hour: string | number) => Promise<void>;
 }
 
 export const useUserStore = create<UserState>((set, get) => ({
@@ -74,26 +74,37 @@ export const useUserStore = create<UserState>((set, get) => ({
   },
 
   /**
-   * [NEW]: Xu ly ghi de Gio Tha Thu.
-   * Thuc hien cap nhat Atomic vao Database truoc khi dong bo Store.
+   * [UPDATE]: Xu ly ghi de Gio Tha Thu.
+   * Business Rule: Khi doi gio, phai xoa lastForgivenessRun de Engine co the chay lai ngay.
    */
-  updateForgivenessHour: async (hour: number) => {
+  updateForgivenessHour: async (hour: string | number) => {
     try {
       const currentProfile = get().profile;
       if (!currentProfile) return;
 
-      const updatedProfile = { ...currentProfile, forgivenessHour: hour };
+      /**
+       * Tao object moi voi gio moi va reset flag thuc thi.
+       * lastForgivenessRun = '' se lam cho logic (lastRun !== today) o Engine luon dung.
+       */
+      const updatedProfile = { 
+        ...currentProfile, 
+        forgivenessHour: hour,
+        lastForgivenessRun: '' 
+      };
       
       // 1. Cap nhat vao Database (Dexie)
       if (currentProfile.id) {
-        await db.userProfile.update(currentProfile.id, { forgivenessHour: hour });
+        await db.userProfile.update(currentProfile.id, { 
+          forgivenessHour: hour,
+          lastForgivenessRun: '' // Bat buoc phai reset
+        });
       } else {
         // Truong hop dac biet neu chua co ID (ban ghi dau tien)
         const id = await db.userProfile.put(updatedProfile);
         updatedProfile.id = id;
       }
 
-      // 2. Dong bo lai vao Zustand Store
+      // 2. Dong bo lai vao Zustand Store de UI phan hoi tuc thi
       set({ profile: updatedProfile });
     } catch (error) {
       console.error("UserStore: updateForgivenessHour failed", error);

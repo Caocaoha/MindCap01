@@ -6,6 +6,7 @@
  * - [NEW 9.2]: Bổ sung ISparkSchedule phục vụ Catch-up Logic để fix lỗi trễ thông báo.
  * - [NEW 11.0]: Bổ sung cấu hình Forgiveness Hour (Giờ tha thứ) để giải phóng tâm lý.
  * - [NEW 11.1]: Bổ sung repeatOn cho ITask để hỗ trợ hiển thị tần suất lặp lại tùy chỉnh.
+ * - [UPDATE 11.2]: Mở rộng forgivenessHour hỗ trợ kiểu string (HH:mm) để đặt giờ lẻ.
  */
 
 // --- MODULE: SPARK CATCH-UP LOGIC (v9.2) ---
@@ -142,8 +143,9 @@ export interface IUserProfile {
   /**
    * [NEW 11.0]: Forgiveness Hour Configuration
    * Quản lý mốc thời gian giải phóng gánh nặng tâm lý.
+   * [UPDATE]: Hỗ trợ cả kiểu number (0-23) và string ("HH:mm").
    */
-  forgivenessHour?: number;    // Giờ tha thứ do người dùng thiết lập (0-23)
+  forgivenessHour?: number | string;    
   lastForgivenessRun?: string; // Lưu ngày chạy cuối (YYYY-MM-DD) để tránh lặp lại
 
   identityProgress: {

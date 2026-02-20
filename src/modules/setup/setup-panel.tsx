@@ -5,6 +5,7 @@
  * - [UI UPDATE]: Sắp xếp theo thứ tự: 1. Knowledge Bridge, 2. Export/Import, 3. Spark & Forgiveness (Hàng đôi đối xứng).
  * - [FIX]: Hợp nhất nút Test vào khối Spark để tạo sự cân bằng thị giác.
  * - [FORGIVENESS]: Hỗ trợ đặt giờ lẻ (HH:mm), thêm nút Lưu và kết nối ForgivenessEngine.
+ * - [SYNC FIX]: Đồng bộ hóa tuyệt đối với useUserStore để tránh mất dữ liệu khi chuyển Tab.
  */
 
 import React, { useRef, useState, useEffect } from 'react';
@@ -21,35 +22,46 @@ export const SetupPanel: React.FC = () => {
   const [permissionStatus, setPermissionStatus] = useState<NotificationPermission>('default');
   
   /**
-   * [UPDATE]: Chuyển sang dùng string (HH:mm) để hỗ trợ giờ lẻ.
-   * Mặc định là "19:00".
+   * [LOCAL STATE]: Chỉ dùng để lưu giá trị tạm thời trên Input.
+   * Giá trị ban đầu sẽ được đồng bộ từ Store thông qua useEffect.
    */
   const [forgivenessTime, setForgivenessTime] = useState<string>("19:00");
   const { setActiveTab } = useUiStore();
-  const { updateForgivenessHour, loadProfile } = useUserStore();
+  
+  /**
+   * [STORE CONNECTION]: Lấy profile và các hàm hành động từ Store toàn cục.
+   */
+  const { profile, updateForgivenessHour, loadProfile } = useUserStore();
 
   /**
-   * [INITIALIZATION]: Load cấu hình người dùng từ Database.
+   * [INITIALIZATION]: Khởi tạo quyền thông báo và nạp Profile từ Store.
    */
   useEffect(() => {
     if ("Notification" in window) {
       setPermissionStatus(Notification.permission);
     }
-
-    const loadSettings = async () => {
-      const profile = await db.userProfile.toCollection().first();
-      if (profile) {
-        // Kiểm tra xem dữ liệu cũ là number hay string để hiển thị đúng
-        if (typeof profile.forgivenessHour === 'number') {
-          const hh = profile.forgivenessHour < 10 ? `0${profile.forgivenessHour}` : profile.forgivenessHour;
-          setForgivenessTime(`${hh}:00`);
-        } else if (typeof profile.forgivenessHour === 'string') {
-          setForgivenessTime(profile.forgivenessHour);
-        }
-      }
-    };
-    loadSettings();
+    
+    // Nạp lại Profile từ Database vào Store khi Tab Setup được mở
+    loadProfile();
   }, []);
+
+  /**
+   * [RE-SYNC]: Khi Profile trong Store thay đổi (hoặc đã nạp xong), 
+   * ta cập nhật lại giá trị hiển thị trên Input. 
+   * Đây là chốt chặn quan trọng để tránh việc giờ bị nhảy về 19:00 khi chuyển Tab.
+   */
+  useEffect(() => {
+    if (profile && profile.forgivenessHour) {
+      const fHour = profile.forgivenessHour;
+      
+      if (typeof fHour === 'string') {
+        setForgivenessTime(fHour);
+      } else if (typeof fHour === 'number') {
+        const hh = fHour < 10 ? `0${fHour}` : fHour;
+        setForgivenessTime(`${hh}:00`);
+      }
+    }
+  }, [profile]);
 
   /**
    * [ACTION]: Lưu Giờ tha thứ và kích hoạt Engine ngay lập tức.
@@ -58,14 +70,15 @@ export const SetupPanel: React.FC = () => {
     try {
       /**
        * 1. Cập nhật vào Store & Database
-       * Chúng ta truyền chuỗi "HH:mm" vào hàm update. 
-       * (Lưu ý: Bạn cần đảm bảo hàm updateForgivenessHour trong Store chấp nhận kiểu string)
+       * Hàm updateForgivenessHour trong Store v2.0 đã được thiết lập để 
+       * tự động reset trường 'lastForgivenessRun' thành rỗng ('').
        */
-      await updateForgivenessHour(forgivenessTime as any);
+      await updateForgivenessHour(forgivenessTime);
       
       /**
        * 2. Kích hoạt Engine kiểm tra ngay lập tức
-       * Nếu giờ vừa lưu đã trôi qua so với giờ hiện tại, Engine sẽ giải phóng gánh nặng ngay.
+       * Vì 'lastForgivenessRun' đã bị xóa ở bước trên, ForgivenessEngine 
+       * sẽ coi như hôm nay chưa chạy và thực thi giải phóng Focus ngay nếu giờ đã thỏa mãn.
        */
       await ForgivenessEngine.triggerCheckAfterUpdate();
       

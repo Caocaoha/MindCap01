@@ -9,8 +9,22 @@ export const UserLevelBadge: React.FC = () => {
     loadProfile();
   }, []);
 
-  const nextLevelXp = levelEngine.getXpForNextLevel(profile.level);
-  const progressPercent = Math.min(100, (profile.currentXp / nextLevelXp) * 100);
+  /**
+   * [FIX TS18047]: Chốt chặn an toàn. 
+   * Nếu profile chưa kịp tải từ IndexedDB, không render gì cả (hoặc có thể trả về một Skeleton UI).
+   * Tránh hoàn toàn lỗi crash do truy cập thuộc tính của null.
+   */
+  if (!profile) {
+    return null;
+  }
+
+  /**
+   * [FIX TS2339]: Khớp tên biến với interface IUserProfile trong types.ts.
+   * - 'level' đổi thành 'currentLevel'
+   * - 'currentXp' đổi thành 'totalScore'
+   */
+  const nextLevelXp = levelEngine.getXpForNextLevel(profile.currentLevel);
+  const progressPercent = Math.min(100, (profile.totalScore / nextLevelXp) * 100);
 
   return (
     <div className="flex flex-col items-end min-w-[100px]">
@@ -19,7 +33,7 @@ export const UserLevelBadge: React.FC = () => {
           {profile.archetype || 'Newbie'}
         </span>
         <span className="bg-indigo-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
-          LV.{profile.level}
+          LV.{profile.currentLevel}
         </span>
       </div>
       
@@ -31,7 +45,7 @@ export const UserLevelBadge: React.FC = () => {
         />
       </div>
       <div className="text-[9px] text-gray-400 mt-0.5">
-        {profile.currentXp}/{nextLevelXp} XP
+        {profile.totalScore}/{nextLevelXp} XP
       </div>
     </div>
   );

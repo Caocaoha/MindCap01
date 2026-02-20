@@ -1,11 +1,12 @@
 import { db } from '../../database/db';
 
 /**
- * [SERVICE]: Spark Waterfall Engine (v2.2)
+ * [SERVICE]: Spark Waterfall & Interaction Engine (v2.3)
  * Business Rule: 
  * - Giai đoạn 1: Kích hoạt cho bản ghi > 16 từ (10p, 24h, 72h).
  * - Giai đoạn 2: Gia hạn nếu được Bookmark (7 ngày, 30 ngày, 4 tháng).
- * - [NEW 2.2]: Tích hợp lưu trữ vào IndexedDB phục vụ Catch-up Logic để fix lỗi trễ giờ.
+ * - [NEW 2.3]: Cập nhật chỉ số tương tác (Scoring) và liên kết (Echo) để cung cấp dữ liệu cho Widget Pools.
+ * - [BLUEPRINT v2.0]: Đảm bảo các mốc Heritage và Trending luôn có dữ liệu chính xác để Pointer xoay vòng.
  */
 
 const INTERVALS = {
@@ -86,5 +87,40 @@ export const SparkEngine = {
 
     await db.sparkSchedules.bulkAdd(records);
     console.log(`[Spark Engine] Đã lưu ${records.length} mốc thông báo gia hạn cho ${entryType}:${entryId}`);
+  },
+
+  /**
+   * [NEW v2.3]: Cập nhật điểm tương tác (Fuel for Pool 3 - Trending).
+   * Logic: Khi người dùng xem hoặc chạm vào thẻ trên Widget, điểm 'interactionScore' sẽ tăng.
+   *
+   */
+  async updateInteractionScore(entryId: number, entryType: 'tasks' | 'thoughts', points: number = 1) {
+    try {
+      const table = db[entryType];
+      await table.where('id').equals(entryId).modify(entry => {
+        entry.interactionScore = (entry.interactionScore || 0) + points;
+        entry.lastInteractedAt = Date.now();
+      });
+      console.log(`[Spark Engine] +${points} điểm tương tác cho ${entryType}:${entryId}`);
+    } catch (error) {
+      console.error("[Spark Engine] Cập nhật điểm thất bại:", error);
+    }
+  },
+
+  /**
+   * [NEW v2.3]: Cập nhật số lượng liên kết (Fuel for Pool 1 - Heritage).
+   * Logic: Khi một liên kết Echo được tạo, 'echoLinkCount' tăng để đẩy bản ghi vào hàng ngũ Heritage.
+   *
+   */
+  async incrementEchoLink(entryId: number, entryType: 'tasks' | 'thoughts') {
+    try {
+      const table = db[entryType];
+      await table.where('id').equals(entryId).modify(entry => {
+        entry.echoLinkCount = (entry.echoLinkCount || 0) + 1;
+      });
+      console.log(`[Spark Engine] Đã tăng Echo Link cho ${entryType}:${entryId}`);
+    } catch (error) {
+      console.error("[Spark Engine] Tăng Echo Link thất bại:", error);
+    }
   }
 };

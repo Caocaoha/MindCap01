@@ -83,12 +83,25 @@ const WidgetSlotCard: React.FC<WidgetSlotProps> = ({ label, content, type, id })
 
 /**
  * [COMPONENT]: Widget Memory Spark (Vertical Stack Layout).
- * Cửa sổ hiển thị dòng chảy ký ức phiên bản v4.7.
+ * Cửa sổ hiển thị dòng chảy ký ức phiên bản v4.8.
  */
 export const WidgetMemorySpark: React.FC<{ data: any }> = ({ data }) => {
   if (!data || !data.slots) return null;
 
   const { slot1, slot2, slot3, slot4 } = data.slots;
+
+  /**
+   * [ACTION]: Kích hoạt làm mới tri thức thủ công.
+   * Logic: Phát sự kiện để WidgetProvider nhận biết và tăng Current_Pointer lên +1.
+   */
+  const handleManualRefresh = () => {
+    triggerHaptic('medium');
+    /**
+     * PHÁT TÍN HIỆU DÒNG CHẢY: Gửi sự kiện hệ thống để WidgetProvider ép Current_Pointer tăng lên,
+     * từ đó xoay vòng sang nhóm 4 bản ghi tiếp theo trong các Pool.
+     */
+    window.dispatchEvent(new CustomEvent('spark:manual-refresh'));
+  };
 
   return (
     /* CONTAINER: Chuyển đổi sang flex-col để xếp chồng 4 slots theo hàng dọc.
@@ -110,6 +123,26 @@ export const WidgetMemorySpark: React.FC<{ data: any }> = ({ data }) => {
         {slot4 && <WidgetSlotCard label="Isolated" content={slot4.content} type={slot4.type || 'task'} id={slot4.id} />}
         {slot2 && <WidgetSlotCard label="Universe" content={slot2.content} type={slot2.type || 'task'} id={slot2.id} />}
       </div>
+
+      {/* [NEW]: NÚT MANUAL REFRESH (LÀM MỚI THỦ CÔNG)
+          Được đặt ở cuối danh sách để đảm bảo người dùng đã tiêu thụ hết 4 ý tưởng trước khi khám phá nội dung mới.
+      */}
+      <button 
+        onClick={handleManualRefresh}
+        className="w-full py-4 mt-2 border-2 border-dashed border-slate-100 rounded-[16px] 
+                   flex items-center justify-center gap-3 group
+                   active:scale-[0.98] active:bg-slate-50 transition-all cursor-pointer"
+      >
+        <div className="p-1.5 bg-slate-50 rounded-full group-active:rotate-180 transition-transform duration-500">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
+            <path d="M23 4v6h-6"/>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
+        </div>
+        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-slate-600 transition-colors">
+          Khám phá thêm tri thức
+        </span>
+      </button>
 
       {/* Gợi ý tương tác mới cho người dùng */}
       <p className="text-[8px] text-center text-slate-400 mt-2 font-bold uppercase tracking-widest">

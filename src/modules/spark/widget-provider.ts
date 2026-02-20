@@ -25,13 +25,13 @@ export const WidgetProvider = {
     const now = Date.now();
     const tenDaysAgo = now - (10 * MS_PER_DAY);
 
-    // Lấy toàn bộ dữ liệu cần thiết (Tasks & Thoughts) [cite: 4]
+    // Lấy toàn bộ dữ liệu cần thiết (Tasks & Thoughts)
     const allTasks = await db.tasks.toArray();
     const allThoughts = await db.thoughts.toArray();
     const allEntries = [...allTasks, ...allThoughts];
 
     /**
-     * Pool 1 (Heritage): > 10 ngày AND isBookmarked = true. [cite: 12]
+     * Pool 1 (Heritage): > 10 ngày AND isBookmarked = true.
      * Sắp xếp theo echoLinkCount DESC.
      */
     const pool1 = allEntries
@@ -40,7 +40,7 @@ export const WidgetProvider = {
       .slice(0, POOL_LIMITS.HERITAGE);
 
     /**
-     * Pool 2 (Universe): isBookmarked = true. [cite: 13]
+     * Pool 2 (Universe): isBookmarked = true.
      * Sắp xếp ngẫu nhiên (Shuffle).
      */
     const pool2 = allEntries
@@ -49,7 +49,7 @@ export const WidgetProvider = {
       .slice(0, POOL_LIMITS.UNIVERSE);
 
     /**
-     * Pool 3 (Trending New): <= 10 ngày AND echoLinkCount > 0. [cite: 14]
+     * Pool 3 (Trending New): <= 10 ngày AND echoLinkCount > 0.
      * Sắp xếp theo interactionScore DESC.
      */
     const pool3 = allEntries
@@ -58,7 +58,7 @@ export const WidgetProvider = {
       .slice(0, POOL_LIMITS.TRENDING);
 
     /**
-     * Pool 4 (Isolated New): <= 10 ngày AND echoLinkCount = 0. [cite: 15]
+     * Pool 4 (Isolated New): <= 10 ngày AND echoLinkCount = 0.
      * Sắp xếp ngẫu nhiên.
      */
     const pool4 = allEntries
@@ -70,19 +70,19 @@ export const WidgetProvider = {
   },
 
   /**
-   * [TIMELINE PROVIDER]: Chuẩn bị 8 mốc hiển thị cho 24h tới. [cite: 16, 18]
+   * [TIMELINE PROVIDER]: Chuẩn bị 8 mốc hiển thị cho 24h tới.
    * Mỗi mốc cách nhau 3 giờ.
    */
   async GetWidgetTimeline() {
     const { pool1, pool2, pool3, pool4 } = await this.generateCandidatePools();
     
-    // Lấy con trỏ Current_Pointer từ LocalStorage (mặc định 0) [cite: 17]
+    // Lấy con trỏ Current_Pointer từ LocalStorage (mặc định 0)
     let currentPointer = parseInt(localStorage.getItem('spark_widget_pointer') || '0', 10);
     
     const timeline = [];
     const startTime = Date.now();
 
-    // Tạo 8 mốc thời gian (mỗi mốc 3 giờ) [cite: 19]
+    // Tạo 8 mốc thời gian (mỗi mốc 3 giờ)
     for (let i = 0; i < 8; i++) {
       const triggerAt = startTime + (i * 3 * 60 * 60 * 1000);
       const hour = new Date(triggerAt).getHours();
@@ -105,15 +105,61 @@ export const WidgetProvider = {
       };
 
       timeline.push(snapshot);
-      currentPointer++; // Tăng con trỏ sau mỗi Slot [cite: 20]
+      currentPointer++; // Tăng con trỏ sau mỗi Slot
     }
 
-    // Lưu lại con trỏ mới cho lần chạy sau [cite: 20]
+    // Lưu lại con trỏ mới cho lần chạy sau
     localStorage.setItem('spark_widget_pointer', currentPointer.toString());
 
     /**
-     * TRẢ VỀ DỮ LIỆU TĨNH: Widget chỉ việc đọc và hiển thị. [cite: 21, 22]
+     * TRẢ VỀ DỮ LIỆU TĨNH: Widget chỉ việc đọc và hiển thị.
      */
     return timeline;
+  },
+
+  /**
+   * [NEW]: MANUAL REFRESH LOGIC (Blueprint v2.0).
+   * Cưỡng bức làm mới dữ liệu Widget bằng cách tăng con trỏ và tính toán lại mốc hiện tại.
+   */
+  async manualRefresh() {
+    try {
+      // 1. Đọc và ép tăng con trỏ hiện tại lên +1
+      let currentPointer = parseInt(localStorage.getItem('spark_widget_pointer') || '0', 10);
+      currentPointer++;
+      
+      // 2. Lưu lại Pointer mới ngay lập tức
+      localStorage.setItem('spark_widget_pointer', currentPointer.toString());
+
+      // 3. Tạo lại Timeline mới bắt đầu từ Pointer này
+      const newTimeline = await this.GetWidgetTimeline();
+
+      /**
+       * 4. PHÁT TÍN HIỆU CẬP NHẬT: Gửi snapshot đầu tiên (hiện tại) 
+       * để UI đồng bộ hóa tức thì.
+       */
+      if (newTimeline.length > 0) {
+        window.dispatchEvent(new CustomEvent('spark:data-updated', { 
+          detail: newTimeline[0] 
+        }));
+      }
+
+      return newTimeline;
+    } catch (error) {
+      console.error("[WidgetProvider] Manual Refresh Failed:", error);
+    }
+  },
+
+  /**
+   * [NEW]: Khởi tạo trình lắng nghe sự kiện từ giao diện (widget-memory-spark.tsx).
+   */
+  init() {
+    if (typeof window !== 'undefined') {
+      window.addEventListener('spark:manual-refresh', () => {
+        this.manualRefresh();
+      });
+    }
   }
 };
+
+// Tự động kích hoạt bộ lắng nghe khi Service được nạp vào hệ thống
+WidgetProvider.init();

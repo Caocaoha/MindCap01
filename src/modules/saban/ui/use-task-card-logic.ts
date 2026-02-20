@@ -2,7 +2,7 @@
  * Purpose: Xu ly cam bien keo tha va tuong tac cua Task Card.
  * Inputs/Outputs: Nhan vao props cua component, tra ve cac handlers va states.
  * Business Rule: Cam keo tha voi viec da xong, kich hoat Haptic khi tuong tac.
- * [FIX]: Triet tieu loi TS2367 va format dung "Hang ngay", "Thu X", "Ngay X".
+ * [UPDATE]: Toi uu hien thi "Hang ngay" khi chon full tuan/thang, liet ke chi tiet khi chon ngay le.
  */
 
 import { useState } from 'react';
@@ -21,9 +21,9 @@ export const useTaskCardLogic = (props: TaskCardProps): TaskCardLogic => {
   /**
    * [HUMANIZE LOGIC]: Chuyen doi du lieu tan suat tu Database thanh ngon ngu tu nhien.
    * [RULE]: 
-   * - Daily -> "Hang ngay"
-   * - Weekly/Custom/Days-Week -> "T2, T3..."
-   * - Monthly -> "Ngay X"
+   * - Full Tuan (7 ngay) hoac Full Thang (>=28 ngay) -> "Hang ngay"
+   * - Weekly/Custom (1-6 ngay) -> "T2, T3..."
+   * - Monthly (ngay le) -> "Ngay 1, 15..."
    */
   const getFrequencyInfo = () => {
     // 1. Uu tien kiem tra truong 'frequency' chinh thuc (ITask v11.1)
@@ -37,10 +37,15 @@ export const useTaskCardLogic = (props: TaskCardProps): TaskCardLogic => {
       else if (task.frequency === 'weekly' || task.frequency === 'custom' || task.frequency === 'days-week') {
         // Lay thong tin cac thu tu mang repeatOn
         if (Array.isArray(task.repeatOn) && task.repeatOn.length > 0) {
-          text = task.repeatOn
-            .sort((a, b) => a - b)
-            .map((d: number) => (d === 8 ? 'CN' : `T${d}`))
-            .join(', ');
+          // [NEW LOGIC]: Neu chon du 7 ngay trong tuan
+          if (task.repeatOn.length === 7) {
+            text = 'Hàng ngày';
+          } else {
+            text = task.repeatOn
+              .sort((a, b) => a - b)
+              .map((d: number) => (d === 8 ? 'CN' : `T${d}`))
+              .join(', ');
+          }
         } else {
           // Fallback neu mang repeatOn bi trong
           text = task.frequency === 'weekly' ? 'Hàng tuần' : 'Định kỳ';
@@ -49,7 +54,13 @@ export const useTaskCardLogic = (props: TaskCardProps): TaskCardLogic => {
       else if (task.frequency === 'monthly') {
         // Lay ngay cu the trong thang
         if (Array.isArray(task.repeatOn) && task.repeatOn.length > 0) {
-          text = `Ngày ${task.repeatOn[0]}`;
+          // [NEW LOGIC]: Neu chon tat ca cac ngay trong thang (gia dinh tu 28-31 ngay)
+          if (task.repeatOn.length >= 28) {
+            text = 'Hàng ngày';
+          } else {
+            const sortedDays = [...task.repeatOn].sort((a, b) => a - b);
+            text = `Ngày ${sortedDays.join(', ')}`;
+          }
         } else {
           text = 'Hàng tháng';
         }
@@ -69,6 +80,7 @@ export const useTaskCardLogic = (props: TaskCardProps): TaskCardLogic => {
       
       if (value === 'weekly' || value === 'days-week') {
         if (Array.isArray(task.repeatOn) && task.repeatOn.length > 0) {
+          if (task.repeatOn.length === 7) return { hasFreq: true, text: 'Hàng ngày' };
           const daysText = task.repeatOn.sort((a,b)=>a-b).map(d => (d === 8 ? 'CN' : `T${d}`)).join(', ');
           return { hasFreq: true, text: daysText };
         }
@@ -77,14 +89,19 @@ export const useTaskCardLogic = (props: TaskCardProps): TaskCardLogic => {
       
       if (value === 'monthly') {
         if (Array.isArray(task.repeatOn) && task.repeatOn.length > 0) {
-          return { hasFreq: true, text: `Ngày ${task.repeatOn[0]}` };
+          if (task.repeatOn.length >= 28) return { hasFreq: true, text: 'Hàng ngày' };
+          const sortedDays = [...task.repeatOn].sort((a, b) => a - b);
+          return { hasFreq: true, text: `Ngày ${sortedDays.join(', ')}` };
         }
         return { hasFreq: true, text: 'Hàng tháng' };
       }
       
       // Neu tag chua danh sach thu (vi du: freq:2,4,6)
       if (value.includes(',')) {
-        const formatted = value.split(',')
+        const parts = value.split(',');
+        if (parts.length === 7) return { hasFreq: true, text: 'Hàng ngày' };
+        
+        const formatted = parts
           .map(v => (v.trim() === '8' ? 'CN' : `T${v.trim()}`))
           .join(', ');
         return { hasFreq: true, text: formatted };
@@ -92,7 +109,8 @@ export const useTaskCardLogic = (props: TaskCardProps): TaskCardLogic => {
       
       // Neu tag la so (Ngay trong thang)
       if (!isNaN(Number(value))) {
-        return { hasFreq: true, text: `Ngày ${value}` };
+        const num = Number(value);
+        return { hasFreq: true, text: `Ngày ${num}` };
       }
       
       return { hasFreq: true, text: value };

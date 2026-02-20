@@ -1,8 +1,8 @@
 /**
- * [SERVICE]: Forgiveness Engine (v1.3.2)
- * [FIX]: Khắc phục lỗi TS2339 (type never) bằng cách ép kiểu dữ liệu từ Database.
- * [UPDATE]: Bổ sung logic reset lastForgivenessRun và kiểm tra isNaN cho phép tính thời gian.
- * Business Rule: Hỗ trợ so sánh chính xác đến từng phút (HH:mm) cho cả dữ liệu cũ và mới.
+ * [SERVICE]: Forgiveness Engine (v1.5.2)
+ * [FIX]: Resiliency Query (Boolean/Integer) & Direct Injection.
+ * [FIX]: Triệt tiêu lỗi TS2339 (bulkUpdate) bằng cách sử dụng .modify() chuẩn Dexie.
+ * Business Rule: Đảm bảo giải phóng Focus ngay lập tức khi nhận lệnh từ UI.
  */
 
 import { db } from '../database/db';
@@ -18,20 +18,21 @@ export const ForgivenessEngine = {
 
   /**
    * Hàm kiểm tra và thực thi chính được gọi từ App.tsx hoặc trigger.
+   * [UPDATE]: Chấp nhận tham số forcedTime (string HH:mm) để bỏ qua việc đọc DB bị trễ.
    */
-  async checkAndRun() {
+  async checkAndRun(forcedTime?: string) {
     try {
       const profile = await db.userProfile.toCollection().first();
-      if (!profile) return;
+      if (!profile && !forcedTime) return;
 
       const now = new Date();
       const currentTotalMinutes = (now.getHours() * 60) + now.getMinutes();
 
       /**
-       * [FIX]: Ép kiểu thành 'any' hoặc 'string | number' để vượt qua kiểm tra nghiêm ngặt của TS
-       * khi interface chưa được cập nhật đồng bộ.
+       * [FIX]: Ép kiểu thành 'any' để vượt qua kiểm tra nghiêm ngặt của TS.
+       * Ưu tiên sử dụng forcedTime truyền trực tiếp từ UI khi nhấn Lưu.
        */
-      const storedValue = profile.forgivenessHour as any;
+      const storedValue = forcedTime || (profile?.forgivenessHour as any);
       let targetTotalMinutes = 19 * 60; // Mặc định 19:00
 
       /**
@@ -51,7 +52,12 @@ export const ForgivenessEngine = {
       }
 
       const today = this.getTodayString();
-      const lastRun = profile.lastForgivenessRun || '';
+      const lastRun = profile?.lastForgivenessRun || '';
+
+      /**
+       * [DEBUG LOG]: Kiểm tra trạng thái Engine trong Console (F12)
+       */
+      console.log(`[Forgiveness Engine] Now: ${currentTotalMinutes}m | Target: ${targetTotalMinutes}m | LastRun: ${lastRun}`);
 
       if (currentTotalMinutes >= targetTotalMinutes && lastRun !== today) {
         console.log(`[Forgiveness] Kích hoạt tại mốc: ${storedValue}.`);
@@ -64,17 +70,17 @@ export const ForgivenessEngine = {
 
   /**
    * [ACTION]: Kích hoạt kiểm tra ngay lập tức sau khi cập nhật từ UI.
-   * Logic: Reset cờ lastForgivenessRun để buộc Engine chạy lại ngay cả khi hôm nay đã chạy rồi.
+   * [UPDATE]: Nhận giờ mới từ UI và thực hiện reset flag để buộc Engine chạy lại ngay.
    */
-  async triggerCheckAfterUpdate() {
+  async triggerCheckAfterUpdate(newTime: string) {
     try {
       // 1. Reset dấu mốc chạy trong ngày để Engine chấp nhận thực thi lại
       await db.userProfile.toCollection().modify({
         lastForgivenessRun: ''
       });
       
-      // 2. Gọi hàm kiểm tra chính
-      await this.checkAndRun();
+      // 2. Chạy check với giờ mới được tiêm trực tiếp (bỏ qua độ trễ ghi DB)
+      await this.checkAndRun(newTime);
     } catch (error) {
       console.error("[Forgiveness Trigger Error]:", error);
     }
@@ -86,24 +92,26 @@ export const ForgivenessEngine = {
   async executeForgiveness(today: string) {
     try {
       await db.transaction('rw', db.tasks, db.thoughts, db.userProfile, async () => {
-        // 1. Giải phóng Tasks trong Focus
+        /**
+         * [RESILIENCY QUERY & FIX]: 
+         * Sử dụng .modify() trực tiếp trên Collection sau khi filter.
+         * Filter lọc cả trường hợp là boolean true VÀ trường hợp là số 1.
+         */
         const focusTasksCount = await db.tasks
-          .where('isFocusMode')
-          .equals(1) 
+          .filter(t => t.isFocusMode === true || (t.isFocusMode as any) === 1)
           .modify({ isFocusMode: false });
 
-        // 2. Giải phóng Thoughts trong Focus
         const focusThoughtsCount = await db.thoughts
-          .where('isFocusMode')
-          .equals(1)
+          .filter(t => (t as any).isFocusMode === true || (t as any).isFocusMode === 1)
           .modify({ isFocusMode: false });
 
-        // 3. Đánh dấu đã chạy thành công trong ngày
+        // Đánh dấu đã chạy thành công trong ngày
         await db.userProfile.toCollection().modify({
           lastForgivenessRun: today
         });
 
         const totalCleared = focusTasksCount + focusThoughtsCount;
+        console.log(`[Forgiveness] Hoàn tất: Giải phóng ${totalCleared} bản ghi.`);
         
         /**
          * [UI FEEDBACK]: Chỉ hiển thị lời nhắn nhủ nếu thực sự có việc được giải phóng.

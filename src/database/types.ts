@@ -86,6 +86,13 @@ export interface IThought {
   createdAt: number;
   recordStatus: 'pending' | 'processing' | 'success';
   updatedAt?: number; 
+  
+  /**
+   * [UPDATE]: Bổ sung isFocusMode dưới dạng tùy chọn (?) để tránh lỗi ở các file khác.
+   * Phục vụ Forgiveness Engine trong việc giải phóng tâm lý.
+   */
+  isFocusMode?: boolean; 
+
   isBookmarked?: boolean;
   bookmarkReason?: string;
 

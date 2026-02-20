@@ -77,10 +77,11 @@ export const SetupPanel: React.FC = () => {
       
       /**
        * 2. Kích hoạt Engine kiểm tra ngay lập tức
+       * [FIX TS2554]: Truyền forgivenessTime vào để Engine thực hiện so sánh ngay.
        * Vì 'lastForgivenessRun' đã bị xóa ở bước trên, ForgivenessEngine 
        * sẽ coi như hôm nay chưa chạy và thực thi giải phóng Focus ngay nếu giờ đã thỏa mãn.
        */
-      await ForgivenessEngine.triggerCheckAfterUpdate();
+      await ForgivenessEngine.triggerCheckAfterUpdate(forgivenessTime);
       
       triggerHaptic('success');
       alert(`Đã lưu giờ tha thứ mới: ${forgivenessTime}`);

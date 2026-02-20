@@ -2,8 +2,9 @@ import { db } from '../../database/db';
 import { ITask, IThought } from '../../database/types';
 
 /**
- * [SERVICE]: Widget Memory Provider.
+ * [SERVICE]: Widget Memory Provider (v2.2).
  * Thực thi cơ chế Pooling và chuẩn bị Timeline cho Widget Memory Spark V2.0.
+ * [FIX]: Xử lý lỗi TS2345 bằng Type Guard cho thuộc tính 'id'.
  * Tuân thủ triết lý Zero-Computation on Widget. 
  */
 
@@ -71,72 +72,113 @@ export const WidgetProvider = {
 
   /**
    * [TIMELINE PROVIDER]: Chuẩn bị 8 mốc hiển thị cho 24h tới.
-   * Mỗi mốc cách nhau 3 giờ.
+   * [LOGIC]: Đảm bảo tính duy nhất của ID trong mỗi snapshot.
    */
   async GetWidgetTimeline() {
     const { pool1, pool2, pool3, pool4 } = await this.generateCandidatePools();
     
-    // Lấy con trỏ Current_Pointer từ LocalStorage (mặc định 0)
     let currentPointer = parseInt(localStorage.getItem('spark_widget_pointer') || '0', 10);
-    
     const timeline = [];
     const startTime = Date.now();
 
-    // Tạo 8 mốc thời gian (mỗi mốc 3 giờ)
     for (let i = 0; i < 8; i++) {
       const triggerAt = startTime + (i * 3 * 60 * 60 * 1000);
       const hour = new Date(triggerAt).getHours();
 
-      // [SLEEP MODE]: Ngừng gửi mốc mới từ 23:00 - 06:00 
       if (hour >= 23 || hour < 6) continue;
 
       /**
-       * Đóng gói 4 Slot cho mỗi mốc thời gian. 
-       * Sử dụng Current_Pointer để xoay vòng không trùng lặp.
+       * [UNIQUENESS GUARD]: Khởi tạo tập hợp ID đã chọn cho mốc hiện tại.
        */
+      const selectedIds = new Set<number>();
+
+      /**
+       * Hàm hỗ trợ lấy bản ghi không trùng lặp từ Pool bằng cách tăng offset.
+       * [FIX]: Bổ sung kiểm tra typeof 'number' để thỏa mãn TypeScript compiler.
+       */
+      const getUniqueItem = (pool: any[], pointer: number) => {
+        if (pool.length === 0) return null;
+        let offset = 0;
+        let item = pool[(pointer + offset) % pool.length];
+        
+        // TypeScript Type Guard: Chỉ thực hiện kiểm tra nếu ID là kiểu number hợp lệ
+        while (
+          item && 
+          typeof item.id === 'number' && 
+          selectedIds.has(item.id) && 
+          offset < 10 && 
+          offset < pool.length
+        ) {
+          offset++;
+          item = pool[(pointer + offset) % pool.length];
+        }
+        
+        if (item && typeof item.id === 'number') {
+          selectedIds.add(item.id);
+          return item;
+        }
+        return null;
+      };
+
+      // 1. Slot 1 (Heritage)
+      const s1 = getUniqueItem(pool1, currentPointer);
+
+      // 2. Slot 3 (Trending)
+      const s3 = getUniqueItem(pool3, currentPointer);
+
+      // 3. Slot 4 (Isolated)
+      const s4 = getUniqueItem(pool4, currentPointer);
+
+      // 4. Slot 2 (Universe) - Ngẫu nhiên và phải duy nhất trong cụm 4 thẻ
+      let s2 = null;
+      if (pool2.length > 0) {
+        let attempts = 0;
+        let tempItem = null;
+        do {
+          tempItem = pool2[Math.floor(Math.random() * pool2.length)];
+          attempts++;
+        } while (
+          tempItem && 
+          typeof tempItem.id === 'number' && 
+          selectedIds.has(tempItem.id) && 
+          attempts < 15
+        );
+        
+        if (tempItem && typeof tempItem.id === 'number') {
+          selectedIds.add(tempItem.id);
+          s2 = tempItem;
+        }
+      }
+
       const snapshot = {
         triggerAt,
         slots: {
-          slot1: pool1[currentPointer % (pool1.length || 1)],
-          slot2: pool2[Math.floor(Math.random() * (pool2.length || 1))], // Random từ Universe
-          slot3: pool3[currentPointer % (pool3.length || 1)],
-          slot4: pool4[currentPointer % (pool4.length || 1)]
+          slot1: s1,
+          slot2: s2,
+          slot3: s3,
+          slot4: s4
         }
       };
 
       timeline.push(snapshot);
-      currentPointer++; // Tăng con trỏ sau mỗi Slot
+      currentPointer++; 
     }
 
-    // Lưu lại con trỏ mới cho lần chạy sau
     localStorage.setItem('spark_widget_pointer', currentPointer.toString());
-
-    /**
-     * TRẢ VỀ DỮ LIỆU TĨNH: Widget chỉ việc đọc và hiển thị.
-     */
     return timeline;
   },
 
   /**
-   * [NEW]: MANUAL REFRESH LOGIC (Blueprint v2.0).
-   * Cưỡng bức làm mới dữ liệu Widget bằng cách tăng con trỏ và tính toán lại mốc hiện tại.
+   * [MANUAL REFRESH]: Ép tăng con trỏ và phát tín hiệu cập nhật UI tức thì.
    */
   async manualRefresh() {
     try {
-      // 1. Đọc và ép tăng con trỏ hiện tại lên +1
       let currentPointer = parseInt(localStorage.getItem('spark_widget_pointer') || '0', 10);
       currentPointer++;
-      
-      // 2. Lưu lại Pointer mới ngay lập tức
       localStorage.setItem('spark_widget_pointer', currentPointer.toString());
 
-      // 3. Tạo lại Timeline mới bắt đầu từ Pointer này
       const newTimeline = await this.GetWidgetTimeline();
 
-      /**
-       * 4. PHÁT TÍN HIỆU CẬP NHẬT: Gửi snapshot đầu tiên (hiện tại) 
-       * để UI đồng bộ hóa tức thì.
-       */
       if (newTimeline.length > 0) {
         window.dispatchEvent(new CustomEvent('spark:data-updated', { 
           detail: newTimeline[0] 
@@ -149,9 +191,6 @@ export const WidgetProvider = {
     }
   },
 
-  /**
-   * [NEW]: Khởi tạo trình lắng nghe sự kiện từ giao diện (widget-memory-spark.tsx).
-   */
   init() {
     if (typeof window !== 'undefined') {
       window.addEventListener('spark:manual-refresh', () => {
@@ -161,5 +200,4 @@ export const WidgetProvider = {
   }
 };
 
-// Tự động kích hoạt bộ lắng nghe khi Service được nạp vào hệ thống
 WidgetProvider.init();

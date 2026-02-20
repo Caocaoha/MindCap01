@@ -4,20 +4,29 @@
  * - Quản lý Export/Import JSON chuẩn.
  * - [UI UPDATE]: Sắp xếp theo thứ tự: 1. Knowledge Bridge, 2. Export/Import, 3. Spark & Forgiveness (Hàng đôi đối xứng).
  * - [FIX]: Hợp nhất nút Test vào khối Spark để tạo sự cân bằng thị giác.
+ * - [FORGIVENESS]: Hỗ trợ đặt giờ lẻ (HH:mm), thêm nút Lưu và kết nối ForgivenessEngine.
  */
 
 import React, { useRef, useState, useEffect } from 'react';
 import { db } from '../../database/db';
 import { triggerHaptic } from '../../utils/haptic';
 import { useUiStore } from '../../store/ui-store';
+import { useUserStore } from '../../store/user-store'; // [NEW]: Để đồng bộ Profile
 import { NotificationManager } from '../spark/notification-manager';
+import { ForgivenessEngine } from '../../services/forgiveness-engine'; // [NEW]: Để kích hoạt kiểm tra ngay
 
 export const SetupPanel: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [permissionStatus, setPermissionStatus] = useState<NotificationPermission>('default');
-  const [forgivenessHour, setForgivenessHour] = useState<number>(19); // Mặc định là 19h
+  
+  /**
+   * [UPDATE]: Chuyển sang dùng string (HH:mm) để hỗ trợ giờ lẻ.
+   * Mặc định là "19:00".
+   */
+  const [forgivenessTime, setForgivenessTime] = useState<string>("19:00");
   const { setActiveTab } = useUiStore();
+  const { updateForgivenessHour, loadProfile } = useUserStore();
 
   /**
    * [INITIALIZATION]: Load cấu hình người dùng từ Database.
@@ -29,23 +38,42 @@ export const SetupPanel: React.FC = () => {
 
     const loadSettings = async () => {
       const profile = await db.userProfile.toCollection().first();
-      if (profile && profile.forgivenessHour !== undefined) {
-        setForgivenessHour(profile.forgivenessHour);
+      if (profile) {
+        // Kiểm tra xem dữ liệu cũ là number hay string để hiển thị đúng
+        if (typeof profile.forgivenessHour === 'number') {
+          const hh = profile.forgivenessHour < 10 ? `0${profile.forgivenessHour}` : profile.forgivenessHour;
+          setForgivenessTime(`${hh}:00`);
+        } else if (typeof profile.forgivenessHour === 'string') {
+          setForgivenessTime(profile.forgivenessHour);
+        }
       }
     };
     loadSettings();
   }, []);
 
   /**
-   * [ACTION]: Cập nhật Giờ tha thứ vào hồ sơ người dùng.
+   * [ACTION]: Lưu Giờ tha thứ và kích hoạt Engine ngay lập tức.
    */
-  const handleUpdateForgivenessHour = async (hour: number) => {
+  const handleSaveForgiveness = async () => {
     try {
-      setForgivenessHour(hour);
-      await db.userProfile.toCollection().modify({ forgivenessHour: hour });
-      triggerHaptic('light');
+      /**
+       * 1. Cập nhật vào Store & Database
+       * Chúng ta truyền chuỗi "HH:mm" vào hàm update. 
+       * (Lưu ý: Bạn cần đảm bảo hàm updateForgivenessHour trong Store chấp nhận kiểu string)
+       */
+      await updateForgivenessHour(forgivenessTime as any);
+      
+      /**
+       * 2. Kích hoạt Engine kiểm tra ngay lập tức
+       * Nếu giờ vừa lưu đã trôi qua so với giờ hiện tại, Engine sẽ giải phóng gánh nặng ngay.
+       */
+      await ForgivenessEngine.triggerCheckAfterUpdate();
+      
+      triggerHaptic('success');
+      alert(`Đã lưu giờ tha thứ mới: ${forgivenessTime}`);
     } catch (err) {
       console.error("Cập nhật Giờ tha thứ thất bại:", err);
+      alert("Không thể lưu cấu hình. Vui lòng thử lại.");
     }
   };
 
@@ -223,15 +251,21 @@ export const SetupPanel: React.FC = () => {
               <p className="text-[10px] font-bold text-emerald-700 leading-tight">Giờ Tha Thứ</p>
               <p className="text-[8px] opacity-40 uppercase">Giải phóng Focus</p>
             </div>
-            <select 
-              value={forgivenessHour}
-              onChange={(e) => handleUpdateForgivenessHour(parseInt(e.target.value, 10))}
-              className="w-full bg-white border border-emerald-200 text-emerald-700 text-[11px] font-black px-2 py-1.5 rounded-lg outline-none cursor-pointer"
-            >
-              {Array.from({ length: 24 }, (_, i) => (
-                <option key={i} value={i}>{i < 10 ? `0${i}` : i}:00</option>
-              ))}
-            </select>
+            
+            <div className="flex items-center gap-1.5 mt-2">
+              <input 
+                type="time" 
+                value={forgivenessTime}
+                onChange={(e) => setForgivenessTime(e.target.value)}
+                className="flex-1 bg-white border border-emerald-200 text-emerald-700 text-[11px] font-black px-2 py-1.5 rounded-lg outline-none cursor-pointer"
+              />
+              <button 
+                onClick={handleSaveForgiveness}
+                className="bg-emerald-600 text-white px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase active:scale-90 transition-all shadow-sm shadow-emerald-200"
+              >
+                Lưu
+              </button>
+            </div>
           </div>
         </div>
       </section>

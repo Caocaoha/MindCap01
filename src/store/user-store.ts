@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { IUserProfile } from '../database/types';
+import { db } from '../database/db';
 
 /**
  * [STATE]: Quản lý trạng thái người dùng, cấp độ (EA) và thuộc tính (Archetype)
@@ -12,11 +13,17 @@ export interface UserState {
   archetype: string;
 
   // --- Các trường bổ sung để tương thích với Profile & UI ---
-  profile: any; // Hoặc định nghĩa cụ thể IUserProfile dựa trên database/types
+  profile: IUserProfile | null; 
   loadProfile: () => Promise<void>;
+  
+  /**
+   * [NEW]: Cap nhat Gio Tha Thu vao Database va Store.
+   * Dam bao trang thai ton tai vinh vien ngay ca khi chuyen Tab hoac Reset chat.
+   */
+  updateForgivenessHour: (hour: number) => Promise<void>;
 }
 
-export const useUserStore = create<UserState>((set) => ({
+export const useUserStore = create<UserState>((set, get) => ({
   // --- Khởi tạo giá trị mặc định (Bảo tồn nội dung người dùng cung cấp) ---
   currentLevel: 1,
   eaScore: 0,
@@ -25,20 +32,71 @@ export const useUserStore = create<UserState>((set) => ({
 
   /**
    * Tải thông tin hồ sơ người dùng
-   * Chức năng này cần thiết để hiển thị UserLevelBadge trên Saban.
+   * Truy van truc tiep tu Dexie de lay Forgiveness Hour va cac thong so thuc te.
    */
   loadProfile: async () => {
     try {
-      // Giả sử logic lấy dữ liệu profile từ IndexedDB sẽ được đặt tại đây
-      // Tạm thời khởi tạo profile để tránh lỗi null khi UI render
-      set({ 
-        profile: { 
-          name: "Lữ hành", 
-          joinedAt: Date.now() 
-        } 
-      });
+      const profiles = await db.userProfile.toArray();
+      const userProfile = profiles[0]; // Mac dinh lay ban ghi dau tien
+
+      if (userProfile) {
+        set({ 
+          profile: userProfile,
+          currentLevel: userProfile.currentLevel,
+          eaScore: userProfile.eaScore,
+          archetype: userProfile.archetype
+        });
+      } else {
+        // Neu chua co profile (lan dau chay), khoi tao mac dinh
+        const initialProfile: IUserProfile = {
+          currentLevel: 1,
+          eaScore: 0,
+          cpiScore: 0,
+          totalScore: 0,
+          archetype: 'newbie',
+          lastReset: Date.now(),
+          forgivenessHour: 19, // Mac dinh la 19h
+          identityProgress: {
+            currentQuestionIndex: 0,
+            answers: {},
+            draftAnswer: '',
+            cooldownEndsAt: null,
+            lastAuditAt: null,
+            isManifestoUnlocked: false,
+            lastStatus: 'newbie'
+          }
+        };
+        set({ profile: initialProfile });
+      }
     } catch (error) {
       console.error("UserStore: loadProfile failed", error);
     }
   },
+
+  /**
+   * [NEW]: Xu ly ghi de Gio Tha Thu.
+   * Thuc hien cap nhat Atomic vao Database truoc khi dong bo Store.
+   */
+  updateForgivenessHour: async (hour: number) => {
+    try {
+      const currentProfile = get().profile;
+      if (!currentProfile) return;
+
+      const updatedProfile = { ...currentProfile, forgivenessHour: hour };
+      
+      // 1. Cap nhat vao Database (Dexie)
+      if (currentProfile.id) {
+        await db.userProfile.update(currentProfile.id, { forgivenessHour: hour });
+      } else {
+        // Truong hop dac biet neu chua co ID (ban ghi dau tien)
+        const id = await db.userProfile.put(updatedProfile);
+        updatedProfile.id = id;
+      }
+
+      // 2. Dong bo lai vao Zustand Store
+      set({ profile: updatedProfile });
+    } catch (error) {
+      console.error("UserStore: updateForgivenessHour failed", error);
+    }
+  }
 }));

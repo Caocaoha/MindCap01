@@ -1,10 +1,11 @@
 /**
- * Purpose: Bộ điều khiển bố cục chính (Main Layout Controller) của ứng dụng MindCap (v6.34).
+ * Purpose: Bộ điều khiển bố cục chính (Main Layout Controller) của ứng dụng MindCap (v6.35).
  * Inputs/Outputs: Quản lý trạng thái hiển thị của các Module dựa trên ActiveTab.
  * Business Rule: 
  * - [SERVICE WORKER]: Đăng ký và quản lý luồng chạy ngầm của Spark.
  * - [DEEP LINKING]: Bóc tách tham số URL để mở trực tiếp Task/Thought từ thông báo.
  * - [FORGIVENESS]: Kích hoạt cơ chế giải phóng tâm lý khi khởi chạy (Lazy Trigger).
+ * - [ROLLOVER]: Kích hoạt Reset ngày mới cho các Task lặp lại (StreakEngine).
  */
 
 import React, { useEffect } from 'react';
@@ -29,6 +30,8 @@ import { BottomNav } from './components/shared/bottom-nav';
 import { GlobalToast } from './components/shared/global-toast';
 // [NEW]: Kết nối ForgivenessEngine phục vụ cơ chế giải phóng tâm lý
 import { ForgivenessEngine } from './services/forgiveness-engine';
+// [NEW]: Kết nối StreakEngine để xử lý Reset task qua ngày (Rollover)
+import { streakEngine } from './modules/saban/streak-engine';
 
 export const App: React.FC = () => {
   const { activeTab, setActiveTab, isInputFocused, setInputFocused, setTyping, openEditModal } = useUiStore();
@@ -78,12 +81,24 @@ export const App: React.FC = () => {
   }, [setTasks]);
 
   /**
-   * [3. FORGIVENESS HOUR ENGINE]
+   * [3. MAINTENANCE ENGINES]
    * Chiến thuật Kích hoạt tiết kiệm: Chỉ kiểm tra khi người dùng mở ứng dụng lần đầu.
-   * Đẩy các nội dung còn tồn đọng trong Focus về danh sách Todo để giảm áp lực.
+   * - processDailyReset: Hồi sinh các Task lặp lại từ ngày hôm qua.
+   * - checkAndRun: Giải phóng tâm lý dựa trên giờ cài đặt.
    */
   useEffect(() => {
-    ForgivenessEngine.checkAndRun();
+    const runMaintenance = async () => {
+      try {
+        // Thực hiện Reset ngày mới trước để dữ liệu Task được cập nhật sớm nhất
+        await streakEngine.processDailyReset();
+        // Sau đó kiểm tra việc giải phóng Focus Mode
+        await ForgivenessEngine.checkAndRun();
+      } catch (err) {
+        console.error("Maintenance Engine Error:", err);
+      }
+    };
+    
+    runMaintenance();
   }, []);
 
   /**

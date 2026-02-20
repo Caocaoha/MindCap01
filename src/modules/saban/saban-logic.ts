@@ -2,7 +2,8 @@
  * Purpose: Quan ly logic truy van, loc, sap xep va xu ly nghiep vu for Saban Board.
  * Inputs/Outputs: Tra ve trang thai danh sach da xu ly va cac hanh dong tuong tac.
  * Business Rule: Gioi han 4 slot Focus, tu dong don dep slot ma va sap xep uu tien task chua xong.
- * [UPDATE]: Cap nhat logic loc de tuong thich voi truong 'frequency' (v11.1) giup hien thi tan suat.
+ * [UPDATE 11.2]: Sua loi an nham Task lap lai. Bo loc gio day giu lai cac task 'daily/weekly' 
+ * du da hoan thanh hom truoc, de cho bo quet (Streak) hoac nguoi dung tu reset.
  */
 
 import { useState, useMemo, useEffect } from 'react';
@@ -35,12 +36,24 @@ export const useSabanLogic = (): SabanLogic => {
     if (!allTasks) return { groups: {}, standalones: [] };
     const today = new Date().setHours(0, 0, 0, 0);
     
-    // Loc co ban: Khong lay task dang focus, phai dang active, va an task done cua ngay hom qua
-    let filtered = allTasks.filter(t => 
-      t.isFocusMode === false && 
-      t.archiveStatus === 'active' && 
-      !(t.status === 'done' && (t.updatedAt || 0) < today)
-    );
+    /**
+     * [FIX LOGIC]: Phân loại rạch ròi giữa Task 1 lần và Task lặp lại.
+     */
+    let filtered = allTasks.filter(t => {
+      // 1. Loại bỏ task đang trong Focus Mode hoặc đã bị lưu trữ
+      if (t.isFocusMode || t.archiveStatus === 'archived') return false;
+
+      // 2. Kiểm tra xem task này có phải là task lặp lại không
+      const isRepeatTask = (t.frequency && t.frequency !== 'none') || 
+                           t.tags?.some(tag => tag.startsWith('freq:') && tag !== 'freq:once');
+
+      // 3. Nếu là task lặp lại, LUÔN LUÔN cho phép hiển thị (không quan tâm ngày done)
+      if (isRepeatTask) return true;
+
+      // 4. Nếu là task 1 lần (once), ẩn đi nếu đã done từ hôm qua trở về trước
+      const isOldDone = t.status === 'done' && (t.updatedAt || 0) < today;
+      return !isOldDone;
+    });
 
     // Loc theo o tim kiem va thanh Filter (Urgent, Important, Once, Repeat)
     filtered = filtered.filter(t => {
@@ -56,12 +69,10 @@ export const useSabanLogic = (): SabanLogic => {
        * Uu tien kiem tra truong 'frequency' trong Database.
        */
       if (filter === 'once') {
-        // La nhiem vu mot lan neu frequency la 'none' hoac khong ton tai frequency
         return t.frequency === 'none' || !t.frequency || t.tags?.includes('freq:once');
       }
       
       if (filter === 'repeat') {
-        // La nhiem vu lap lai neu frequency khac 'none' hoac co tag freq: tuong ung
         return (t.frequency && t.frequency !== 'none') || 
                t.tags?.some(tag => tag.startsWith('freq:') && tag !== 'freq:once');
       }

@@ -3,75 +3,94 @@ import { ITask } from '../../database/types';
 import { triggerHaptic } from '../../utils/haptic';
 
 /**
- * [DOMAIN LOGIC]: Xử lý logic chuỗi, trích xuất tag và Reset ngày mới
+ * [DOMAIN LOGIC]: Xử lý logic chuỗi, trích xuất tag và Reset ngày mới (v2.1)
+ * [FIX]: Tích hợp mốc 0h để tránh việc reset nhầm task vừa hoàn thành trong ngày.
  */
 export const streakEngine = {
-  /**
-   * 1. Trích xuất giá trị từ tags (BẢO TOÀN 100%)]
-   * Ví dụ: "freq:weekly" -> "weekly"
-   */
   getTagValue: (task: ITask, key: string): string | null => {
     const prefix = `${key}:`;
     const found = task.tags?.find(t => t.startsWith(prefix));
     return found ? found.split(':')[1] : null;
   },
 
-  /**
-   * 2. Kiểm tra phục hồi chuỗi (BẢO TOÀN 100% - 3-Day Rule)]
-   */
   isWithinRecoveryPeriod: (task: ITask): boolean => {
     const THREE_DAYS_MS = 259200000;
     const lastUpdate = task.updatedAt ?? task.createdAt;
     return (Date.now() - lastUpdate) < THREE_DAYS_MS;
   },
 
-  /**
-   * 3. [MỚI]: Xác định trạng thái hiển thị ngọn lửa (Fix lỗi TS2339)
-   */
   getVisualState: (task: ITask): 'active' | 'recovering' | 'dimmed' => {
     const isDone = task.status === 'done';
     const isRecovering = streakEngine.isWithinRecoveryPeriod(task);
-
     if (isDone) return 'active';
     if (isRecovering) return 'recovering';
     return 'dimmed';
   },
 
   /**
-   * 4. [BẢO TOÀN 100%]: Xử lý Reset task theo chu kỳ 00:00
+   * 4. [UPDATE 11.3]: Xử lý Reset task dựa trên so sánh mốc 0h.
+   * Logic: Chỉ reset những task 'done' có updatedAt TRƯỚC 0h ngày hôm nay.
    */
   processDailyReset: async () => {
-    const today = new Date();
-    const todayDay = today.getDay(); // 0 (CN) - 6 (T7)
-    const currentDayTag = `d:${todayDay === 0 ? 7 : todayDay}`; 
+    const now = new Date();
+    
+    // 1. Xác định mốc 00:00:00 của ngày hôm nay (tính bằng mili giây)
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    
+    const todayDay = now.getDay(); // 0 (CN) - 6 (T7)
+    const currentVnDay = todayDay === 0 ? 8 : todayDay + 1; 
+    const currentDayTag = `d:${currentVnDay}`; 
 
     const allTasks = await db.tasks.toArray();
 
     await db.transaction('rw', db.tasks, async () => {
       for (const task of allTasks) {
-        const isDone = task.status === 'done';
-        const freq = streakEngine.getTagValue(task, 'freq');
+        // Chỉ xử lý các task đã hoàn thành (status === 'done')
+        if (task.status !== 'done') continue;
 
-        // Logic A: Việc "Một lần" đã xong -> Ẩn vĩnh viễn khỏi Saban
-        if (isDone && freq === 'once') {
-          await db.tasks.update(task.id!, { isFocusMode: false }); //
+        /**
+         * [CORE FIX]: KIỂM TRA MỐC THỜI GIAN
+         * Nếu task được hoàn thành SAU mốc 0h hôm nay, bỏ qua không reset.
+         */
+        const lastDoneTime = task.updatedAt || 0;
+        if (lastDoneTime >= startOfToday) {
+          continue; // Task này mới làm xong hôm nay, giữ nguyên trạng thái done
         }
 
-        // Logic B: Việc "Hàng tuần" -> Reset trạng thái để làm lại
-        if (isDone && freq === 'weekly') {
+        // Nếu đã lọt xuống đây, nghĩa là task này là 'done' của ngày hôm qua
+        const tagFreq = streakEngine.getTagValue(task, 'freq');
+        const freq = task.frequency || tagFreq;
+
+        if (freq === 'once' || freq === 'none') {
+          await db.tasks.update(task.id!, { isFocusMode: false });
+          continue;
+        }
+
+        const repeatDays = task.repeatOn || [];
+        const isTargetDay = repeatDays.includes(currentVnDay) || task.tags?.includes(currentDayTag);
+
+        // Reset việc Hàng ngày (daily)
+        if (freq === 'daily') {
           await db.tasks.update(task.id!, { status: 'todo', updatedAt: Date.now() });
+          continue;
         }
 
-        // Logic C: Việc "Tùy chọn ngày" -> Reset khi đến đúng ngày được chọn
-        if (isDone && freq === 'days-week') {
-          const isTargetDay = task.tags?.includes(currentDayTag);
-          if (isTargetDay) {
+        // Reset việc Hàng tuần (weekly) hoặc Theo ngày cụ thể
+        if (freq === 'weekly' || freq === 'days-week') {
+          const hasSpecificDays = repeatDays.length > 0 || task.tags?.some(t => t.startsWith('d:'));
+          
+          if (hasSpecificDays) {
+            if (isTargetDay) {
+              await db.tasks.update(task.id!, { status: 'todo', updatedAt: Date.now() });
+            }
+          } else {
+            // Mặc định reset nếu là weekly mà không cài ngày lẻ (legacy)
             await db.tasks.update(task.id!, { status: 'todo', updatedAt: Date.now() });
           }
         }
       }
     });
 
-    console.log("StreakEngine: Daily reset executed.");
+    console.log(`[StreakEngine] Rollover executed for day ${currentVnDay}. Reset tasks completed BEFORE ${new Date(startOfToday).toLocaleString()}`);
   }
 };

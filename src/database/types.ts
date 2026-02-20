@@ -153,7 +153,13 @@ export interface IUserProfile {
    * [UPDATE]: Hỗ trợ cả kiểu number (0-23) và string ("HH:mm").
    */
   forgivenessHour?: number | string;    
-  lastForgivenessRun?: string; // Lưu ngày chạy cuối (YYYY-MM-DD) để tránh lặp lại
+  
+  /**
+   * [UPDATE 11.3]: Time-Stamp Locking
+   * Thay vì chỉ lưu Ngày (YYYY-MM-DD), giờ đây lưu kết hợp Ngày_Giờ (Ví dụ: "2026-02-20_19:30").
+   * Giúp hệ thống chống spam nhưng vẫn cho phép test lại trong ngày nếu đổi mốc giờ.
+   */
+  lastForgivenessRun?: string; 
 
   identityProgress: {
     currentQuestionIndex: number;

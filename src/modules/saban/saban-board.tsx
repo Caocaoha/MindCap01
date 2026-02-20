@@ -2,6 +2,7 @@
  * Purpose: Giao dien bang Saban (Backlog chien luoc) hien thi nhiem vu va nhom.
  * Inputs/Outputs: Nhan du lieu tu useSabanLogic va render cac TaskCard/Group.
  * Business Rule: Sap xep uu tien task chua xong len dau, ho tro loc va tim kiem.
+ * [UPDATE]: Dam bao truyen dan nguyen ven du lieu ITask de TaskCard hien thi Tan suat.
  */
 
 import React, { useState, useRef } from 'react';
@@ -42,9 +43,7 @@ export const SabanBoard: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full bg-white relative overflow-hidden">
-      {/* [HEADER]: Dynamic Sticky Header 
-        Sử dụng absolute và translate-y để trượt lên/xuống mà không ảnh hưởng layout
-      */}
+      {/* [HEADER]: Dynamic Sticky Header */}
       <div 
         className={`absolute top-0 left-0 right-0 z-20 bg-white/95 backdrop-blur-sm border-b border-slate-100 px-4 py-4 transition-transform duration-300 ease-in-out shadow-sm ${
           isHeaderVisible ? 'translate-y-0' : '-translate-y-full'
@@ -76,9 +75,7 @@ export const SabanBoard: React.FC = () => {
         </div>
       </div>
 
-      {/* [MAIN CONTENT]: Scrollable Area 
-        Thêm pt-32 (Padding Top ~128px) để nội dung không bị Header che khuất ban đầu
-      */}
+      {/* [MAIN CONTENT]: Scrollable Area */}
       <main 
         ref={scrollContainerRef}
         onScroll={handleScroll}
@@ -112,6 +109,7 @@ export const SabanBoard: React.FC = () => {
           ) : (
             <TaskCard 
               key={el.id} 
+              // [LOGIC CHECK]: Đảm bảo el.data (ITask) chứa đầy đủ frequency/repeatOn
               task={el.data as ITask} 
               onToggleFocus={() => logic.handleToggleFocus(el.data as ITask)}
               onArchive={() => logic.handleArchive((el.data as ITask).id!)}

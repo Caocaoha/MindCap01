@@ -5,6 +5,7 @@
  * - Bổ sung trạng thái 'ignored' để dứt khoát hóa quy trình Review.
  * - [NEW 9.2]: Bổ sung ISparkSchedule phục vụ Catch-up Logic để fix lỗi trễ thông báo.
  * - [NEW 11.0]: Bổ sung cấu hình Forgiveness Hour (Giờ tha thứ) để giải phóng tâm lý.
+ * - [NEW 11.1]: Bổ sung repeatOn cho ITask để hỗ trợ hiển thị tần suất lặp lại tùy chỉnh.
  */
 
 // --- MODULE: SPARK CATCH-UP LOGIC (v9.2) ---
@@ -28,6 +29,11 @@ export interface ITask {
   content: string;
   status: 'todo' | 'done' | 'backlog'; 
   frequency?: string;       
+  /**
+   * [NEW 11.1]: Danh sách các ngày lặp lại (Ví dụ: [1, 3, 5] cho T2, T4, T6).
+   * Phục vụ việc hiển thị tần suất lặp lại trên thanh biểu hiện task.
+   */
+  repeatOn?: number[];
   streakCurrent?: number;   
   streakRecoveryCount?: number; 
   createdAt: number;

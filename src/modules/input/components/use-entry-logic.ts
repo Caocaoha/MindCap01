@@ -4,7 +4,8 @@
  * Business Rule: 
  * - [CENTRALIZED]: Chuyển toàn bộ logic điều hướng và lập lịch sang EntryService.
  * - [MIGRATION]: Duy trì tính nguyên tử khi chuyển đổi giữa Task/Thought.
- * - [UNIFIED]: Đảm bảo mọi bản ghi đều đi qua bộ lọc Spark Waterfall (>16 từ).
+ * - [UPDATE 11.1]: Dong bo hoa truong frequency va repeatOn de hien thi Saban Card chinh xac.
+ * [FIX]: Sua loi TS2353 (setType -> setEntryType) de khop voi interface EntryLogic.
  */
 
 import { useState, useEffect } from 'react';
@@ -12,7 +13,7 @@ import { db } from '../../../database/db';
 import { triggerHaptic } from '../../../utils/haptic';
 import { useUiStore } from '../../../store/ui-store';
 import { useNotificationStore } from '../../../store/notification-store';
-import { EntryService } from '../../../services/entry-service'; // [NEW]: Tổng kho điều phối
+import { EntryService } from '../../../services/entry-service';
 import { EntryFormProps, EntryType, FrequencyType, EntryLogic } from './entry-types';
 import { ITask, IThought } from '../../../database/types';
 
@@ -38,15 +39,38 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
       const isTaskRecord = 'status' in initialData || initialData.sourceTable === 'tasks';
       
       if (isTaskRecord) {
+        const taskData = initialData as ITask;
         setEntryType('task');
-        setTargetCount((initialData as ITask).targetCount || 1);
-        setUnit((initialData as ITask).unit || '');
-        setIsUrgent(initialData.tags?.includes('p:urgent') || false);
-        setIsImportant(initialData.tags?.includes('p:important') || false);
-        const fTag = initialData.tags?.find(t => t.startsWith('freq:'));
-        if (fTag) setFreq(fTag.split(':')[1] as any);
-        setSelectedWeekDays(initialData.tags?.filter(t => t.startsWith('d:')).map(t => parseInt(t.split(':')[1])) || []);
-        setSelectedMonthDays(initialData.tags?.filter(t => t.startsWith('m:')).map(t => parseInt(t.split(':')[1])) || []);
+        setTargetCount(taskData.targetCount || 1);
+        setUnit(taskData.unit || '');
+        setIsUrgent(taskData.tags?.includes('p:urgent') || false);
+        setIsImportant(taskData.tags?.includes('p:important') || false);
+
+        if (taskData.frequency && taskData.frequency !== 'none') {
+          const dbFreq = taskData.frequency;
+          
+          if (dbFreq === 'monthly') {
+            setFreq('days-month');
+          } else if (dbFreq === 'daily') {
+            setFreq('weekly' as any);
+            setSelectedWeekDays([2, 3, 4, 5, 6, 7, 8]);
+          } else {
+            setFreq(dbFreq as any);
+          }
+
+          if (taskData.repeatOn) {
+            if (dbFreq === 'monthly' || taskData.frequency === 'monthly') {
+              setSelectedMonthDays(taskData.repeatOn);
+            } else {
+              setSelectedWeekDays(taskData.repeatOn);
+            }
+          }
+        } else {
+          const fTag = taskData.tags?.find(t => t.startsWith('freq:'));
+          if (fTag) setFreq(fTag.split(':')[1] as any);
+          setSelectedWeekDays(taskData.tags?.filter(t => t.startsWith('d:')).map(t => parseInt(t.split(':')[1])) || []);
+          setSelectedMonthDays(taskData.tags?.filter(t => t.startsWith('m:')).map(t => parseInt(t.split(':')[1])) || []);
+        }
       } else {
         setEntryType('thought');
       }
@@ -59,9 +83,12 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
     if (parsedUnit !== null) setUnit(parsedUnit);
     if (parsedFrequency) {
       const f = parsedFrequency.toLowerCase();
-      if (f.includes('ngay')) { setFreq('weekly'); setSelectedWeekDays([1, 2, 3, 4, 5, 6, 7]); }
-      else if (f.includes('tuan')) setFreq('weekly');
-      else if (f.includes('thang')) setFreq('days-month');
+      if (f.includes('ngay')) { 
+        setFreq('weekly' as any); 
+        setSelectedWeekDays([2, 3, 4, 5, 6, 7, 8]); 
+      }
+      else if (f.includes('tuan')) setFreq('weekly' as any);
+      else if (f.includes('thang')) setFreq('days-month' as any);
     }
   }, [parsedQuantity, parsedUnit, parsedFrequency, initialData]);
 
@@ -70,22 +97,23 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
     if (!initialData) setSearchQuery(val, 'mind');
   };
 
-  /**
-   * [ACTION]: Lưu trữ thông qua EntryService để kích hoạt Smart Routing và Spark Waterfall.
-   */
   const handleSave = async () => {
     if (!content.trim()) return;
-    
-    const wasTask = initialData && ('status' in initialData || initialData.sourceTable === 'tasks');
     const isNowTask = entryType === 'task';
+    const wasTask = initialData && ('status' in initialData || initialData.sourceTable === 'tasks');
     const hasTypeChanged = initialData?.id && ((wasTask && !isNowTask) || (!wasTask && isNowTask));
 
     try {
-      // 1. Chuẩn bị Payload theo loại Entry
       let payload: any;
       if (isNowTask) {
+        let dbFrequency: string = freq === 'once' ? 'none' : freq;
+        if (freq === 'days-month') dbFrequency = 'monthly';
+        if (freq === 'weekly' && selectedWeekDays.length === 7) dbFrequency = 'daily';
+
+        const repeatOn = dbFrequency === 'monthly' ? selectedMonthDays : selectedWeekDays;
+
         const tags = [
-          `freq:${freq}`, 
+          `freq:${dbFrequency}`, 
           isUrgent ? 'p:urgent' : '', 
           isImportant ? 'p:important' : '', 
           ...selectedWeekDays.map(d => `d:${d}`), 
@@ -98,6 +126,8 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
           status: (initialData as ITask)?.status || 'todo',
           targetCount, 
           unit: unit.trim(),
+          frequency: dbFrequency,
+          repeatOn: repeatOn,
           tags, 
           parentId: initialData?.parentId, 
           interactionScore: (initialData?.interactionScore || 0),
@@ -115,43 +145,29 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
         };
       }
 
-      // 2. Xử lý lưu trữ
       let result: any;
-
       if (onCustomSave) {
-        // Trường hợp ghi đè logic lưu (ví dụ: Mood Check-in)
         await onCustomSave(entryType, entryType === 'thought' ? { ...payload, moodScore: moodLevel } : payload);
         onSuccess();
         return;
       }
 
       if (hasTypeChanged) {
-        // [ATOMIC MIGRATION]: Thực hiện xóa cũ và gọi Service lưu mới trong cùng một phiên
         const oldTable = wasTask ? db.tasks : db.thoughts;
         await db.transaction('rw', db.tasks, db.thoughts, async () => {
           await oldTable.delete(Number(initialData.id));
-          // Khi chuyển đổi, ta coi như là một bản ghi mới hoàn toàn để chạy lại Routing
           const { id, ...payloadWithoutId } = payload;
           result = await EntryService.saveEntry(payloadWithoutId, entryType);
         });
       } else {
-        // Lưu thông thường qua Tổng kho điều phối
         result = await EntryService.saveEntry(payload, entryType);
       }
 
-      // 3. Phản hồi UI đồng bộ
       if (result && result.success) {
-        // Nếu là Thought mới, lưu thêm điểm Mood vào bảng moods
         if (!initialData?.id && entryType === 'thought') {
-          await db.moods.add({ 
-            score: moodLevel, 
-            label: 'entry_reflection', 
-            createdAt: Date.now() 
-          });
+          await db.moods.add({ score: moodLevel, label: 'entry_reflection', createdAt: Date.now() });
         }
-
         showNotification(result.message, () => openEditModal(result.record));
-        
         if (!initialData) setSearchQuery('', 'mind');
         triggerHaptic('success');
         onSuccess();
@@ -162,11 +178,27 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
   };
 
   return {
-    entryType, setEntryType, content, setContent, targetCount, setTargetCount,
-    unit, setUnit, freq, setFreq, isUrgent, setIsUrgent, isImportant, setIsImportant,
-    selectedWeekDays, selectedMonthDays, moodLevel, setMoodLevel,
+    entryType, 
+    setEntryType, // [FIXED]: Su dung dung ten thuoc tinh theo EntryLogic interface
+    content, 
+    setContent, 
+    targetCount, 
+    setTargetCount,
+    unit, 
+    setUnit, 
+    freq, 
+    setFreq, 
+    isUrgent, 
+    setIsUrgent, 
+    isImportant, 
+    setIsImportant,
+    selectedWeekDays, 
+    selectedMonthDays, 
+    moodLevel, 
+    setMoodLevel,
     toggleWeekDay: (d) => setSelectedWeekDays(p => p.includes(d) ? p.filter(x => x !== d) : [...p, d]),
     toggleMonthDay: (d) => setSelectedMonthDays(p => p.includes(d) ? p.filter(x => x !== d) : [...p, d]),
-    handleSave, handleContentChange
+    handleSave, 
+    handleContentChange
   };
 };

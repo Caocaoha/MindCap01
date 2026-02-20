@@ -2,6 +2,7 @@
  * Purpose: Giao dien hien thi chi tiet mot nhiem vu trong Saban Board.
  * Inputs/Outputs: Nhan Props va hien thi JSX dua tren du lieu tu useTaskCardLogic.
  * Business Rule: Toi uu trai nghiem Mobile, ho tro phan hoi thi giac khi keo tha.
+ * [UPDATE]: Bo sung hien thi nhan Tan suat (Frequency Badge) cho cac nhiem vu dinh ky.
  */
 
 import React from 'react';
@@ -35,14 +36,28 @@ export const TaskCard: React.FC<TaskCardProps> = (props) => {
               ${logic.isDone ? 'line-through text-slate-400' : 'text-slate-900'}`}>
             {task.content}
           </p>
-          {logic.isMultiTarget && (
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-[9px] bg-slate-50 text-[#2563EB] border border-slate-200 px-2 py-0.5 rounded-[4px] font-mono font-bold">
-                {task.doneCount ?? 0} / {task.targetCount} {task.unit}
-              </span>
-            </div>
-          )}
+          
+          {/* [NEW]: Metadata Row hien thi thong tin Muc tieu va Tan suat lap lai */}
+          <div className="flex flex-wrap items-center gap-2 mt-1">
+            {logic.isMultiTarget && (
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] bg-slate-50 text-[#2563EB] border border-slate-200 px-2 py-0.5 rounded-[4px] font-mono font-bold">
+                  {task.doneCount ?? 0} / {task.targetCount} {task.unit}
+                </span>
+              </div>
+            )}
+
+            {/* Hien thi tan suat lap lai neu co (Rule: Bo qua neu la task mot lan) */}
+            {logic.hasFrequency && (
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] bg-slate-50 text-slate-500 border border-slate-200 px-2 py-0.5 rounded-[4px] font-mono font-bold flex items-center gap-1">
+                  <span className="text-[10px] leading-none">↺</span> {logic.frequencyText}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
+
         <div className="flex flex-wrap gap-2">
           {task.tags?.filter(t => !['d:', 'm:', 'freq:'].some(p => t.startsWith(p))).map(tag => (
             <span key={tag} className="text-[8px] uppercase tracking-[0.15em] text-slate-400 font-bold">#{tag.split(':')[1] || tag}</span>

@@ -1,9 +1,9 @@
 /**
- * Purpose: Quản trị hệ thống, dữ liệu và thiết lập đồng bộ MindCap (v6.40).
+ * Purpose: Quản trị hệ thống, dữ liệu và thiết lập đồng bộ MindCap (v6.46).
  * Business Rule: 
- * - Quản lý Export/Import JSON chuẩn và Legacy.
- * - [NEW]: Cung cấp giao diện thiết lập "Giờ tha thứ" (Forgiveness Hour) để giải phóng tâm lý.
- * - Cung cấp lối vào cho hệ thống đồng bộ Obsidian (Sync Review).
+ * - Quản lý Export/Import JSON chuẩn.
+ * - [UI UPDATE]: Sắp xếp theo thứ tự: 1. Knowledge Bridge, 2. Export/Import, 3. Spark & Forgiveness (Hàng đôi đối xứng).
+ * - [FIX]: Hợp nhất nút Test vào khối Spark để tạo sự cân bằng thị giác.
  */
 
 import React, { useRef, useState, useEffect } from 'react';
@@ -14,7 +14,6 @@ import { NotificationManager } from '../spark/notification-manager';
 
 export const SetupPanel: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const legacyInputRef = useRef<HTMLInputElement>(null);
   
   const [permissionStatus, setPermissionStatus] = useState<NotificationPermission>('default');
   const [forgivenessHour, setForgivenessHour] = useState<number>(19); // Mặc định là 19h
@@ -118,7 +117,6 @@ export const SetupPanel: React.FC = () => {
         const imported = JSON.parse(event.target?.result as string);
         if (!imported.data) throw new Error("Định dạng file không đúng");
 
-        // [SANITION LAYER]: Duyệt và gán 'pending' cho bản ghi thiếu syncStatus
         const sanitizedTasks = (imported.data.tasks || []).map((t: any) => ({
           ...t,
           syncStatus: t.syncStatus || 'pending'
@@ -144,74 +142,14 @@ export const SetupPanel: React.FC = () => {
     reader.readAsText(file);
   };
 
-  // --- 3. IMPORT LEGACY (WITH SANITIZATION) ---
-  const handleLegacyImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const backup = JSON.parse(event.target?.result as string);
-        const entries = backup.entries || [];
-
-        await db.transaction('rw', db.thoughts, db.moods, async () => {
-          for (const entry of entries) {
-            const timestamp = new Date(entry.createdAt).getTime();
-            await db.thoughts.add({
-              content: entry.content,
-              type: 'thought',
-              wordCount: entry.content.split(/\s+/).length,
-              createdAt: timestamp,
-              updatedAt: timestamp,
-              recordStatus: 'success',
-              syncStatus: 'pending' // [NEW]: Kích hoạt dữ liệu legacy sang Obsidian
-            });
-            await db.moods.add({ score: 0, label: 'imported', createdAt: timestamp });
-          }
-        });
-
-        alert(`Đã nhập thành công ${entries.length} bản ghi legacy!`);
-        triggerHaptic('success');
-      } catch (err) {
-        alert("Lỗi import legacy: " + err);
-      }
-    };
-    reader.readAsText(file);
-  };
-
   return (
-    <div className="p-6 space-y-8 animate-in fade-in duration-700">
+    <div className="h-full overflow-y-auto p-6 pb-32 space-y-8 animate-in fade-in duration-700 select-none">
       <header>
         <h2 className="text-2xl font-black tracking-tighter text-slate-900">SETUP</h2>
         <p className="text-[9px] uppercase tracking-widest opacity-30 font-bold">Quản trị dữ liệu & Hệ thống</p>
       </header>
 
-      {/* [NEW]: CƠ CHẾ GIẢI PHÓNG TÂM LÝ (FORGIVENESS HOUR) */}
-      <section className="space-y-4">
-        <h3 className="text-[10px] font-black uppercase tracking-widest text-emerald-500/50">Psychological Relief</h3>
-        <div className="p-5 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center justify-between">
-          <div className="text-left">
-            <p className="text-[11px] font-bold text-emerald-700">Giờ Tha Thứ</p>
-            <p className="text-[8px] opacity-40 uppercase mt-0.5">Tự động trả việc về Todo để giải phóng Focus</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <select 
-              value={forgivenessHour}
-              onChange={(e) => handleUpdateForgivenessHour(parseInt(e.target.value, 10))}
-              className="bg-white border border-emerald-200 text-emerald-700 text-[11px] font-black px-3 py-2 rounded-xl outline-none shadow-sm focus:ring-2 focus:ring-emerald-300 transition-all appearance-none cursor-pointer"
-            >
-              {Array.from({ length: 24 }, (_, i) => (
-                <option key={i} value={i}>
-                  {i < 10 ? `0${i}` : i}:00
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </section>
-
-      {/* [NEW]: CẦU NỐI TRI THỨC (OBSIDIAN SYNC) */}
+      {/* 1) CẦU NỐI TRI THỨC (OBSIDIAN SYNC) */}
       <section className="space-y-4">
         <h3 className="text-[10px] font-black uppercase tracking-widest text-purple-500/50">Knowledge Bridge</h3>
         <button 
@@ -230,37 +168,7 @@ export const SetupPanel: React.FC = () => {
         </button>
       </section>
 
-      {/* [NEW]: HỆ THỐNG SPARK NOTIFICATION  */}
-      <section className="space-y-4">
-        <h3 className="text-[10px] font-black uppercase tracking-widest text-blue-500/50">Spark Engine</h3>
-        <div className="space-y-2">
-          <button 
-            onClick={handleEnableNotifications}
-            disabled={permissionStatus === 'granted'}
-            className={`w-full p-5 border rounded-2xl flex items-center justify-between transition-all
-              ${permissionStatus === 'granted' ? 'bg-blue-50/50 border-blue-100 opacity-60' : 'bg-blue-500/10 border-blue-500/20'}`}
-          >
-            <div className="text-left">
-              <p className="text-[11px] font-bold text-blue-600">
-                {permissionStatus === 'granted' ? 'Thông báo: Đã bật' : 'Kích hoạt Spark Messenger'}
-              </p>
-              <p className="text-[8px] opacity-40 uppercase mt-0.5">Cấp quyền hệ thống cho iOS/Android</p>
-            </div>
-            {permissionStatus !== 'granted' && <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />}
-          </button>
-
-          {permissionStatus === 'granted' && (
-            <button 
-              onClick={handleTestNotification}
-              className="w-full p-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest active:scale-[0.98] transition-all shadow-lg shadow-blue-500/10"
-            >
-              🚀 Chạy thử Spark (5 giây)
-            </button>
-          )}
-        </div>
-      </section>
-
-      {/* Cụm nút Import/Export */}
+      {/* 2) DỮ LIỆU HỆ THỐNG (EXPORT/IMPORT) */}
       <section className="space-y-4">
         <h3 className="text-[10px] font-black uppercase tracking-widest opacity-50">Dữ liệu hệ thống</h3>
         <div className="grid grid-cols-2 gap-3">
@@ -277,20 +185,58 @@ export const SetupPanel: React.FC = () => {
         </div>
       </section>
 
-      {/* Nút Import file Legacy */}
-      <section className="space-y-4">
-        <h3 className="text-[10px] font-black uppercase tracking-widest text-yellow-600/50">Legacy Port</h3>
-        <button onClick={() => legacyInputRef.current?.click()} className="w-full p-5 bg-yellow-50 border border-yellow-200 rounded-2xl flex items-center justify-between active:scale-95 transition-all">
-          <input type="file" ref={legacyInputRef} onChange={handleLegacyImport} className="hidden" accept=".json" />
-          <div className="text-left">
-            <p className="text-[11px] font-bold text-yellow-700">Nhập MindCap Legacy</p>
-            <p className="text-[8px] opacity-40 uppercase mt-0.5">Dành cho dữ liệu phiên bản cũ</p>
+      {/* 3 & 4) HÀNG ĐÔI ĐỐI XỨNG: SPARK ENGINE & PSYCHOLOGICAL RELIEF */}
+      <section className="grid grid-cols-2 gap-3">
+        {/* SPARK ENGINE (TRÁI) - Cấu trúc hợp nhất khối */}
+        <div className="space-y-4">
+          <h3 className="text-[10px] font-black uppercase tracking-widest text-blue-500/50">Spark Engine</h3>
+          <div className={`p-4 border rounded-2xl flex flex-col justify-between min-h-[110px] transition-all
+            ${permissionStatus === 'granted' ? 'bg-blue-50 border-blue-100' : 'bg-blue-500/10 border-blue-500/20'}`}
+          >
+            <button 
+              onClick={handleEnableNotifications}
+              disabled={permissionStatus === 'granted'}
+              className="flex flex-col items-start gap-1 text-left w-full"
+            >
+              <p className={`text-[10px] font-bold leading-tight ${permissionStatus === 'granted' ? 'text-blue-600/60' : 'text-blue-600'}`}>
+                {permissionStatus === 'granted' ? 'Đã bật' : 'Kích hoạt'}
+              </p>
+              <p className="text-[8px] opacity-40 uppercase">Thông báo</p>
+            </button>
+
+            {permissionStatus === 'granted' && (
+              <button 
+                onClick={handleTestNotification}
+                className="py-2 bg-slate-900 text-white rounded-xl text-[8px] font-black uppercase tracking-widest active:scale-[0.95] transition-all"
+              >
+                🚀 Test (5s)
+              </button>
+            )}
           </div>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-yellow-600 opacity-50"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-        </button>
+        </div>
+
+        {/* PSYCHOLOGICAL RELIEF (PHẢI) - Giờ Tha Thứ */}
+        <div className="space-y-4">
+          <h3 className="text-[10px] font-black uppercase tracking-widest text-emerald-500/50">Psychological</h3>
+          <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex flex-col justify-between min-h-[110px]">
+            <div className="text-left">
+              <p className="text-[10px] font-bold text-emerald-700 leading-tight">Giờ Tha Thứ</p>
+              <p className="text-[8px] opacity-40 uppercase">Giải phóng Focus</p>
+            </div>
+            <select 
+              value={forgivenessHour}
+              onChange={(e) => handleUpdateForgivenessHour(parseInt(e.target.value, 10))}
+              className="w-full bg-white border border-emerald-200 text-emerald-700 text-[11px] font-black px-2 py-1.5 rounded-lg outline-none cursor-pointer"
+            >
+              {Array.from({ length: 24 }, (_, i) => (
+                <option key={i} value={i}>{i < 10 ? `0${i}` : i}:00</option>
+              ))}
+            </select>
+          </div>
+        </div>
       </section>
 
-      <footer className="pt-10 opacity-10 text-center font-black uppercase tracking-[0.4em] text-[8px]">
+      <footer className="pt-10 pb-10 opacity-10 text-center font-black uppercase tracking-[0.4em] text-[8px]">
         Mind Cap Engine v1.0
       </footer>
     </div>

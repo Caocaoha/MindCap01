@@ -1,68 +1,66 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../database/db';
 import { useJourneyStore } from '../../store/journey-store';
 import { LivingMemory } from './components/living-memory';
 import { ReflectiveMirror } from './components/reflective-mirror';
 // [NEW]: Import module Spark để hiển thị không gian ký ức độc lập
 import { WidgetMemorySpark } from '../spark/components/widget-memory-spark';
+// [NEW]: Import WidgetProvider để đồng bộ hóa dữ liệu tập trung
+import { WidgetProvider } from '../spark/widget-provider';
 
 /**
- * [MOD_JOURNEY]: Thành phần cha điều phối dòng thời gian và phân tích (v6.13).
+ * [MOD_JOURNEY]: Thành phần cha điều phối dòng thời gian và phân tích (v6.14).
  * Giai đoạn 6.34: 
- * 1. [UI Fix]: Loại bỏ SearchBar khỏi Header chung để tránh dư thừa.
- * 2. [UX]: Giữ SearchBar tập trung duy nhất tại LivingMemory theo yêu cầu người dùng.
+ * [FIX]: Đồng bộ hóa dữ liệu Spark với WidgetProvider để nút Manual Refresh hoạt động.
  */
 export const JourneyList: React.FC = () => {
-  // BẢO TỒN 100% STATE VÀ ACTION TỪ STORE
   const { viewMode, setViewMode } = useJourneyStore();
 
-  // [NEW]: State quản lý hiển thị Header (Toolbar)
   const [isHeaderVisible, setIsHeaderVisible] = useState(true);
   const lastScrollY = useRef(0);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   /**
-   * [SPARK DATA ENGINE]: Truy vấn và phân loại dữ liệu theo cơ chế "Hồ chứa" (Pooling).
-   * Tuân thủ Blueprint V2.0: Heritage, Universe, Trending, Isolated.
+   * [SPARK DATA STATE]: Quản lý dữ liệu Widget tập trung.
+   * Chuyển đổi từ useLiveQuery sang State-driven để lắng nghe sự kiện từ Provider.
    */
-  const sparkData = useLiveQuery(async () => {
-    const [tasks, thoughts] = await Promise.all([
-      db.tasks.toArray(),
-      db.thoughts.toArray()
-    ]);
+  const [sparkData, setSparkData] = useState<any>(null);
 
-    const allEntries = [...tasks, ...thoughts];
-    if (allEntries.length === 0) return null;
-
-    const now = Date.now();
-    const tenDaysInMs = 10 * 24 * 60 * 60 * 1000;
-    const tenDaysAgo = now - tenDaysInMs;
-
-    // PHÂN LOẠI CÁC HỒ CHỨA (POOLS)
-    const poolHeritage = allEntries
-      .filter(item => item.createdAt < tenDaysAgo && item.isBookmarked)
-      .sort((a, b) => (b.echoLinkCount || 0) - (a.echoLinkCount || 0));
-
-    const poolUniverse = allEntries
-      .filter(item => item.isBookmarked)
-      .sort(() => Math.random() - 0.5);
-
-    const poolTrending = allEntries
-      .filter(item => item.createdAt >= tenDaysAgo && (item.echoLinkCount || 0) > 0)
-      .sort((a, b) => (b.interactionScore || 0) - (a.interactionScore || 0));
-
-    const poolIsolated = allEntries
-      .filter(item => item.createdAt >= tenDaysAgo && (item.echoLinkCount || 0) === 0)
-      .sort(() => Math.random() - 0.5);
-
-    return {
-      slots: {
-        slot1: poolHeritage[0] || poolUniverse[0],
-        slot2: poolUniverse.find(item => item.id !== poolHeritage[0]?.id) || poolUniverse[1],
-        slot3: poolTrending[0] || allEntries.sort((a, b) => (b.interactionScore || 0) - (a.interactionScore || 0))[0],
-        slot4: poolIsolated[0] || allEntries[Math.floor(Math.random() * allEntries.length)]
+  /**
+   * [SPARK SYNC LOGIC]: Thiết lập cầu nối dữ liệu giữa Provider và UI.
+   */
+  useEffect(() => {
+    // 1. Lấy dữ liệu khởi tạo khi Tab Spark được nạp
+    const loadInitialData = async () => {
+      try {
+        const timeline = await WidgetProvider.GetWidgetTimeline();
+        if (timeline && timeline.length > 0) {
+          // Lấy mốc hiện tại (thường là snapshot đầu tiên trong timeline)
+          setSparkData(timeline[0]);
+        }
+      } catch (err) {
+        console.error("[JourneyList] Lỗi nạp dữ liệu Spark:", err);
       }
+    };
+
+    loadInitialData();
+
+    /**
+     * 2. LẮNG NGHE SỰ KIỆN REFRESH:
+     * Khi WidgetProvider thực hiện manualRefresh(), nó phát sự kiện 'spark:data-updated'
+     * kèm theo Snapshot mới trong detail.
+     */
+    const handleSparkUpdate = (event: any) => {
+      if (event.detail) {
+        setSparkData(event.detail);
+      }
+    };
+
+    window.addEventListener('spark:data-updated', handleSparkUpdate);
+    
+    // Cleanup: Hủy lắng nghe khi component bị unmount
+    return () => {
+      window.removeEventListener('spark:data-updated', handleSparkUpdate);
     };
   }, []);
 
@@ -97,7 +95,7 @@ export const JourneyList: React.FC = () => {
   return (
     <div className="h-full relative bg-white font-sans overflow-hidden">
       
-      {/* [DYNAMIC HEADER]: Chỉ còn chứa Tab Switcher */}
+      {/* [DYNAMIC HEADER]: Tab Switcher */}
       <div 
         className={`absolute top-0 left-0 right-0 z-20 bg-white/95 backdrop-blur-sm border-b border-slate-100 transition-transform duration-300 ease-in-out shadow-sm ${
           isHeaderVisible ? 'translate-y-0' : '-translate-y-full'
@@ -119,7 +117,6 @@ export const JourneyList: React.FC = () => {
               </button>
             ))}
           </div>
-          {/* ĐÃ LOẠI BỎ SEARCHBAR TẠI ĐÂY */}
         </div>
       </div>
 
@@ -142,6 +139,7 @@ export const JourneyList: React.FC = () => {
 
         {viewMode === 'spark' && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+            {/* Truyền dữ liệu đồng bộ từ State vào Widget */}
             <WidgetMemorySpark data={sparkData} />
           </div>
         )}

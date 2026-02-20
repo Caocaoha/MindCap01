@@ -2,10 +2,9 @@ import { db } from '../../database/db';
 import { ITask, IThought } from '../../database/types';
 
 /**
- * [SERVICE]: Widget Memory Provider (v2.4).
+ * [SERVICE]: Widget Memory Provider (v2.6).
  * Thực thi cơ chế Pooling và chuẩn bị Timeline cho Widget Memory Spark V2.0.
- * [FIX]: Khớp cấu trúc Content Seeds với interface IThought (wordCount, recordStatus).
- * Tuân thủ triết lý Zero-Computation on Widget. 
+ * [FIX]: Triệt để lỗi TS2345 bằng cách sử dụng biến trung gian và kiểm tra kiểu ID nghiêm ngặt.
  */
 
 const POOL_LIMITS = {
@@ -41,13 +40,10 @@ export const WidgetProvider = {
     const now = Date.now();
     const tenDaysAgo = now - (10 * MS_PER_DAY);
 
-    // 1. Lấy dữ liệu từ Database
     const allTasks = await db.tasks.toArray();
     const allThoughts = await db.thoughts.toArray();
 
-    /**
-     * [RULE 1]: Lọc Task > 16 từ.
-     */
+    // Lọc Task > 16 từ
     const validTasks = allTasks.filter(t => {
       const wordCount = (t.content || "").trim().split(/\s+/).length;
       return wordCount > 16;
@@ -55,9 +51,7 @@ export const WidgetProvider = {
 
     const allEntries: (ITask | IThought)[] = [...validTasks, ...allThoughts];
 
-    /**
-     * Phân bổ Pools dựa trên tiêu chí Blueprint v2.0.
-     */
+    // PHÂN BỔ POOLS
     const pool1 = allEntries
       .filter(e => e.createdAt <= tenDaysAgo && e.isBookmarked)
       .sort((a, b) => (b.echoLinkCount || 0) - (a.echoLinkCount || 0))
@@ -78,21 +72,16 @@ export const WidgetProvider = {
       .sort(() => Math.random() - 0.5)
       .slice(0, POOL_LIMITS.ISOLATED);
 
-    /**
-     * [RULE 2]: Bơm Content Seeds nếu tổng lượng bản ghi thực tế < 40.
-     */
+    // Bơm Content Seeds nếu tổng lượng bản ghi thực tế < 40
     const totalRecords = pool1.length + pool2.length + pool3.length + pool4.length;
 
     if (totalRecords < 40) {
-      /**
-       * [FIX]: Tạo đối tượng Seed khớp 100% với IThought để tránh lỗi TS2345.
-       */
       const seeds: IThought[] = CONTENT_SEEDS.map((content, index) => ({
         id: -(index + 1),
         content,
         type: 'thought' as const,
-        wordCount: content.trim().split(/\s+/).length, // Bổ sung wordCount
-        recordStatus: 'success' as const,              // Bổ sung recordStatus
+        wordCount: content.trim().split(/\s+/).length,
+        recordStatus: 'success' as const,
         createdAt: now,
         updatedAt: now,
         isBookmarked: true,
@@ -101,21 +90,22 @@ export const WidgetProvider = {
         syncStatus: 'synced' as const
       }));
 
-      // Bơm vào các hồ chứa ngẫu nhiên/cô lập
-      pool2.push(...seeds);
-      pool4.push(...seeds);
+      pool1.push(...seeds.slice(0, 3));
+      pool2.push(...seeds.slice(3, 6));
+      pool3.push(...seeds.slice(6, 9));
+      pool4.push(...seeds.slice(9, 12));
     }
 
     return { pool1, pool2, pool3, pool4 };
   },
 
   /**
-   * [TIMELINE PROVIDER]: Chuẩn bị 8 mốc hiển thị cho 24h tới.
+   * [TIMELINE PROVIDER]: Chuẩn bị 8 mốc hiển thị.
    */
   async GetWidgetTimeline() {
     const { pool1, pool2, pool3, pool4 } = await this.generateCandidatePools();
     
-    let currentPointer = parseInt(localStorage.getItem('spark_widget_pointer') || '0', 10);
+    let basePointer = parseInt(localStorage.getItem('spark_widget_pointer') || '0', 10);
     const timeline = [];
     const startTime = Date.now();
 
@@ -125,10 +115,12 @@ export const WidgetProvider = {
 
       if (hour >= 23 || hour < 6) continue;
 
+      const tempPointer = basePointer + i;
       const selectedIds = new Set<number>();
 
       /**
-       * Lấy bản ghi không trùng lặp và kiểm tra kiểu dữ liệu an toàn.
+       * Hàm hỗ trợ lấy bản ghi không trùng lặp.
+       * Sử dụng kiểm tra typeof nghiêm ngặt để triệt tiêu lỗi TS2345.
        */
       const getUniqueItem = (pool: any[], pointer: number) => {
         if (pool.length === 0) return null;
@@ -139,42 +131,41 @@ export const WidgetProvider = {
           item && 
           typeof item.id === 'number' && 
           selectedIds.has(item.id) && 
-          offset < 10 && 
-          offset < pool.length
+          offset < 10
         ) {
           offset++;
           item = pool[(pointer + offset) % pool.length];
         }
         
-        if (item && typeof item.id === 'number') {
-          selectedIds.add(item.id);
+        const validId = item?.id;
+        if (typeof validId === 'number') {
+          selectedIds.add(validId);
           return item;
         }
         return null;
       };
 
-      const s1 = getUniqueItem(pool1, currentPointer);
-      const s3 = getUniqueItem(pool3, currentPointer);
-      const s4 = getUniqueItem(pool4, currentPointer);
+      const s1 = getUniqueItem(pool1, tempPointer);
+      const s3 = getUniqueItem(pool3, tempPointer);
+      const s4 = getUniqueItem(pool4, tempPointer);
 
+      // Xử lý Slot 2 ngẫu nhiên với Type Guard chặt chẽ
       let s2 = null;
       if (pool2.length > 0) {
         let attempts = 0;
-        let tempItem = null;
+        let tempS2 = null;
         do {
-          tempItem = pool2[Math.floor(Math.random() * pool2.length)];
+          tempS2 = pool2[Math.floor(Math.random() * pool2.length)];
           attempts++;
-        } while (
-          tempItem && 
-          typeof tempItem.id === 'number' && 
-          selectedIds.has(tempItem.id) && 
-          attempts < 15
-        );
-        
-        if (tempItem && typeof tempItem.id === 'number') {
-          selectedIds.add(tempItem.id);
-          s2 = tempItem;
-        }
+          
+          // Kiểm tra ID có phải number hợp lệ trước khi gọi .has()
+          const currentId = tempS2?.id;
+          if (typeof currentId === 'number' && !selectedIds.has(currentId)) {
+            selectedIds.add(currentId);
+            s2 = tempS2;
+            break; 
+          }
+        } while (attempts < 15);
       }
 
       const snapshot = {
@@ -188,15 +179,13 @@ export const WidgetProvider = {
       };
 
       timeline.push(snapshot);
-      currentPointer++; 
     }
 
-    localStorage.setItem('spark_widget_pointer', currentPointer.toString());
     return timeline;
   },
 
   /**
-   * [MANUAL REFRESH]: Làm mới thủ công.
+   * [MANUAL REFRESH]: Kiểm soát chính xác bước nhảy Pointer.
    */
   async manualRefresh() {
     try {

@@ -4,6 +4,7 @@
  * Business Rule: Gioi han 4 slot Focus, tu dong don dep slot ma va sap xep uu tien task chua xong.
  * [UPDATE 11.2]: Sua loi an nham Task lap lai. Bo loc gio day giu lai cac task 'daily/weekly' 
  * du da hoan thanh hom truoc, de cho bo quet (Streak) hoac nguoi dung tu reset.
+ * [FIX TS2365/2345]: Chuyen doi updatedAt sang timestamp de so sanh va sap xep an toan.
  */
 
 import { useState, useMemo, useEffect } from 'react';
@@ -50,8 +51,12 @@ export const useSabanLogic = (): SabanLogic => {
       // 3. Nếu là task lặp lại, LUÔN LUÔN cho phép hiển thị (không quan tâm ngày done)
       if (isRepeatTask) return true;
 
-      // 4. Nếu là task 1 lần (once), ẩn đi nếu đã done từ hôm qua trở về trước
-      const isOldDone = t.status === 'done' && (t.updatedAt || 0) < today;
+      /**
+       * 4. [FIX TS2365]: Chuyển đổi updatedAt sang timestamp số để so sánh với today.
+       * Nếu là task 1 lần (once), ẩn đi nếu đã done từ hôm qua trở về trước.
+       */
+      const updatedAtTime = t.updatedAt ? new Date(t.updatedAt).getTime() : 0;
+      const isOldDone = t.status === 'done' && updatedAtTime < today;
       return !isOldDone;
     });
 
@@ -108,8 +113,18 @@ export const useSabanLogic = (): SabanLogic => {
       const isBDone = b.type === 'group' ? (b.data as ITask[]).every(t => t.status === 'done') : (b.data as ITask).status === 'done';
       if (isADone !== isBDone) return isADone ? 1 : -1;
       
-      const timeA = a.type === 'group' ? Math.max(...(a.data as ITask[]).map(t => t.updatedAt || 0)) : (a.data as ITask).updatedAt || 0;
-      const timeB = b.type === 'group' ? Math.max(...(b.data as ITask[]).map(t => t.updatedAt || 0)) : (b.data as ITask).updatedAt || 0;
+      /**
+       * [FIX TS2345/2362/2363]: Ép kiểu updatedAt sang number bằng new Date().getTime() 
+       * trước khi đưa vào Math.max hoặc thực hiện phép trừ.
+       */
+      const timeA = a.type === 'group' 
+        ? Math.max(...(a.data as ITask[]).map(t => new Date(t.updatedAt || 0).getTime())) 
+        : new Date((a.data as ITask).updatedAt || 0).getTime();
+
+      const timeB = b.type === 'group' 
+        ? Math.max(...(b.data as ITask[]).map(t => new Date(t.updatedAt || 0).getTime())) 
+        : new Date((b.data as ITask).updatedAt || 0).getTime();
+
       return timeB - timeA;
     });
   }, [processedSaban]);

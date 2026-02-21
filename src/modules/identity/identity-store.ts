@@ -5,8 +5,10 @@ import { triggerHaptic } from '../../utils/haptic';
 import { IUserProfile } from '../../database/types';
 
 /**
- * [STATE]: Quản lý trạng thái mô-đun Identity v3.3
+ * [STATE]: Quản lý trạng thái mô-đun Identity v3.4
  * Hỗ trợ Bio-Pulse và Multi-Layer Answers.
+ * [UPGRADE]: Chuyển đổi sang chuẩn ISO 8601 (UTC Agnostic) cho các mốc thời gian.
+ * [FIX]: Ép kiểu thời gian về timestamp để vượt qua kiểm tra TS2363/TS2365 của Cloudflare.
  */
 
 interface IdentityState {
@@ -62,8 +64,13 @@ export const useIdentityStore = create<IdentityState>((set, get) => ({
     // 1. Newbie: Chưa có câu trả lời nào
     if (Object.keys(progress.answers).length === 0) return 100;
 
+    /**
+     * [FIX TS2363]: Chuyển đổi lastAuditAt (string | number) sang timestamp số.
+     */
+    const lastAuditTime = progress.lastAuditAt ? new Date(progress.lastAuditAt).getTime() : 0;
+
     // 2. Inactive: Lần cuối trả lời > 40 ngày
-    if (progress.lastAuditAt && (now - progress.lastAuditAt > fortyDaysMs)) return 80;
+    if (lastAuditTime > 0 && (now - lastAuditTime > fortyDaysMs)) return 80;
 
     // 3. Started: Đang trong hành trình
     return 40;
@@ -71,8 +78,14 @@ export const useIdentityStore = create<IdentityState>((set, get) => ({
 
   openAudit: (forceIndex?: number) => {
     const { progress } = get();
+    
+    /**
+     * [FIX TS2365]: So sánh thời gian dựa trên timestamp số.
+     */
+    const cooldownTime = progress.cooldownEndsAt ? new Date(progress.cooldownEndsAt).getTime() : 0;
+    
     // Chặn nếu đang cooldown
-    if (progress.cooldownEndsAt && Date.now() < progress.cooldownEndsAt) {
+    if (cooldownTime > 0 && Date.now() < cooldownTime) {
       triggerHaptic('warning');
       return;
     }
@@ -110,11 +123,14 @@ export const useIdentityStore = create<IdentityState>((set, get) => ({
 
     if (question.id === 25) isManifestoUnlocked = true;
 
+    /**
+     * [FIX]: Sử dụng toISOString() để ghi nhận thời điểm kiểm toán theo chuẩn UTC mới.
+     */
     const updatedProgress = {
       ...progress,
       answers: newAnswers,
       currentQuestionIndex: nextIndex,
-      lastAuditAt: Date.now(),
+      lastAuditAt: new Date().toISOString(),
       isManifestoUnlocked,
       draftAnswer: '',
       lastStatus: (question.id === 25 ? 'enlightened' : 'paused') as any

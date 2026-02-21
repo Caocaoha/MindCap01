@@ -14,6 +14,7 @@ import { AttentionMonitor } from '../../spark/components/attention-monitor'; // 
  * Giai đoạn 6.31: 
  * 1. [Spark Integration]: Bọc danh sách bằng AttentionMonitor để tính điểm tương tác.
  * 2. [Sensors]: Gắn nhãn data-attention-target để Intersection Observer bắt đầu theo dõi.
+ * [UPGRADE]: Hỗ trợ chuẩn ISO 8601 (Timezone Agnostic) và sửa lỗi TS2362/TS2363.
  */
 export const LivingMemory: React.FC = () => {
   // --- STORE ACTIONS & STATES (Bảo tồn 100%) ---
@@ -55,7 +56,11 @@ export const LivingMemory: React.FC = () => {
         // Áp dụng bộ máy tìm kiếm chuẩn hóa
         return matchesSearch(item.content, itemTags, searchQuery);
       }) 
-      .sort((a, b) => b.createdAt - a.createdAt); 
+      /**
+       * [FIX TS2362/TS2363]: Chuyển đổi sang timestamp để thực hiện phép trừ an toàn.
+       * Phù hợp với cả dữ liệu cũ (Number) và dữ liệu mới (ISO String).
+       */
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()); 
   }, [hiddenIds, searchQuery]);
 
   /**
@@ -71,10 +76,10 @@ export const LivingMemory: React.FC = () => {
     const tableName = item.sourceTable || ('status' in item ? 'tasks' : 'thoughts');
     const table = db.table(tableName);
     
-    // Cập nhật trạng thái 'archived' vĩnh viễn
+    // [FIX]: Chuyển sang sử dụng toISOString() để đồng bộ chuẩn UTC Agnostic
     await table.update(Number(item.id), { 
       archiveStatus: 'archived',
-      updatedAt: Date.now() 
+      updatedAt: new Date().toISOString() 
     });
   };
 
@@ -87,10 +92,11 @@ export const LivingMemory: React.FC = () => {
     const tableName = bookmarkTarget.sourceTable || ('status' in bookmarkTarget ? 'tasks' : 'thoughts');
     const table = db.table(tableName);
 
+    // [FIX]: Chuyển sang sử dụng toISOString() để đồng bộ chuẩn UTC Agnostic
     await table.update(Number(bookmarkTarget.id), { 
       isBookmarked: true, 
       bookmarkReason: reason,
-      updatedAt: Date.now()
+      updatedAt: new Date().toISOString()
     });
     
     setBookmarkTarget(null);

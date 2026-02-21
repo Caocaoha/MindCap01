@@ -2,9 +2,10 @@ import { db } from '../../database/db';
 import { ITask, IThought } from '../../database/types';
 
 /**
- * [SERVICE]: Widget Memory Provider (v2.6).
+ * [SERVICE]: Widget Memory Provider (v2.7).
  * Thực thi cơ chế Pooling và chuẩn bị Timeline cho Widget Memory Spark V2.0.
- * [FIX]: Triệt để lỗi TS2345 bằng cách sử dụng biến trung gian và kiểm tra kiểu ID nghiêm ngặt.
+ * [FIX]: Triệt để lỗi TS2365 trên Cloudflare bằng cách ép kiểu Date.getTime().
+ * [UPGRADE]: Chuyển đổi sang chuẩn ISO 8601 (UTC Agnostic) cho các bản ghi khởi tạo.
  */
 
 const POOL_LIMITS = {
@@ -53,7 +54,13 @@ export const WidgetProvider = {
 
     // PHÂN BỔ POOLS
     const pool1 = allEntries
-      .filter(e => e.createdAt <= tenDaysAgo && e.isBookmarked)
+      .filter(e => {
+        /**
+         * [FIX TS2365 - Line 56]: Ép kiểu createdAt sang timestamp số để so sánh với tenDaysAgo.
+         */
+        const entryTime = new Date(e.createdAt).getTime();
+        return entryTime <= tenDaysAgo && e.isBookmarked;
+      })
       .sort((a, b) => (b.echoLinkCount || 0) - (a.echoLinkCount || 0))
       .slice(0, POOL_LIMITS.HERITAGE);
 
@@ -63,12 +70,24 @@ export const WidgetProvider = {
       .slice(0, POOL_LIMITS.UNIVERSE);
 
     const pool3 = allEntries
-      .filter(e => e.createdAt > tenDaysAgo && (e.echoLinkCount || 0) > 0)
+      .filter(e => {
+        /**
+         * [FIX TS2365 - Line 66]: Ép kiểu createdAt sang timestamp số để so sánh với tenDaysAgo.
+         */
+        const entryTime = new Date(e.createdAt).getTime();
+        return entryTime > tenDaysAgo && (e.echoLinkCount || 0) > 0;
+      })
       .sort((a, b) => (b.interactionScore || 0) - (a.interactionScore || 0))
       .slice(0, POOL_LIMITS.TRENDING);
 
     const pool4 = allEntries
-      .filter(e => e.createdAt > tenDaysAgo && (e.echoLinkCount || 0) === 0)
+      .filter(e => {
+        /**
+         * [FIX TS2365 - Line 71]: Ép kiểu createdAt sang timestamp số để so sánh với tenDaysAgo.
+         */
+        const entryTime = new Date(e.createdAt).getTime();
+        return entryTime > tenDaysAgo && (e.echoLinkCount || 0) === 0;
+      })
       .sort(() => Math.random() - 0.5)
       .slice(0, POOL_LIMITS.ISOLATED);
 
@@ -76,14 +95,15 @@ export const WidgetProvider = {
     const totalRecords = pool1.length + pool2.length + pool3.length + pool4.length;
 
     if (totalRecords < 40) {
+      const nowISO = new Date().toISOString();
       const seeds: IThought[] = CONTENT_SEEDS.map((content, index) => ({
         id: -(index + 1),
         content,
         type: 'thought' as const,
         wordCount: content.trim().split(/\s+/).length,
         recordStatus: 'success' as const,
-        createdAt: now,
-        updatedAt: now,
+        createdAt: nowISO,
+        updatedAt: nowISO,
         isBookmarked: true,
         echoLinkCount: 0,
         interactionScore: 0,
@@ -120,7 +140,6 @@ export const WidgetProvider = {
 
       /**
        * Hàm hỗ trợ lấy bản ghi không trùng lặp.
-       * Sử dụng kiểm tra typeof nghiêm ngặt để triệt tiêu lỗi TS2345.
        */
       const getUniqueItem = (pool: any[], pointer: number) => {
         if (pool.length === 0) return null;
@@ -158,7 +177,6 @@ export const WidgetProvider = {
           tempS2 = pool2[Math.floor(Math.random() * pool2.length)];
           attempts++;
           
-          // Kiểm tra ID có phải number hợp lệ trước khi gọi .has()
           const currentId = tempS2?.id;
           if (typeof currentId === 'number' && !selectedIds.has(currentId)) {
             selectedIds.add(currentId);

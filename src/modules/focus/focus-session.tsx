@@ -26,9 +26,14 @@ export const FocusSession: React.FC = () => {
     const slots: (ITask & { groupInfo?: { current: number; total: number } })[] = [];
     const seenGroups = new Set<string | number>();
 
-    // [FIX]: Đổi logic sort từ updatedAt sang createdAt để cố định vị trí
-    // Mới vào xếp dưới cùng -> Sort tăng dần theo thời gian tạo (Cũ trên, Mới dưới)
-    allInFocus.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    /**
+     * [FIX TS2362/TS2363]: Chuyển đổi createdAt (string | number) sang timestamp số trước khi trừ.
+     * Việc bọc new Date().getTime() đảm bảo tính tương thích cho cả ISO String và Number cũ.
+     * Mới vào xếp dưới cùng -> Sort tăng dần theo thời gian tạo (Cũ trên, Mới dưới).
+     */
+    allInFocus.sort((a, b) => 
+      new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()
+    );
 
     allInFocus.forEach(task => {
       // Logic Slots giữ nguyên (Max 4 slots)

@@ -1,10 +1,11 @@
 /**
- * Purpose: Quan ly toan bo logic, trang thai va luu tru cho Entry Form (v9.8).
+ * Purpose: Quan ly toan bo logic, trang thai va luu tru cho Entry Form (v9.9).
  * Inputs/Outputs: Tra ve trang thai (State) va cac ham xu ly (Handlers) cho UI.
  * Business Rule: 
  * - [CENTRALIZED]: Chuyển toàn bộ logic điều hướng và lập lịch sang EntryService.
  * - [MIGRATION]: Duy trì tính nguyên tử khi chuyển đổi giữa Task/Thought.
- * - [UPDATE 11.1]: Dong bo hoa truong frequency va repeatOn de hien thi Saban Card chinh xac.
+ * - [UPDATE 11.2]: Nâng cấp hệ thống chu kỳ lặp lại: Làm một lần (Default), Hàng ngày, Tuần, Tháng.
+ * - [LOGIC]: Tự động lấp đầy repeatOn [2-8] khi chọn chế độ 'daily'.
  * [FIX]: Sua loi TS2353 (setType -> setEntryType) de khop voi interface EntryLogic.
  */
 
@@ -26,6 +27,9 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
   const [content, setContent] = useState('');
   const [targetCount, setTargetCount] = useState<number>(1);
   const [unit, setUnit] = useState('');
+  /**
+   * [RULE]: Mac dinh la 'once' (Lam mot lan) theo yeu cau.
+   */
   const [freq, setFreq] = useState<FrequencyType>('once');
   const [isUrgent, setIsUrgent] = useState(false);
   const [isImportant, setIsImportant] = useState(false);
@@ -33,6 +37,10 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
   const [selectedMonthDays, setSelectedMonthDays] = useState<number[]>([]);
   const [moodLevel, setMoodLevel] = useState<number>(3);
 
+  /**
+   * [EFFECT]: Khoi tao du lieu khi Edit Task.
+   * Chuyen doi tu kieu du lieu DB (none, daily, weekly, monthly) sang UI (once, daily, days-week, days-month).
+   */
   useEffect(() => {
     if (initialData) {
       setContent(initialData.content);
@@ -51,23 +59,25 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
           
           if (dbFreq === 'monthly') {
             setFreq('days-month');
+            setSelectedMonthDays(taskData.repeatOn || []);
           } else if (dbFreq === 'daily') {
-            setFreq('weekly' as any);
-            setSelectedWeekDays([2, 3, 4, 5, 6, 7, 8]);
+            setFreq('daily');
+          } else if (dbFreq === 'weekly') {
+            setFreq('days-week');
+            setSelectedWeekDays(taskData.repeatOn || []);
           } else {
             setFreq(dbFreq as any);
           }
-
-          if (taskData.repeatOn) {
-            if (dbFreq === 'monthly' || taskData.frequency === 'monthly') {
-              setSelectedMonthDays(taskData.repeatOn);
-            } else {
-              setSelectedWeekDays(taskData.repeatOn);
-            }
-          }
         } else {
+          // Fallback cho cac task cu dung Tags
           const fTag = taskData.tags?.find(t => t.startsWith('freq:'));
-          if (fTag) setFreq(fTag.split(':')[1] as any);
+          const fValue = fTag ? fTag.split(':')[1] : 'once';
+          
+          if (fValue === 'none') setFreq('once');
+          else if (fValue === 'monthly') setFreq('days-month');
+          else if (fValue === 'weekly') setFreq('days-week');
+          else setFreq(fValue as any);
+
           setSelectedWeekDays(taskData.tags?.filter(t => t.startsWith('d:')).map(t => parseInt(t.split(':')[1])) || []);
           setSelectedMonthDays(taskData.tags?.filter(t => t.startsWith('m:')).map(t => parseInt(t.split(':')[1])) || []);
         }
@@ -77,6 +87,9 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
     } else if (searchQuery) setContent(searchQuery);
   }, [initialData]);
 
+  /**
+   * [EFFECT]: NLP Parsing (Trich xuat thong tin tu ngon ngu tu nhien).
+   */
   useEffect(() => {
     if (initialData) return;
     if (parsedQuantity !== null) setTargetCount(parsedQuantity);
@@ -84,11 +97,10 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
     if (parsedFrequency) {
       const f = parsedFrequency.toLowerCase();
       if (f.includes('ngay')) { 
-        setFreq('weekly' as any); 
-        setSelectedWeekDays([2, 3, 4, 5, 6, 7, 8]); 
+        setFreq('daily'); 
       }
-      else if (f.includes('tuan')) setFreq('weekly' as any);
-      else if (f.includes('thang')) setFreq('days-month' as any);
+      else if (f.includes('tuan')) setFreq('days-week');
+      else if (f.includes('thang')) setFreq('days-month');
     }
   }, [parsedQuantity, parsedUnit, parsedFrequency, initialData]);
 
@@ -97,6 +109,10 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
     if (!initialData) setSearchQuery(val, 'mind');
   };
 
+  /**
+   * [ACTION]: Luu vao Mind Cap.
+   * Xu ly logic mapping tu UI ve chuan luu tru Database.
+   */
   const handleSave = async () => {
     if (!content.trim()) return;
     const isNowTask = entryType === 'task';
@@ -106,18 +122,36 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
     try {
       let payload: any;
       if (isNowTask) {
-        let dbFrequency: string = freq === 'once' ? 'none' : freq;
-        if (freq === 'days-month') dbFrequency = 'monthly';
-        if (freq === 'weekly' && selectedWeekDays.length === 7) dbFrequency = 'daily';
+        /**
+         * [CORE MAPPING LOGIC]:
+         * - 'once' -> DB: 'none', RepeatOn: []
+         * - 'daily' -> DB: 'daily', RepeatOn: [2,3,4,5,6,7,8]
+         * - 'days-week' -> DB: 'weekly', RepeatOn: selectedWeekDays
+         * - 'days-month' -> DB: 'monthly', RepeatOn: selectedMonthDays
+         */
+        let dbFrequency: string = 'none';
+        let repeatOn: number[] = [];
 
-        const repeatOn = dbFrequency === 'monthly' ? selectedMonthDays : selectedWeekDays;
+        if (freq === 'daily') {
+          dbFrequency = 'daily';
+          repeatOn = [2, 3, 4, 5, 6, 7, 8]; // Tu Thu 2 den Chu nhat
+        } else if (freq === 'days-week') {
+          dbFrequency = 'weekly';
+          repeatOn = selectedWeekDays;
+        } else if (freq === 'days-month') {
+          dbFrequency = 'monthly';
+          repeatOn = selectedMonthDays;
+        } else {
+          dbFrequency = 'none';
+          repeatOn = [];
+        }
 
         const tags = [
           `freq:${dbFrequency}`, 
           isUrgent ? 'p:urgent' : '', 
           isImportant ? 'p:important' : '', 
-          ...selectedWeekDays.map(d => `d:${d}`), 
-          ...selectedMonthDays.map(m => `m:${m}`)
+          ...(freq === 'days-week' || freq === 'daily' ? repeatOn.map(d => `d:${d}`) : []), 
+          ...(freq === 'days-month' ? repeatOn.map(m => `m:${m}`) : [])
         ].filter(Boolean);
 
         payload = {
@@ -179,7 +213,7 @@ export const useEntryLogic = (props: EntryFormProps): EntryLogic => {
 
   return {
     entryType, 
-    setEntryType, // [FIXED]: Su dung dung ten thuoc tinh theo EntryLogic interface
+    setEntryType, 
     content, 
     setContent, 
     targetCount, 

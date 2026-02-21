@@ -1,7 +1,10 @@
 /**
  * Purpose: Giao dien nguoi dung (UI) cho form nhap lieu Mind Cap.
  * Inputs/Outputs: Nhan vao Props dieu khien va hien thi du lieu tu useEntryLogic.
- * Business Rule: Tap trung vao trai nghiem nhap lieu nhanh, phan tach ro rang giua UI va Logic.
+ * Business Rule: 
+ * - Tap trung vao trai nghiem nhap lieu nhanh, phan tach ro rang giua UI va Logic.
+ * - [UPDATE]: Nang cap module lap lai ho tro 4 che do: Once, Daily, Days-Week, Days-Month.
+ * - [FIX TS2367]: Tra ve dung ID 'days-month' de khop voi FrequencyType trong Database.
  */
 
 import React, { useRef, useEffect } from 'react';
@@ -62,26 +65,53 @@ export const EntryForm: React.FC<EntryFormProps> = (props) => {
 
             <div className="space-y-4">
               <label className="text-[9px] font-bold uppercase text-slate-400">Chu kỳ lặp lại</label>
+              
+              {/* Main Frequency Selection (Updated IDs to match FrequencyType) */}
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  { id: 'once', label: 'Làm một lần' }, { id: 'weekly', label: 'Mỗi tuần' },
-                  { id: 'days-week', label: 'Tùy chọn ngày' }, { id: 'days-month', label: 'Tùy chọn tháng' }
+                  { id: 'once', label: 'Làm một lần' }, 
+                  { id: 'daily', label: 'Hàng ngày' },
+                  { id: 'days-week', label: 'Tùy chọn tuần' }, 
+                  { id: 'days-month', label: 'Tùy chọn tháng' }
                 ].map(f => (
-                  <button key={f.id} onClick={() => { triggerHaptic('light'); logic.setFreq(f.id as any); }}
-                    className={`py-2.5 rounded-[6px] text-[10px] font-bold uppercase border transition-all ${logic.freq === f.id ? 'bg-slate-100 border-slate-300 text-slate-900' : 'border-slate-200 text-slate-400'}`}
+                  <button 
+                    key={f.id} 
+                    onClick={() => { triggerHaptic('light'); logic.setFreq(f.id as any); }}
+                    className={`py-2.5 rounded-[6px] text-[10px] font-bold uppercase border transition-all 
+                      ${logic.freq === f.id ? 'bg-slate-100 border-slate-300 text-slate-900' : 'border-slate-200 text-slate-400'}`}
                   >
                     {f.label}
                   </button>
                 ))}
               </div>
 
+              {/* Sub-selection: Weekly Days (mapped to 2-8 for VN consistency) */}
               {logic.freq === 'days-week' && (
                 <div className="flex justify-between gap-1 py-2 animate-in zoom-in-95 duration-200">
-                  {[1,2,3,4,5,6,7].map(d => (
-                    <button key={d} onClick={() => logic.toggleWeekDay(d)}
-                      className={`w-9 h-9 rounded-[6px] text-[10px] font-bold flex items-center justify-center transition-all ${logic.selectedWeekDays.includes(d) ? 'bg-[#2563EB] text-white' : 'bg-slate-50 border border-slate-200 text-slate-400'}`}
+                  {[2, 3, 4, 5, 6, 7, 8].map(d => (
+                    <button 
+                      key={d} 
+                      onClick={() => logic.toggleWeekDay(d)}
+                      className={`w-9 h-9 rounded-[6px] text-[10px] font-bold flex items-center justify-center transition-all 
+                        ${logic.selectedWeekDays.includes(d) ? 'bg-[#2563EB] text-white shadow-md' : 'bg-slate-50 border border-slate-200 text-slate-400'}`}
                     >
-                      {d === 7 ? 'CN' : `T${d+1}`}
+                      {d === 8 ? 'CN' : `T${d}`}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Sub-selection: Monthly Days */}
+              {logic.freq === 'days-month' && (
+                <div className="grid grid-cols-7 gap-1 py-2 animate-in zoom-in-95 duration-200">
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
+                    <button 
+                      key={d} 
+                      onClick={() => logic.toggleMonthDay(d)}
+                      className={`h-9 rounded-[4px] text-[10px] font-bold flex items-center justify-center transition-all 
+                        ${logic.selectedMonthDays.includes(d) ? 'bg-[#2563EB] text-white shadow-md' : 'bg-slate-50 border border-slate-200 text-slate-400'}`}
+                    >
+                      {d}
                     </button>
                   ))}
                 </div>

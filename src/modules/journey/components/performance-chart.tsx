@@ -6,12 +6,17 @@ import { db } from '../../../database/db';
  * [MOD_JOURNEY_UI]: Biểu đồ hiệu suất 7 ngày trục kép.
  * Giai đoạn 4: Thẩm mỹ Linear.app (White base, Slate borders, 6px radius).
  * Đặc điểm: Chuyển đổi màu nhấn sang Blue #2563EB và Slate monochrome.
+ * [UPGRADE]: Hỗ trợ chuẩn ISO 8601 (Timezone Agnostic) và sửa lỗi TS2365.
  */
 export const PerformanceChart: React.FC = () => {
   // BẢO TỒN 100% LOGIC TRUY VẤN DỮ LIỆU
   const stats = useLiveQuery(async () => {
-    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const tasks = await db.tasks.where('createdAt').above(sevenDaysAgo).toArray();
+    /**
+     * [FIX]: Chuyển đổi mốc thời gian sang ISO 8601 để truy vấn Index chính xác
+     * theo cấu trúc Database Version 12.
+     */
+    const sevenDaysAgoISO = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const tasks = await db.tasks.where('createdAt').above(sevenDaysAgoISO).toArray();
 
     return Array.from({ length: 7 }, (_, i) => {
       const d = new Date();
@@ -19,7 +24,15 @@ export const PerformanceChart: React.FC = () => {
       const start = new Date(d.setHours(0,0,0,0)).getTime();
       const end = start + 86400000;
 
-      const dayTasks = tasks.filter(t => t.createdAt >= start && t.createdAt < end);
+      /**
+       * [FIX TS2365]: Chuyển đổi createdAt (string | number) sang timestamp số 
+       * trước khi thực hiện phép so sánh để vượt qua kiểm tra của Cloudflare build.
+       */
+      const dayTasks = tasks.filter(t => {
+        const itemTime = new Date(t.createdAt).getTime();
+        return itemTime >= start && itemTime < end;
+      });
+
       const completed = dayTasks.filter(t => t.status === 'done').length;
       const focus = dayTasks.filter(t => t.isFocusMode).length;
       const rate = focus > 0 ? (completed / focus) * 100 : 0;

@@ -1,5 +1,5 @@
 /**
- * Purpose: Định nghĩa interface và kiểu dữ liệu cho database (v11.0).
+ * Purpose: Định nghĩa interface và kiểu dữ liệu cho database (v11.3).
  * Business Rule: 
  * - Tích hợp hệ thống đồng bộ Obsidian với cơ chế định danh nguồn (sourceTable).
  * - Bổ sung trạng thái 'ignored' để dứt khoát hóa quy trình Review.
@@ -7,6 +7,7 @@
  * - [NEW 11.0]: Bổ sung cấu hình Forgiveness Hour (Giờ tha thứ) để giải phóng tâm lý.
  * - [NEW 11.1]: Bổ sung repeatOn cho ITask để hỗ trợ hiển thị tần suất lặp lại tùy chỉnh.
  * - [UPDATE 11.2]: Mở rộng forgivenessHour hỗ trợ kiểu string (HH:mm) để đặt giờ lẻ.
+ * - [UPDATE 11.3]: Đồng nhất thời gian (Timezone Agnostic) hỗ trợ ISO 8601 (string | number).
  */
 
 // --- MODULE: SPARK CATCH-UP LOGIC (v9.2) ---
@@ -19,9 +20,9 @@ export interface ISparkSchedule {
   entryId: number;          // ID của bản ghi (Task/Thought)
   entryType: 'tasks' | 'thoughts'; // Bảng nguồn
   content: string;          // Nội dung để hiển thị 100% Content trên banner
-  scheduledAt: number;      // Thời điểm dự kiến hiển thị (Timestamp)
+  scheduledAt: string | number;      // Thời điểm dự kiến hiển thị (ISO string hoặc Timestamp)
   status: 'pending' | 'sent' | 'missed'; // Trạng thái của mốc thời gian
-  createdAt: number;        // Thời điểm tạo lịch
+  createdAt: string | number;        // Thời điểm tạo lịch
 }
 
 // --- MODULE: INPUT & SABAN & FOCUS ---
@@ -37,10 +38,10 @@ export interface ITask {
   repeatOn?: number[];
   streakCurrent?: number;   
   streakRecoveryCount?: number; 
-  createdAt: number;
-  updatedAt?: number;
+  createdAt: string | number;
+  updatedAt?: string | number;
   isFocusMode: boolean; 
-  scheduledFor?: number; 
+  scheduledFor?: string | number; 
   tags?: string[]; 
   isBookmarked?: boolean;
   bookmarkReason?: string;
@@ -58,12 +59,12 @@ export interface ITask {
   suggestedTags?: string[];
 
   // Memory Spark & Widget Fields
-  nextReviewAt?: number; 
+  nextReviewAt?: string | number; 
   reviewStage?: number;  
-  lastReviewedAt?: number; 
+  lastReviewedAt?: string | number; 
   echoLinkCount?: number;     
   interactionScore?: number;  
-  lastInteractedAt?: number;  
+  lastInteractedAt?: string | number;  
 
   // Link System
   parentId?: number;          
@@ -73,7 +74,7 @@ export interface ITask {
   parentGroupId?: number | string;   
   sequenceOrder?: number;            
   archiveStatus?: 'active' | 'archived'; 
-  completionLog?: number[];          
+  completionLog?: (string | number)[];          
 }
 
 // --- MODULE: JOURNEY & INPUT ---
@@ -83,9 +84,9 @@ export interface IThought {
   type: 'note' | 'thought' | 'insight';
   archiveStatus?: 'active' | 'archived';
   wordCount: number;
-  createdAt: number;
+  createdAt: string | number;
   recordStatus: 'pending' | 'processing' | 'success';
-  updatedAt?: number; 
+  updatedAt?: string | number; 
   
   /**
    * [UPDATE]: Bổ sung isFocusMode dưới dạng tùy chọn (?) để tránh lỗi ở các file khác.
@@ -119,12 +120,12 @@ export interface IThought {
   tags?: string[];
 
   // Memory Spark & Link System Fields
-  nextReviewAt?: number; 
+  nextReviewAt?: string | number; 
   reviewStage?: number;  
-  lastReviewedAt?: number; 
+  lastReviewedAt?: string | number; 
   echoLinkCount?: number;     
   interactionScore?: number;  
-  lastInteractedAt?: number;  
+  lastInteractedAt?: string | number;  
   parentId?: number;          
   isLinkMode?: boolean;       
 }
@@ -134,7 +135,7 @@ export interface IMood {
   id?: number;
   score: number;
   label: string;
-  createdAt: number;
+  createdAt: string | number;
 }
 
 // --- SERVICE: CME ---
@@ -145,7 +146,7 @@ export interface IUserProfile {
   eaScore: number;
   cpiScore: number;
   archetype: 'newbie' | 'manager-led' | 'curious-explorer' | 'harmonized';
-  lastReset: number;
+  lastReset: string | number;
 
   /**
    * [NEW 11.0]: Forgiveness Hour Configuration
@@ -165,8 +166,8 @@ export interface IUserProfile {
     currentQuestionIndex: number;
     answers: Record<number, string[]>; 
     draftAnswer: string;
-    cooldownEndsAt: number | null;
-    lastAuditAt: number | null; 
+    cooldownEndsAt: string | number | null;
+    lastAuditAt: string | number | null; 
     isManifestoUnlocked: boolean;
     lastStatus: 'newbie' | 'paused' | 'cooldown' | 'enlightened';
   };

@@ -1,11 +1,12 @@
 /**
- * Purpose: MindCap Core Database Controller - Quản lý lưu trữ IndexedDB bằng Dexie.js (v11.0).
+ * Purpose: MindCap Core Database Controller - Quản lý lưu trữ IndexedDB bằng Dexie.js (v12.0).
  * Inputs/Outputs: Khởi tạo database, thực hiện migration dữ liệu.
  * Business Rule: 
  * - Quản lý phiên bản và lược đồ lưu trữ đồng bộ.
  * - [NEW 9.1]: Tích hợp chỉ mục sourceTable để định danh tuyệt đối nguồn dữ liệu.
  * - [NEW 10.0]: Bổ sung bảng sparkSchedules để hỗ trợ Catch-up Logic, đảm bảo thông báo chính xác.
  * - [NEW 11.0]: Tích hợp cấu hình Forgiveness Hour (Giờ tha thứ) vào User Profile.
+ * - [NEW 12.0]: Chuyển đổi toàn bộ hệ thống sang ISO 8601 (UTC Agnostic) và lập chỉ mục updatedAt.
  * - Đảm bảo tính nhất quán dữ liệu qua cơ chế Atomic Migration trên môi trường Cloudflare.
  */
 
@@ -115,8 +116,6 @@ export class MindCapDatabase extends Dexie {
 
     /**
      * [NEW 9.1] Version 9: Hệ thống Kỷ luật dữ liệu & Source Traceability
-     * Cập nhật cơ chế Migration bất đồng bộ để đảm bảo ổn định trên Cloudflare.
-     * Bổ sung chỉ mục sourceTable phục vụ cập nhật trạng thái đồng bộ chính xác.
      */
     this.version(9).stores({
       tasks: '++id, status, createdAt, isFocusMode, scheduledFor, *tags, doneCount, targetCount, nextReviewAt, interactionScore, echoLinkCount, parentId, parentGroupId, archiveStatus, syncStatus, sourceTable', 
@@ -124,10 +123,6 @@ export class MindCapDatabase extends Dexie {
       moods: '++id, score, createdAt',
       userProfile: '++id'
     }).upgrade(async (trans) => {
-      /**
-       * MIGRATION LOGIC: Gán nhãn nguồn vĩnh viễn cho dữ liệu cũ để phục vụ Bridge.
-       * Sử dụng Promise.all để đảm bảo cả hai bảng được xử lý xong trước khi kết thúc transaction.
-       */
       await Promise.all([
         trans.table('tasks').toCollection().modify(task => {
           if (task.sourceTable === undefined) task.sourceTable = 'tasks';
@@ -140,21 +135,17 @@ export class MindCapDatabase extends Dexie {
 
     /**
      * [NEW 10.0] Version 10: Tích hợp Catch-up Logic cho Spark Notification.
-     * Khởi tạo bảng sparkSchedules để lưu trữ các mốc thời gian thông báo cần quét ngầm.
-     * Chỉ mục chính: entryId, scheduledAt (để quét các mốc bị lỡ), status (để lọc trạng thái gửi).
      */
     this.version(10).stores({
       tasks: '++id, status, createdAt, isFocusMode, scheduledFor, *tags, doneCount, targetCount, nextReviewAt, interactionScore, echoLinkCount, parentId, parentGroupId, archiveStatus, syncStatus, sourceTable', 
       thoughts: '++id, type, createdAt, nextReviewAt, interactionScore, echoLinkCount, parentId, syncStatus, sourceTable',
       moods: '++id, score, createdAt',
       userProfile: '++id',
-      // [FIX]: Bổ sung bảng sparkSchedules phục vụ việc fix lỗi thông báo trễ.
       sparkSchedules: '++id, entryId, entryType, scheduledAt, status'
     });
 
     /**
      * [NEW 11.0] Version 11: Tích hợp Cơ chế Giờ tha thứ (Forgiveness Hour).
-     * Bổ sung logic khởi tạo các trường cấu hình cho tính năng giải phóng gánh nặng tâm lý.
      */
     this.version(11).stores({
       tasks: '++id, status, createdAt, isFocusMode, scheduledFor, *tags, doneCount, targetCount, nextReviewAt, interactionScore, echoLinkCount, parentId, parentGroupId, archiveStatus, syncStatus, sourceTable', 
@@ -163,14 +154,51 @@ export class MindCapDatabase extends Dexie {
       userProfile: '++id',
       sparkSchedules: '++id, entryId, entryType, scheduledAt, status'
     }).upgrade(async (trans) => {
-      /**
-       * MIGRATION LOGIC: Khởi tạo giá trị mặc định cho Giờ tha thứ.
-       * Mặc định là 19h và chưa chạy lần nào trong ngày hiện tại.
-       */
       await trans.table('userProfile').toCollection().modify(profile => {
         if (profile.forgivenessHour === undefined) profile.forgivenessHour = 19;
         if (profile.lastForgivenessRun === undefined) profile.lastForgivenessRun = '';
       });
+    });
+
+    /**
+     * [NEW 12.0] Version 12: Nâng cấp chuẩn ISO 8601 (Timezone Agnostic) & Sanitization.
+     * [FIX]: Lập chỉ mục updatedAt để tối ưu truy vấn cho streakEngine.
+     * [FIX]: Tự động kéo dữ liệu từ tương lai về thực tế.
+     */
+    this.version(12).stores({
+      tasks: '++id, status, createdAt, updatedAt, isFocusMode, scheduledFor, *tags, doneCount, targetCount, nextReviewAt, interactionScore, echoLinkCount, parentId, parentGroupId, archiveStatus, syncStatus, sourceTable', 
+      thoughts: '++id, type, createdAt, updatedAt, nextReviewAt, interactionScore, echoLinkCount, parentId, syncStatus, sourceTable',
+      moods: '++id, score, createdAt',
+      userProfile: '++id',
+      sparkSchedules: '++id, entryId, entryType, scheduledAt, status'
+    }).upgrade(async (trans) => {
+      const now = Date.now();
+      
+      // Hàm hỗ trợ làm sạch và chuyển đổi sang ISO 8601
+      const sanitizeToISO = (val: any) => {
+        if (!val) return new Date(now).toISOString();
+        let ts = typeof val === 'string' ? new Date(val).getTime() : Number(val);
+        if (isNaN(ts)) ts = now;
+        
+        // [CORE FIX]: Nếu mốc thời gian lớn hơn hiện tại (Lỗi 2027), kéo về hiện tại.
+        if (ts > now) ts = now;
+        
+        return new Date(ts).toISOString();
+      };
+
+      await Promise.all([
+        trans.table('tasks').toCollection().modify(task => {
+          task.createdAt = sanitizeToISO(task.createdAt);
+          task.updatedAt = sanitizeToISO(task.updatedAt);
+          if (task.scheduledFor) task.scheduledFor = sanitizeToISO(task.scheduledFor);
+        }),
+        trans.table('thoughts').toCollection().modify(thought => {
+          thought.createdAt = sanitizeToISO(thought.createdAt);
+          thought.updatedAt = sanitizeToISO(thought.updatedAt);
+        })
+      ]);
+
+      console.log("MindCap Database: Version 12 migration (ISO 8601 & Future Date Sanitization) completed.");
     });
   }
 }

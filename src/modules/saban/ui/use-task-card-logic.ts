@@ -1,8 +1,9 @@
 /**
- * Purpose: Xu ly cam bien keo tha va tuong tac cua Task Card.
+ * Purpose: Xu ly cam bien keo tha va tuong tac cua Task Card (v11.8).
  * Inputs/Outputs: Nhan vao props cua component, tra ve cac handlers va states.
  * Business Rule: Cam keo tha voi viec da xong, kich hoat Haptic khi tuong tac.
- * [UPDATE]: Toi uu hien thi "Hang ngay" khi chon full tuan/thang, liet ke chi tiet khi chon ngay le.
+ * [UPDATE 11.8]: Toi uu hien thi "Hang ngay" khi chon full tuan/thang, liet ke chi tiet khi chon ngay le.
+ * [RULE]: An nhãn tan suat neu la nhiem vu "Lam mot lan" (once/none) de giam nhiễu giao dien.
  */
 
 import { useState } from 'react';
@@ -21,13 +22,15 @@ export const useTaskCardLogic = (props: TaskCardProps): TaskCardLogic => {
   /**
    * [HUMANIZE LOGIC]: Chuyen doi du lieu tan suat tu Database thanh ngon ngu tu nhien.
    * [RULE]: 
+   * - Once/None -> hasFreq: false (An Badge)
    * - Full Tuan (7 ngay) hoac Full Thang (>=28 ngay) -> "Hang ngay"
    * - Weekly/Custom (1-6 ngay) -> "T2, T3..."
    * - Monthly (ngay le) -> "Ngay 1, 15..."
    */
   const getFrequencyInfo = () => {
     // 1. Uu tien kiem tra truong 'frequency' chinh thuc (ITask v11.1)
-    if (task.frequency && task.frequency !== 'none') {
+    // [FIX]: Bo qua neu tan suat la 'none' hoac 'once' (Lam mot lan)
+    if (task.frequency && task.frequency !== 'none' && task.frequency !== 'once') {
       let text = '';
       
       // Xu ly theo tung loai tan suat
@@ -37,7 +40,7 @@ export const useTaskCardLogic = (props: TaskCardProps): TaskCardLogic => {
       else if (task.frequency === 'weekly' || task.frequency === 'custom' || task.frequency === 'days-week') {
         // Lay thong tin cac thu tu mang repeatOn
         if (Array.isArray(task.repeatOn) && task.repeatOn.length > 0) {
-          // [NEW LOGIC]: Neu chon du 7 ngay trong tuan
+          // [NEW LOGIC]: Neu chon du 7 ngay trong tuan -> Quy ve "Hang ngay"
           if (task.repeatOn.length === 7) {
             text = 'Hàng ngày';
           } else {
@@ -72,7 +75,8 @@ export const useTaskCardLogic = (props: TaskCardProps): TaskCardLogic => {
     }
 
     // 2. Fallback: Kiem tra trong tags (Du lieu cu dung 'freq:')
-    const freqTag = task.tags?.find(t => t.startsWith('freq:') && t !== 'freq:once');
+    // [FIX]: Loc bo ca freq:once va freq:none
+    const freqTag = task.tags?.find(t => t.startsWith('freq:') && t !== 'freq:once' && t !== 'freq:none');
     if (freqTag) {
       const value = freqTag.split(':')[1];
       

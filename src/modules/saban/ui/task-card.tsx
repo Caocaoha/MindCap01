@@ -1,8 +1,10 @@
 /**
- * Purpose: Giao dien hien thi chi tiet mot nhiem vu trong Saban Board.
+ * Purpose: Giao dien hien thi chi tiết một nhiệm vụ trong Saban Board.
  * Inputs/Outputs: Nhan Props va hien thi JSX dua tren du lieu tu useTaskCardLogic.
  * Business Rule: Toi uu trai nghiem Mobile, ho tro phan hoi thi giac khi keo tha.
- * [UPDATE]: Bo sung hien thi nhan Tan suat (Frequency Badge) cho cac nhiem vu dinh ky.
+ * [UPDATE 11.8]: Tinh chinh hien thi Badge tan suat: 
+ * - An hoan toan neu la "Lam 1 lan".
+ * - Hien thi "Hang ngay" neu chon du 7 ngay trong tuan.
  */
 
 import React from 'react';
@@ -47,8 +49,10 @@ export const TaskCard: React.FC<TaskCardProps> = (props) => {
               </div>
             )}
 
-            {/* Hien thi tan suat lap lai neu co (Rule: Bo qua neu la task mot lan) */}
-            {logic.hasFrequency && (
+            {/** * [UI FIX 11.8]: Hien thi tan suat lap lai.
+             * Logic ẩn "Lam 1 lan" và hien "Hang ngay" được quyết định bởi logic.frequencyText.
+             */}
+            {logic.hasFrequency && logic.frequencyText && (
               <div className="flex items-center gap-2">
                 <span className="text-[9px] bg-slate-50 text-slate-500 border border-slate-200 px-2 py-0.5 rounded-[4px] font-mono font-bold flex items-center gap-1">
                   <span className="text-[10px] leading-none">↺</span> {logic.frequencyText}

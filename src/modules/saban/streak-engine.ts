@@ -128,5 +128,30 @@ export const streakEngine = {
     });
 
     console.groupEnd();
+  },
+
+  /**
+   * 5. [NEW 11.8]: Lấy nhãn hiển thị tần suất cho Todo (v11.8)
+   * - Nếu "Làm 1 lần" (once/none) -> Trả về null để không hiển thị.
+   * - Nếu "Hàng ngày" hoặc đủ 7 ngày trong tuần -> Trả về "Hàng ngày".
+   * - Bảo toàn các giá trị tần suất khác nếu có.
+   */
+  getFrequencyLabel: (task: ITask): string | null => {
+    const tagFreq = streakEngine.getTagValue(task, 'freq');
+    const freq = task.frequency || tagFreq;
+
+    // Quy định: "Làm 1 lần" thì không hiển thị
+    if (freq === 'once' || freq === 'none') {
+      return null;
+    }
+
+    // Quy định: "Hàng ngày" hoặc chọn đủ 7 ngày trong tuần
+    const repeatDays = task.repeatOn || [];
+    if (freq === 'daily' || repeatDays.length === 7) {
+      return 'Hàng ngày';
+    }
+
+    // Giữ nguyên nhãn tần suất gốc cho các trường hợp còn lại (weekly, days-week, custom...)
+    return freq || null;
   }
 };

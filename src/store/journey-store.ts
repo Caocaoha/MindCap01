@@ -3,18 +3,19 @@ import { ITask, IThought } from '../database/types';
 import { db } from '../database/db';
 
 /**
- * [STORE]: Quản lý trạng thái hành trình v4.7.
- * Bổ sung 'migrateEntry' để xử lý chuyển đổi Type (Task <-> Thought) và cập nhật UI tức thì.
+ * [STORE]: Quản lý trạng thái hành trình v4.9.
+ * [UPGRADE]: Chuyển đổi toàn bộ hệ thống thời gian sang ISO 8601 (UTC Agnostic).
+ * [FIX]: Loại bỏ "Double Timezone Offset" bằng cách cưỡng bức sử dụng .toISOString().
+ * [RULE]: Không chấp nhận Number Timestamp từ UI, luôn sinh mới chuỗi UTC tại Store.
  */
 export interface JourneyState {
-  // --- Task Management (Khôi phục cho Saban/Focus) ---
+  // --- Task Management ---
   tasks: ITask[];
   setTasks: (tasks: ITask[]) => void;
   updateTask: (id: number, updates: Partial<ITask>) => Promise<void>;
-  incrementDoneCount: (id: number) => void;
+  incrementDoneCount: (id: number) => Promise<void>;
 
-  // --- [NEW]: Action chuyển đổi dữ liệu ---
-  // Xử lý việc di chuyển bản ghi giữa các bảng (Tasks/Thoughts) khi người dùng đổi loại.
+  // --- Action chuyển đổi dữ liệu ---
   migrateEntry: (
     id: number, 
     fromType: 'task' | 'thought', 
@@ -23,16 +24,16 @@ export interface JourneyState {
   ) => Promise<void>;
 
   // --- Action Hub v3.6 ---
-  viewMode: 'stats' | 'diary' | 'spark'; // Cập nhật: Thêm chế độ spark
+  viewMode: 'stats' | 'diary' | 'spark'; 
   searchQuery: string;
   hiddenIds: number[];
   linkingItem: { id: number; type: 'task' | 'thought' } | null;
   
-  setViewMode: (mode: 'stats' | 'diary' | 'spark') => void; // Cập nhật tham số
+  setViewMode: (mode: 'stats' | 'diary' | 'spark') => void; 
   setSearchQuery: (query: string) => void;
   setLinkingItem: (item: { id: number; type: 'task' | 'thought' } | null) => void;
   toggleHide: (id: number) => void;
-  calculateOpacity: (lastUpdate: number, isBookmarked?: boolean) => number;
+  calculateOpacity: (lastUpdate: string | number, isBookmarked?: boolean) => number;
   isDiaryEntry: (item: any) => boolean;
 }
 
@@ -41,66 +42,67 @@ export const useJourneyStore = create<JourneyState>((set, get) => ({
   tasks: [],
   setTasks: (tasks) => set({ tasks }),
 
-  // Cập nhật Task cả trong Store và Database
+  /**
+   * Cập nhật Task cả trong Store và Database
+   * [STRATEGY]: Chặn đứng việc truyền Timestamp số từ UI.
+   */
   updateTask: async (id, updates) => {
-    // [MOD]: Đảm bảo cập nhật DB trước để kích hoạt LiveQuery ở các nơi khác
-    await db.tasks.update(id, updates);
+    // [FIX]: Chuyển đổi updatedAt sang ISO 8601 UTC string
+    const enhancedUpdates = {
+      ...updates,
+      updatedAt: new Date().toISOString() // Luôn sinh mới giờ chuẩn UTC
+    };
+
+    await db.tasks.update(id, enhancedUpdates as any);
+    
     set((state) => ({
-      tasks: state.tasks.map((t) => (t.id === id ? { ...t, ...updates } : t)),
+      tasks: state.tasks.map((t) => (t.id === id ? { ...t, ...enhancedUpdates } : t)),
     }));
   },
 
-  // [NEW]: Logic di chuyển bản ghi giữa các bảng (Task <-> Thought)
+  // Logic di chuyển bản ghi giữa các bảng (Task <-> Thought)
   migrateEntry: async (id, fromType, toType, data) => {
-    // TRƯỜNG HỢP 1: Không đổi loại (Chỉ update thuộc tính)
+    const nowISO = new Date().toISOString();
+
     if (fromType === toType) {
       if (fromType === 'task') {
         await get().updateTask(id, data as Partial<ITask>);
       } else {
-        // Nếu là Thought, update trực tiếp vào DB
-        await db.thoughts.update(id, data);
+        await db.thoughts.update(id, { ...data, updatedAt: nowISO });
       }
       return;
     }
 
-    // TRƯỜNG HỢP 2: Chuyển từ Task sang Thought (Rời khỏi Saban)
     if (fromType === 'task' && toType === 'thought') {
       const { id: _oldId, ...contentData } = data as any;
       
-      // 1. Thêm vào bảng Thoughts
       await db.thoughts.add({
         ...contentData,
         type: 'thought',
-        createdAt: contentData.createdAt || Date.now(),
-        updatedAt: Date.now()
+        createdAt: contentData.createdAt || nowISO,
+        updatedAt: nowISO
       });
 
-      // 2. Xóa khỏi bảng Tasks
       await db.tasks.delete(id);
 
-      // 3. Cập nhật Store: Loại bỏ task khỏi danh sách để Saban biến mất ngay
       set((state) => ({
         tasks: state.tasks.filter((t) => t.id !== id)
       }));
     }
 
-    // TRƯỜNG HỢP 3: Chuyển từ Thought sang Task (Xuất hiện tại Saban)
     else if (fromType === 'thought' && toType === 'task') {
       const { id: _oldId, ...contentData } = data as any;
 
-      // 1. Thêm vào bảng Tasks
       const newId = await db.tasks.add({
         ...contentData,
         type: 'task',
-        status: 'todo', // Đảm bảo trạng thái mặc định
-        createdAt: contentData.createdAt || Date.now(),
-        updatedAt: Date.now()
+        status: 'todo',
+        createdAt: contentData.createdAt || nowISO,
+        updatedAt: nowISO
       } as ITask);
 
-      // 2. Xóa khỏi bảng Thoughts
       await db.thoughts.delete(id);
 
-      // 3. Cập nhật Store: Thêm task mới vào danh sách để hiện ngay lập tức
       const newTask = await db.tasks.get(newId);
       if (newTask) {
         set((state) => ({
@@ -110,19 +112,27 @@ export const useJourneyStore = create<JourneyState>((set, get) => ({
     }
   },
 
-  // Tăng số lượng thực hiện (Dùng cho Focus/Saban)
+  /**
+   * Tăng số lượng thực hiện
+   * [FIX]: Ép kiểu ISO 8601 cho updatedAt.
+   */
   incrementDoneCount: async (id) => {
     const task = get().tasks.find((t) => t.id === id);
     if (!task) return;
+    
     const newCount = (task.doneCount || 0) + 1;
     const isDone = newCount >= (task.targetCount || 1);
+    const nowISO = new Date().toISOString();
     
-    const updates: Partial<ITask> = { 
+    const updates = { 
       doneCount: newCount, 
-      status: isDone ? 'done' : 'todo' 
+      status: (isDone ? 'done' : 'todo') as 'done' | 'todo',
+      isFocusMode: isDone ? false : task.isFocusMode,
+      updatedAt: nowISO 
     };
     
     await db.tasks.update(id, updates);
+    
     set((state) => ({
       tasks: state.tasks.map((t) => (t.id === id ? { ...t, ...updates } : t)),
     }));
@@ -144,19 +154,16 @@ export const useJourneyStore = create<JourneyState>((set, get) => ({
 
   /**
    * Tính toán độ mờ (Entropy)
-   * Giữ nguyên giới hạn 0.1 của bạn để đảm bảo ký ức không biến mất hoàn toàn.
+   * [FIX]: Hỗ trợ so sánh cả ISO string và Number cũ.
    */
   calculateOpacity: (lastUpdate, isBookmarked) => {
     if (isBookmarked) return 1; 
-    const diffDays = (Date.now() - lastUpdate) / (1000 * 60 * 60 * 24);
+    const updateTime = typeof lastUpdate === 'string' ? new Date(lastUpdate).getTime() : lastUpdate;
+    const diffDays = (Date.now() - updateTime) / (1000 * 60 * 60 * 24);
     const opacity = 1 - (diffDays / 40);
     return Math.max(0.1, Math.min(1, opacity));
   },
 
-  /**
-   * Logic lọc dữ liệu Diary
-   * Loại trừ các việc đang active trong Saban.
-   */
   isDiaryEntry: (item) => {
     if (item.status === 'active' && !item.isFocusMode) return false;
     return true;

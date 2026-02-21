@@ -1,11 +1,12 @@
 /**
- * Purpose: Bộ điều khiển bố cục chính (Main Layout Controller) của ứng dụng MindCap (v6.35).
+ * Purpose: Bộ điều khiển bố cục chính (Main Layout Controller) của ứng dụng MindCap (v6.37).
  * Inputs/Outputs: Quản lý trạng thái hiển thị của các Module dựa trên ActiveTab.
  * Business Rule: 
  * - [SERVICE WORKER]: Đăng ký và quản lý luồng chạy ngầm của Spark.
  * - [DEEP LINKING]: Bóc tách tham số URL để mở trực tiếp Task/Thought từ thông báo.
  * - [FORGIVENESS]: Kích hoạt cơ chế giải phóng tâm lý khi khởi chạy (Lazy Trigger).
  * - [ROLLOVER]: Kích hoạt Reset ngày mới cho các Task lặp lại (StreakEngine).
+ * - [FIX]: Hợp nhất luồng khởi tạo để đảm bảo Reset Database hoàn tất TRƯỚC KHI nạp Store.
  */
 
 import React, { useEffect } from 'react';
@@ -26,11 +27,8 @@ import { EntryModal } from './modules/input/components/entry-modal';
 import { SparkNotification } from './modules/spark/components/spark-notification';
 import { UniversalEditModal } from './modules/input/components/universal-edit-modal';
 import { BottomNav } from './components/shared/bottom-nav';
-// [NEW]: Import GlobalToast cho hệ thống thông báo tương tác chính giữa màn hình
 import { GlobalToast } from './components/shared/global-toast';
-// [NEW]: Kết nối ForgivenessEngine phục vụ cơ chế giải phóng tâm lý
 import { ForgivenessEngine } from './services/forgiveness-engine';
-// [NEW]: Kết nối StreakEngine để xử lý Reset task qua ngày (Rollover)
 import { streakEngine } from './modules/saban/streak-engine';
 
 export const App: React.FC = () => {
@@ -58,12 +56,20 @@ export const App: React.FC = () => {
   }, []);
 
   /**
-   * [2. DATA INITIALIZATION]
-   * Đồng bộ dữ liệu từ IndexedDB vào Store khi khởi động.
+   * [2 & 3. SYSTEM INITIALIZATION & MAINTENANCE - MERGED]
+   * Giải pháp đồng bộ: Ép trình tự khởi động phải diễn ra theo thứ tự Logic.
+   * 1. StreakEngine Reset (Ghi DB) -> 2. Load Tasks (Đọc DB vào Store) -> 3. Forgiveness (Xử lý phụ).
    */
   useEffect(() => {
-    const initializeData = async () => {
+    const startSystem = async () => {
       try {
+        console.log("MindCap: Starting system maintenance...");
+        
+        // BƯỚC 1: Thực hiện Reset ngày mới cho các Task lặp lại.
+        // Phải dùng await để đảm bảo Database đã được cập nhật xong xuôi.
+        await streakEngine.processDailyReset();
+
+        // BƯỚC 2: Sau khi DB đã sạch, mới nạp dữ liệu tươi mới vào Store.
         const rawTasks = await db.tasks.toArray();
         const sanitizedTasks = rawTasks.map(t => ({
           ...t,
@@ -73,33 +79,18 @@ export const App: React.FC = () => {
           status: (t.status || 'todo') as 'todo' | 'done' | 'backlog'
         }));
         setTasks(sanitizedTasks);
-      } catch (error) {
-        console.error("MindCap Initialization Error:", error);
-      }
-    };
-    initializeData();
-  }, [setTasks]);
 
-  /**
-   * [3. MAINTENANCE ENGINES]
-   * Chiến thuật Kích hoạt tiết kiệm: Chỉ kiểm tra khi người dùng mở ứng dụng lần đầu.
-   * - processDailyReset: Hồi sinh các Task lặp lại từ ngày hôm qua.
-   * - checkAndRun: Giải phóng tâm lý dựa trên giờ cài đặt.
-   */
-  useEffect(() => {
-    const runMaintenance = async () => {
-      try {
-        // Thực hiện Reset ngày mới trước để dữ liệu Task được cập nhật sớm nhất
-        await streakEngine.processDailyReset();
-        // Sau đó kiểm tra việc giải phóng Focus Mode
+        // BƯỚC 3: Kích hoạt các engine bảo trì khác.
         await ForgivenessEngine.checkAndRun();
-      } catch (err) {
-        console.error("Maintenance Engine Error:", err);
+
+        console.log("MindCap: Initialization and rollover completed successfully.");
+      } catch (error) {
+        console.error("MindCap System Start Error:", error);
       }
     };
-    
-    runMaintenance();
-  }, []);
+
+    startSystem();
+  }, [setTasks]);
 
   /**
    * [4. DEEP LINKING HANDLER]

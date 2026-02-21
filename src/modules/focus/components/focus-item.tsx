@@ -39,18 +39,18 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
       status: 'done',
       doneCount: task.targetCount || 1,
       isFocusMode: false,
-      updatedAt: Date.now()
+      updatedAt: Date.now() // [IMPORTANT]: Đánh dấu mốc hoàn thành để Engine so sánh 0h
     });
   };
 
   /**
    * [ZONE B - CENTER]: Tăng số lượng thực hiện (Body Tap).
-   * Kích hoạt khi click vào vùng flex-1 (Giữa).
    */
   const handleIncrement = () => {
     if (isCompleted || !isActive) return;
     triggerHaptic('light');
-    incrementDoneCount(task.id!);
+    incrementDoneCount(task.id!); 
+    // Lưu ý: Cần đảm bảo hàm incrementDoneCount trong Store cũng cập nhật updatedAt.
   };
 
   /**
@@ -61,7 +61,8 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
     triggerHaptic('light');
     updateTask(task.id!, {
       isFocusMode: false,
-      updatedAt: Date.now()
+      // Không thay đổi trạng thái hoàn thành, nhưng vẫn ghi nhận lần tương tác cuối
+      updatedAt: task.updatedAt || Date.now() 
     });
   };
 
@@ -78,7 +79,8 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
       doneCount: val,
       status: isFinished ? 'done' : task.status,
       isFocusMode: isFinished ? false : task.isFocusMode,
-      updatedAt: isFinished ? Date.now() : task.updatedAt
+      // [FIX]: Luôn cập nhật updatedAt khi có thay đổi về tiến độ/trạng thái
+      updatedAt: Date.now() 
     });
   };
 
@@ -86,14 +88,12 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
     <div 
       onClick={handleIncrement} 
       className={`relative w-full flex items-start gap-3 p-4 mb-3 rounded-[12px] transition-all duration-300 select-none ${
-        // [MODERN CARD STYLE]: Logic hiển thị mới
         isActive 
-          ? 'bg-white shadow-md scale-[1.02] active:scale-[0.98]' // Active: Trắng, Nổi, Bóng đẹp
-          : 'bg-[#F8F9FA] shadow-[0_4px_6px_rgba(0,0,0,0.05)] opacity-80' // Inactive: Xám nhạt, Chìm
+          ? 'bg-white shadow-md scale-[1.02] active:scale-[0.98]' 
+          : 'bg-[#F8F9FA] shadow-[0_4px_6px_rgba(0,0,0,0.05)] opacity-80' 
       } ${isCompleted ? 'opacity-40 grayscale' : 'cursor-pointer'}`}
     >
       {/* --- ZONE A: TRÁI (Check Button) --- */}
-      {/* Bao bọc bởi một div có diện tích chạm rõ ràng và chặn sự kiện */}
       <div 
         onClick={handleComplete}
         className="relative z-20 flex-shrink-0 pt-1"
@@ -106,7 +106,6 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
       </div>
 
       {/* --- ZONE B: GIỮA (Nội dung & Tiến độ) --- */}
-      {/* [FIX]: Gỡ bỏ pointer-events-none để iPhone nhận diện vùng chạm này và nổi bọt lên thẻ cha */}
       <div className="flex-1 min-w-0">
         <h3 className={`text-base font-bold tracking-tight break-words whitespace-pre-wrap leading-snug ${
           isCompleted ? 'line-through text-slate-400' : 'text-slate-900'
@@ -123,13 +122,10 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
       </div>
 
       {/* --- ZONE C: PHẢI (Control Panel) --- */}
-      {/* Chặn lan truyền tại toàn bộ khối điều khiển bên phải */}
       <div 
         className="flex-shrink-0 flex flex-col items-end gap-3 z-30" 
         onClick={(e) => e.stopPropagation()}
       >
-        
-        {/* Hàng 1: Nút Xóa (X) */}
         <button
           onClick={handleRemoveFromFocus}
           className="w-6 h-6 flex items-center justify-center rounded-full bg-white shadow-sm border border-slate-100 text-slate-400 hover:bg-red-50 hover:text-red-500 hover:border-red-100 transition-all active:scale-90"
@@ -140,7 +136,6 @@ export const FocusItem: React.FC<FocusItemProps> = ({ task, isActive }) => {
           </svg>
         </button>
 
-        {/* Hàng 2: Nhập liệu & Lưu */}
         {!isCompleted ? (
           <div className="flex items-center gap-1 bg-white p-1 rounded-[6px] shadow-sm border border-slate-100">
             <input 
